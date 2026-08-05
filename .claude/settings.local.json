@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(node --version; git --version)",
+      "Bash(git --version)",
+      "PowerShell($g = \\(Get-ChildItem \"C:\\\\Program Files\\\\Git\\\\cmd\\\\git.exe\" -ErrorAction SilentlyContinue\\); if\\($g\\){$g.FullName}else{\"not found\"})"
+    ]
+  }
+}
