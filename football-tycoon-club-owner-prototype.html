@@ -138,6 +138,27 @@ td.r,th.r{text-align:right;}
 body.light .sc b{color:var(--accDeep);}
 .trait{font-size:9px;font-weight:700;letter-spacing:.4px;border-radius:5px;padding:2.5px 7px;background:var(--commSoft);color:var(--comm);text-transform:uppercase;}
 .sellb{margin-left:auto;font-size:10.5px;font-weight:800;background:none;border:1px solid var(--stroke);color:var(--muted);border-radius:7px;padding:5px 10px;}
+/* grouped squad list — one tap per player, everything else lives in the sheet */
+.sqhead{display:flex;align-items:center;gap:9px;margin:14px 0 1px;}
+.sqhead .ln{flex:1;height:1px;background:var(--stroke);}
+.srow{display:flex;align-items:center;gap:9px;padding:9px 2px;border-bottom:1px solid var(--stroke);cursor:pointer;-webkit-tap-highlight-color:var(--wBg);}
+.srow.last{border-bottom:none;}
+.srow:active{background:var(--wBg,rgba(201,247,58,.07));}
+.srow .who{flex:1;min-width:0;}
+.srow .who .n{font-weight:700;font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.srow .who .n small{color:var(--muted);font-weight:500;font-size:11px;}
+.srow .meta{display:flex;gap:4px;align-items:center;margin-top:4px;flex-wrap:wrap;}
+.srow .tri{font-family:'BarlowCN';font-size:10px;color:var(--muted);letter-spacing:.7px;}
+.srow .tri b{color:var(--ink);font-weight:700;}
+.srow .ov{font-family:'BarlowC';font-style:italic;font-weight:900;font-size:21px;line-height:1;color:var(--acc);min-width:26px;text-align:right;}
+body.light .srow .ov{color:var(--accDeep);}
+.srow .chev{color:var(--muted);font-size:15px;line-height:1;}
+.mini{font-family:'BarlowCN';font-size:9px;letter-spacing:.6px;border-radius:4px;padding:2.5px 5px;text-transform:uppercase;border:1px solid transparent;}
+.mini.m{background:var(--panel);border-color:var(--stroke);color:var(--muted);}
+.mini.a{background:var(--wBg,rgba(201,247,58,.12));border-color:var(--strokeAcc);color:var(--acc);}
+body.light .mini.a{color:var(--accDeep);}
+.mini.c{background:var(--commSoft);color:var(--comm);}
+.mini.r{background:rgba(224,90,74,.14);color:#E07A6A;}
 
 /* ---------- modal ---------- */
 .overlay{position:fixed;inset:0;background:rgba(5,8,6,.72);backdrop-filter:blur(3px);display:flex;align-items:flex-end;justify-content:center;z-index:50;}
@@ -1615,32 +1636,54 @@ function viewInbox(){
 }
 function actMsg(id,choice){const m=G.inbox.find(x=>x.id===id);if(m)handleAction(m,choice);}
 function delMsg(id){G.inbox=G.inbox.filter(x=>x.id!==id);render();}
+const SQUAD_GROUPS=[["GK","Goalkeepers"],["DF","Defence"],["MF","Midfield"],["FW","Attack"]];
 function viewSquad(){
-  const order={GK:0,DF:1,MF:2,FW:3};
-  const sq=G.squad.map((p,ix)=>({p,ix})).sort((a,b)=>order[a.p.pos]-order[b.p.pos]||ovr(b.p)-ovr(a.p));
   const wages=G.squad.reduce((s,p)=>s+p.wage,0);
   const wo=windowOpen();
-  return `<div class="card"><div class="kick" style="margin-bottom:4px">Squad · ${G.squad.length} players · wages <b>${kfmt(wages)}/w</b> af ${kfmt(G.wageCap)} cap</div>
-    <div class="bar${wages>G.wageCap*0.9?" amber":""}" style="margin-bottom:8px"><i style="width:${clamp(Math.round(100*wages/G.wageCap),2,100)}%"></i></div>
-    ${sq.map(({p,ix})=>{
-      const isCap=p.name===G.captain;
-      const mentor=G.mentors.find(m=>m.vet===p.name||m.kid===p.name);
-      return `<div class="prow2">
-      <div class="l1"><span class="posb">${p.pos}</span><span class="nm">${isCap?"©&nbsp;":""}${p.name} <small>· ${p.age}</small></span>
-      <button class="sellb" onclick="openSellSheet(${ix})" ${(!wo||G.squad.length<=13)?"disabled style='opacity:.35'":""}>Find buyers…</button></div>
-      <div class="statchips"><span class="sc">ATT <b>${p.att}</b></span><span class="sc">DEF <b>${p.def}</b></span><span class="sc">PHY <b>${p.phy}</b></span>
-      <span class="sc">${p.form>1?"▲":p.form<-1?"▼":"–"} form</span><span class="sc">CONF <b>${Math.round(p.conf)}</b></span><span class="sc" style="${p.years<=1?'color:var(--comm);border-color:rgba(243,179,60,.4)':''}">CT <b>${p.years}yr</b></span>${p.listed?'<span class="trait">LISTED</span>':''}${p.sg?`<span class="sc">⚽ <b>${p.sg}</b></span>`:""}${p.inj?`<span class="trait" style="color:#E07A6A;background:rgba(224,90,74,.12)">INJ ${p.inj}MD</span>`:""}${p.susp?`<span class="trait" style="color:#E07A6A;background:rgba(224,90,74,.12)">SUSP</span>`:""}${p.traits.map(t=>`<span class="trait">${TRAITS[t]}</span>`).join("")}${p.gem?'<span class="trait">GEM</span>':''}${mentor?`<span class="trait" style="color:var(--acc);background:var(--wBg)">${mentor.vet===p.name?"MENTOR":"APPRENTICE"}</span>`:""}</div>
-      <div class="statchips" style="margin-top:5px">
-        ${p.age<28?`<span class="sc" style="opacity:.8">Focus:</span>${["att","def","phy"].map(f=>`<button class="sc" style="cursor:pointer;${p.focus===f?"color:var(--accInk);background:var(--acc);border-color:var(--acc)":""}" onclick="G.squad[${ix}].focus=G.squad[${ix}].focus==='${f}'?null:'${f}';render()">${f.toUpperCase()}</button>`).join("")}`:""}
-        <button class="sc" style="cursor:pointer;${G.talkCooldown>0?"opacity:.4":""}" onclick="openChat(${ix})">💬 Chat</button>
-        ${p.years<=1?`<button class="sc" style="cursor:pointer;color:var(--comm)" onclick="startRenewal(${ix})">✍ Renew…</button>`:""}
-        ${p.age>=28?`<button class="sc" style="cursor:pointer" onclick="setMentor(${ix})">Mentor</button>`:""}
-        ${!isCap&&!G.captSuggested?`<button class="sc" style="cursor:pointer" title="Foreslå gafferen at give ham anførerbindet — han bestemmer selv" onclick="suggestCaptain(${ix})">© Suggest as captain</button>`:""}
-      </div>
-    </div>`;}).join("")}
-    ${!wo?'<div class="kick" style="margin-top:8px">Window closed — selling reopens with the window</div>':""}</div>`;
+  let h=`<div class="card"><div class="kick" style="margin-bottom:4px">Squad · ${G.squad.length} players · wages <b>${kfmt(wages)}/w</b> af ${kfmt(G.wageCap)} cap</div>
+    <div class="bar${wages>G.wageCap*0.9?" amber":""}"><i style="width:${clamp(Math.round(100*wages/G.wageCap),2,100)}%"></i></div>`;
+  for(const [pos,label] of SQUAD_GROUPS){
+    const list=G.squad.map((p,ix)=>({p,ix})).filter(x=>x.p.pos===pos).sort((a,b)=>ovr(b.p)-ovr(a.p));
+    if(!list.length)continue;
+    const avg=Math.round(list.reduce((s,x)=>s+ovr(x.p),0)/list.length);
+    const out=list.filter(x=>x.p.inj||x.p.susp).length;
+    h+=`<div class="sqhead"><span class="kick">${label}</span><span class="ln"></span>
+      <span class="kick">${list.length}${out?" · "+out+" out":""} · avg <b>${avg}</b></span></div>`;
+    h+=list.map((x,i)=>squadRow(x.p,x.ix,i===list.length-1)).join("");
+  }
+  h+=`<div class="kick" style="margin-top:12px;font-size:9.5px;text-transform:none;letter-spacing:.2px">
+    Tap a player for contract, chat, focus, mentoring and sale.${wo?"":" The window is shut — selling reopens when it does."}</div></div>`;
+  return h;
+}
+function squadRow(p,ix,last){
+  const mentor=G.mentors.find(m=>m.vet===p.name||m.kid===p.name);
+  const chips=[];
+  if(p.name===G.captain)chips.push('<span class="mini a">©</span>');
+  if(p.inj)chips.push(`<span class="mini r">Inj ${p.inj}md</span>`);
+  if(p.susp)chips.push('<span class="mini r">Susp</span>');
+  if(p.listed)chips.push('<span class="mini c">Listed</span>');
+  if(p.gem)chips.push('<span class="mini c">Gem</span>');
+  if(mentor)chips.push(`<span class="mini a">${mentor.vet===p.name?"Mentor":"Apprentice"}</span>`);
+  if(p.focus)chips.push(`<span class="mini a">${p.focus} ↑</span>`);
+  chips.push(`<span class="mini ${p.years<=1?"c":"m"}">${p.years}yr</span>`);
+  return `<div class="srow${last?" last":""}" onclick="openPlayer(${ix})">
+    <span class="posb">${p.pos}</span>
+    <span class="who"><span class="n">${p.name} <small>${p.age}</small></span>
+      <span class="meta"><span class="tri">A<b>${p.att}</b> D<b>${p.def}</b> P<b>${p.phy}</b></span>${chips.join("")}</span></span>
+    <span class="ov">${ovr(p)}</span><span class="chev">›</span></div>`;
+}
+function openPlayer(ix){
+  if(!G.squad[ix])return;
+  modal={type:"player",ix};render();
+}
+function setFocus(ix,f){
+  const p=G.squad[ix];if(!p)return;
+  p.focus=p.focus===f?null:f;render();
 }
 function openSellSheet(ix){
+  // the gate lives here, not in the markup — every caller gets the same rule
+  if(!windowOpen()){modal={type:"info",title:"The window is shut",body:"No club can register him now. Selling reopens when the window does."};render();return;}
+  if(G.squad.length<=13){modal={type:"info",title:"\"Not a chance.\"",body:"The gaffer blocks the door: thirteen men is already a squad held together with tape and optimism."};render();return;}
   modal={type:"sellChoice",ix};render();
 }
 function quickRing(ix){
@@ -2117,6 +2160,62 @@ function renderModal(){
       ${d.warn?`<p><b>The foreman adds:</b> "${d.warn}"</p>`:""}
       <button class="glowbtn" onclick="facConfirm()">Build it · ${kfmt(f.cost)}</button>
       <button class="abtn ghost" onclick="modal=null;render()">Think it over</button>
+    </div></div>`;
+  }
+  if(modal.type==="player"){
+    const ix=modal.ix,p=G.squad[ix];
+    if(!p)return `<div class="overlay"><div class="sheet"><h2>He's gone</h2>
+      <p>That player has left the club. The noticeboard is out of date again.</p>
+      <button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
+    const isCap=p.name===G.captain;
+    const mentor=G.mentors.find(m=>m.vet===p.name||m.kid===p.name);
+    const wo=windowOpen();
+    const thin=G.squad.length<=13;
+    const bar=(label,v)=>`<div class="rowline" style="border-bottom:none;padding-bottom:2px"><span>${label}</span><span class="amt num">${v}</span></div>
+      <div class="bar" style="margin-top:0;margin-bottom:6px"><i style="width:${clamp(v,3,100)}%"></i></div>`;
+    let acts="";
+    if(p.age<28){
+      acts+=`<div class="kick" style="margin-top:14px">Training focus <span style="font-size:9px;text-transform:none">· doubles down on one attribute every summer</span></div>
+        <div class="modes" style="margin-top:8px">${["att","def","phy"].map(f=>
+          `<button class="${p.focus===f?'on':''}" onclick="setFocus(${ix},'${f}')">${f.toUpperCase()}</button>`).join("")}</div>`;
+    }
+    const act=(cls,dis,click,html)=>`<button class="abtn ${cls}" style="text-align:left${dis?";opacity:.45":""}" ${dis?"disabled":""} onclick="${click}">${html}</button>`;
+    acts+=`<div class="kick" style="margin-top:16px">The chairman's options</div>`;
+    acts+=act("",G.talkCooldown>0,`openChat(${ix})`,
+      `<b>💬 Bring him into the office</b> — ${G.talkCooldown>0?"the door's busy for "+G.talkCooldown+" more matchday"+(G.talkCooldown===1?"":"s"):"praise him, give him the hairdryer, or promise him football"}`);
+    if(p.years<=1){
+      acts+=act("comm",false,`startRenewal(${ix})`,
+        `<b>✍ Open renewal talks</b> — final year: sign him or he walks for nothing next summer`);
+    }
+    if(p.age>=28){
+      acts+=act("",false,`setMentor(${ix})`,
+        `<b>Make him a mentor</b> — ${mentor&&mentor.vet===p.name?"currently guiding "+mentor.kid.split(" ")[1]:"he takes a young "+p.pos+" under his wing"}`);
+    }
+    if(!isCap){
+      acts+=act("",G.captSuggested,`suggestCaptain(${ix})`,
+        `<b>© Suggest as captain</b> — ${G.captSuggested?"you've had your say on the armband this season":"the gaffer decides, but he'll hear you out once a season"}`);
+    }
+    acts+=act("",!wo||thin,`openSellSheet(${ix})`,
+      `<b>Find buyers…</b> — ${!wo?"the window is shut":thin?"squad too thin, the gaffer blocks the door":"a quick ring-around, or the transfer list"}`);
+    acts+=`<button class="abtn ghost" onclick="modal=null;render()">Close</button>`;
+    return `<div class="overlay"><div class="sheet">
+      <div class="kick">${p.pos} · promised ${ROLES[p.role||"rot"].n.toLowerCase()} football${isCap?" · club captain":""}</div>
+      <h2>${p.name}</h2>
+      <p>Age ${p.age} · <b>${ovr(p)} ovr</b> · valued ~${kfmt(p.value)}${p.from?" · from "+p.from:""}
+        ${p.traits.length?"<br>"+p.traits.map(t=>TRAITS[t]).join(" · "):""}</p>
+      ${p.inj||p.susp||p.listed?`<div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.08)">
+        ${p.inj?`<b>Injured</b> — out for ${p.inj} more matchday${p.inj===1?"":"s"}. `:""}${p.susp?"<b>Suspended</b> — misses the next matchday. ":""}${p.listed?"<b>On the transfer list</b> — offers arrive by inbox while the window is open.":""}</div>`:""}
+      <div class="card">
+        ${bar("Attack",p.att)}${bar("Defence",p.def)}${bar("Physical",p.phy)}
+        <div class="rowline"><span>Confidence</span><span class="amt num">${Math.round(p.conf)}</span></div>
+        <div class="rowline"><span>Form</span><span class="amt">${p.form>1?"▲ rising":p.form<-1?"▼ falling":"– steady"}</span></div></div>
+      <div class="card">
+        <div class="rowline"><span>Wage</span><span class="amt num">${kfmt(p.wage)}/w</span></div>
+        <div class="rowline"><span>Contract</span><span class="amt num" style="${p.years<=1?"color:var(--comm)":""}">${p.years} year${p.years===1?"":"s"}${p.years<=1?" · final":""}</span></div>
+        <div class="rowline"><span>This season</span><span class="num">${p.sapps} apps · ${p.sg} goals · ${p.smotm} motm</span></div>
+        <div class="rowline"><span>For the club</span><span class="num">${p.capps} apps</span></div>
+        ${mentor?`<div class="rowline"><span>${mentor.vet===p.name?"Mentoring":"Learning from"}</span><span class="amt">${(mentor.vet===p.name?mentor.kid:mentor.vet)}</span></div>`:""}</div>
+      ${acts}
     </div></div>`;
   }
   if(modal.type==="chat"){

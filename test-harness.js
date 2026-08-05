@@ -323,6 +323,10 @@ function runSeed(seed) {
 
   function doSquadStuff() {
     const G = H.G;
+    // en rigtig spiller står på trup-skærmen, når han rører en spiller
+    H.screen = "squad";
+    H.call("render");
+    checkHtml();
     const ix = Math.floor(rnd() * G.squad.length);
     const p = G.squad[ix];
     const opts = [];
@@ -529,7 +533,7 @@ function runSeed(seed) {
 
       case "player": {
         const acts = [];
-        if (hasFn("playerSheetAction")) acts.push(() => H.call("playerSheetAction", pick(["chat", "renew", "mentor", "captain"])));
+        if (hasFn("setFocus")) acts.push(() => H.call("setFocus", md.ix, pick(["att", "def", "phy"])));
         if (hasFn("openChat")) acts.push(() => H.call("openChat", md.ix));
         if (hasFn("openSellSheet")) acts.push(() => H.call("openSellSheet", md.ix));
         if (hasFn("startRenewal")) acts.push(() => H.call("startRenewal", md.ix));
