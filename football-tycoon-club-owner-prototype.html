@@ -339,7 +339,7 @@ function newGame(name,hue,mode){
     fanMood:60,objectivePos:8,
     squad:posPlan.map(p=>genPlayer(p,R(42,58),G_DIV_WAGE(3))),
     market:[],freeAgents:[],scoutPending:0,scoutUsed:false,sponsorBoost:false,
-    wageCap:26000,bids:[],callbacks:[],
+    wageCap:11500,bids:[],callbacks:[],
     captain:null,captSuggested:false,talkCooldown:0,mentors:[],soldTo:[],
     teams:[],me:{pts:0,gd:0,pl:0},fixtures:[],
     inbox:[],news:[],msgId:1,lastResult:null,deadlineDone:{},playoff:null,
@@ -394,7 +394,7 @@ function genPlayer(pos,base,wmult){
   if(Math.random()<0.35)traits.push(pick(Object.keys(TRAITS)));
   if(Math.random()<0.08)traits.push(pick(Object.keys(TRAITS)));
   return {name:pick(FIRST)+" "+pick(LAST),pos,att,def,phy,form:0,age:R(18,33),
-    wage:Math.round((ov*30*wmult+R(-150,250))/10)*10,
+    wage:Math.round((ov*13.5*wmult+R(-70,110))/10)*10,
     value:Math.round((ov*ov*14+R(-4000,9000))/1000)*1000,
     traits:[...new Set(traits)],gem:false,inj:0,susp:0,sg:0,sapps:0,smotm:0,
     conf:R(42,60),focus:null,capps:0,promiseMD:null,years:R(1,3),from:null,listed:false,reqDone:false,renewLockMD:-99};
@@ -662,12 +662,21 @@ function applyPts(h,gh,a,ga){
   H.pl++;A.pl++;H.gd+=gh-ga;A.gd+=ga-gh;
   if(gh>ga)H.pts+=3;else if(ga>gh)A.pts+=3;else{H.pts++;A.pts++;}
 }
+/* Demand comes from the TOWN, not from the stand you built. A bigger ground
+   does not fill itself: the fanbase grows with the division you reach and with
+   the fan-growth work (Family Stand), so a new stand is built ahead of demand
+   and pays off as the town grows into it. */
+function townDemand(){
+  return 1400*(1+(3-G.div)*0.85)*(1+G.stands.family*0.22)*(1+(G.fac.basics?0.05:0));
+}
 function attendance(){
   const pos=myPos();
   const posF=clamp((15-pos)/14,0.15,1);
   const moodF=0.55+G.fanMood/180;
   const priceF=clamp(1.25-(G.ticket-10)*0.05,0.4,1.25);
-  return Math.min(G.capacity,Math.round(G.capacity*clamp(0.3+0.5*posF,0.25,1)*moodF*priceF));
+  // mood and a cheap ticket can fill the town's appetite, never exceed it
+  const want=townDemand()*clamp(0.35+0.55*posF,0.25,1)*clamp(moodF*priceF,0.3,1);
+  return Math.max(0,Math.min(G.capacity,Math.round(want)));
 }
 function settleFinances(res){
   const wages=G.squad.reduce((s,p)=>s+p.wage,0);
@@ -677,8 +686,8 @@ function settleFinances(res){
     const paying=Math.max(0,res.att-G.seasonTix.sold);
     const bigMult=(res.big&&G.fac.screen?1.1:1)*(res.big?1+G.stands.away*0.06:1);
     gate=Math.round(paying*(G.ticket+(res.big?G.bigExtra:0))*bigMult);
-    extras=Math.round(res.att*(3.5+G.fac.shop*1.4+G.fac.pub*0.9+(G.fac.basics?0.4:0))
-          +res.att*0.6*G.jerseyFactor*(1+G.fac.shop*0.5)
+    extras=Math.round(res.att*(2.4+G.fac.shop*1.2+G.fac.pub*0.8+(G.fac.basics?0.4:0))
+          +res.att*0.45*G.jerseyFactor*(1+G.fac.shop*0.5)
           +(G.fac.vip?3000:0));
   }
   let loanPay=0;
@@ -985,7 +994,10 @@ function applyRetirements(){
    actual sale in budgetConfirm() must never drift apart */
 function seasonTixEstimate(price){
   const priceF=clamp(1.6-price/(G.ticket*13),0.2,1.4);
-  const sold=Math.round(G.capacity*0.28*priceF*(0.5+G.fanMood/150));
+  // holders are a share of the crowd you can actually draw — empty seats do not
+  // buy season tickets, so concrete alone never prints money
+  const reach=Math.min(G.capacity,townDemand());
+  const sold=Math.round(reach*0.25*priceF*(0.5+G.fanMood/150));
   return {sold,cash:sold*price};
 }
 const BUDGET_STEPS=["Season tickets","The kit","Stadium fund","The frame"];
@@ -1463,8 +1475,8 @@ function finishStand(){
   G.standBuild=null;
 }
 const FAC_DETAIL={
- shop:{fx:["+£1.40 per spectator, every home game","Merchandise income +50%"],warn:null,md:2},
- pub:{fx:["+£0.90 per spectator, every home game","Fan mood drifts up slightly each matchday"],warn:null,md:2},
+ shop:{fx:["+£1.20 per spectator, every home game","Merchandise income +50%"],warn:null,md:2},
+ pub:{fx:["+£0.80 per spectator, every home game","Fan mood drifts up slightly each matchday"],warn:null,md:2},
  screen:{fx:["+10% gate in BIG matches (derby, cup, playoffs)"],warn:"Does nothing on a wet Tuesday against mid-table.",md:2},
  clinic:{fx:["Injury risk per match: 7% → 5%","Injury length: −1 matchday"],warn:null,md:2},
  training:{fx:["Players under 24 develop +1 extra per season"],warn:"Pays off over YEARS, not weeks.",md:3},

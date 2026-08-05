@@ -167,7 +167,11 @@ function runSeed(seed) {
   const chance = p => rnd() < p;
 
   /* --- instrumentering: fang netto pr. kampdag (til økonomibalancering) --- */
-  const stats = { md: [], seasonEnd: [] };
+  const stats = { md: [], seasonEnd: [], bank: 0, admin: 0, startBalance: 0 };
+  for (const [fn, key] of [["openBankUltimatum", "bank"], ["administration", "admin"]]) {
+    const orig = ctx[fn];
+    ctx[fn] = function () { stats[key]++; return orig.apply(null, arguments); };
+  }
   const origSettle = ctx.settleFinances;
   ctx.settleFinances = function (res) {
     const before = H.G.balance;
@@ -322,6 +326,41 @@ function runSeed(seed) {
     H.screen = "home"; H.call("render");
   }
 
+  /* Med en balanceret oekonomi naar botten aldrig krisemaskineriet, saa
+     bank-ultimatum -> laan -> administration proeves eksplicit. */
+  function checkBankCascade() {
+    const G = H.G;
+    where = "bankCascade";
+    const snap = { balance: G.balance, loan: G.loan, fund: G.fund, bonus: G.fundBonus, target: G.fundTarget, pts: G.me.pts, squad: G.squad.slice(), wages: G.squad.map(p => p.wage) };
+
+    // 1) banken toemmer stadionfonden foerst
+    G.balance = -70000; G.fund = 30000; G.fundBonus = 5000; G.fundTarget = null; G.loan = null;
+    H.call("openBankUltimatum");
+    if (G.fund !== 0) fail("banken toemte ikke stadionfonden (fund=" + G.fund + ")");
+    if (G.fundBonus !== 0) fail("fondens bonus blev ikke nulstillet");
+
+    // 2) noedlaan
+    if (H.modal && H.modal.type === "bank") {
+      H.call("resolveBank", false);
+      if (!G.loan) fail("noedlaan blev ikke oprettet");
+    }
+    H.modal = null;
+
+    // 3) hverken salg (trup 13) eller laan (allerede taget) => administration
+    G.balance = -90000; G.fund = 0; G.fundBonus = 0;
+    G.squad = G.squad.slice(0, 13);
+    const before = G.me.pts;
+    H.call("openBankUltimatum");
+    if (G.me.pts !== Math.max(0, before - 6)) fail("administration gav ikke -6 point (" + before + " -> " + G.me.pts + ")");
+    H.modal = null;
+    checkInvariants();
+
+    G.balance = snap.balance; G.loan = snap.loan; G.fund = snap.fund; G.fundBonus = snap.bonus;
+    G.fundTarget = snap.target; G.me.pts = snap.pts; G.squad = snap.squad;
+    snap.squad.forEach((p, i) => { p.wage = snap.wages[i]; });
+    H.call("render");
+  }
+
   function checkInvariants() {
     const G = H.G;
     if (!G) return;
@@ -385,6 +424,7 @@ function runSeed(seed) {
     }
   }
   if (!H.G) fail("newGame blev aldrig kaldt");
+  stats.startBalance = H.G.balance;
 
   /* ---------------- bot-handlinger ---------------- */
   function processInbox() {
@@ -717,6 +757,7 @@ function runSeed(seed) {
   checkInvariants();
   checkGroundStates();
   checkOwnerBuyout();
+  checkBankCascade();
 
   return { seed, stats, G: H.G, steps };
 }
@@ -762,10 +803,42 @@ function report(runs) {
 
   const finals = runs.map(r => r.G.balance);
   const caps = runs.map(r => r.G.capacity);
-  const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
   console.log("\n  Slutkasse: min " + fmtGbp(Math.min(...finals)) +
     " · snit " + fmtGbp(avg(finals)) + " · max " + fmtGbp(Math.max(...finals)));
   console.log("  Slutkapacitet: min " + Math.min(...caps) + " · snit " + Math.round(avg(caps)) + " · max " + Math.max(...caps));
+
+  /* ── Mads' to måltal for matchday-økonomien (ændring 6) ── */
+  const perSeason = new Map();     // sæson → [netto pr. kampdag]
+  const save = new Map();          // sæson → [opsparing]
+  let built = 0, bank = 0, admin = 0;
+  for (const r of runs) {
+    for (const e of r.stats.md) {
+      if (!perSeason.has(e.season)) perSeason.set(e.season, []);
+      perSeason.get(e.season).push(e.net);
+    }
+    let prev = r.stats.startBalance;
+    r.stats.seasonEnd.forEach(e => {
+      if (!save.has(e.season)) save.set(e.season, []);
+      save.get(e.season).push(e.balance - prev); prev = e.balance;
+    });
+    if (r.G.capacity > 1500) built++;
+    bank += r.stats.bank; admin += r.stats.admin;
+  }
+  const verdict = ok => ok ? "OK" : "UDENFOR";
+  console.log("\n─── MÅLTAL (ændring 6) ───");
+  console.log("  netto pr. kampdag (hjem+ude), pr. sæson — mål ±£2k tidligt:");
+  for (const s of [...perSeason.keys()].sort((a, b) => a - b)) {
+    const v = avg(perSeason.get(s));
+    console.log("      sæson " + s + " : " + fmtGbp(v).padStart(9) + (s === 1 ? "   ← 'tidlig'  " + verdict(Math.abs(v) <= 2000) : ""));
+  }
+  console.log("  opsparing pr. sæson — mål ~£70k (= én tribune):");
+  for (const s of [...save.keys()].sort((a, b) => a - b)) {
+    const v = avg(save.get(s));
+    console.log("      sæson " + s + " : " + fmtGbp(v).padStart(9) + (s === 1 ? "   ← første tribune  " + verdict(v > 35000 && v < 140000) : ""));
+  }
+  console.log("  tribune bygget undervejs      : " + built + " af " + runs.length + " seeds");
+  console.log("  bank-ultimatum " + bank + " · administration " + admin + " (0 = ingen gik konkurs)");
 }
 
 /* ---------------- main ---------------- */

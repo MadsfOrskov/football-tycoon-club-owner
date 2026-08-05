@@ -6,7 +6,12 @@
       "PowerShell($g = \\(Get-ChildItem \"C:\\\\Program Files\\\\Git\\\\cmd\\\\git.exe\" -ErrorAction SilentlyContinue\\); if\\($g\\){$g.FullName}else{\"not found\"})",
       "PowerShell(node test-harness.js --seeds=5 --seasons=3 --stats 2>&1)",
       "PowerShell(node test-harness.js --seeds=5 --seasons=3 2>&1)",
-      "PowerShell($env:PATH += \";C:\\\\Program Files\\\\Git\\\\cmd\"; git log --oneline 2>&1 | Select-Object -First 2)"
+      "PowerShell($env:PATH += \";C:\\\\Program Files\\\\Git\\\\cmd\"; git log --oneline 2>&1 | Select-Object -First 2)",
+      "PowerShell(node test-harness.js --seeds=8 --seasons=3 --stats 2>&1 | Select-Object -Skip 102)",
+      "PowerShell(node test-harness.js --seeds=8 --seasons=3 --stats 2>&1 | Select-Object -Skip 112)",
+      "PowerShell(node test-harness.js --seeds=8 --seasons=3 --stats 2>&1 | Select-Object -Last 14)",
+      "PowerShell(node test-harness.js --seeds=8 --seasons=3 --stats 2>&1 | Select-Object -Last 12)",
+      "PowerShell(node test-harness.js --seeds=8 --seasons=3 2>&1 | Select-Object -Last 3)"
     ]
   }
 }
