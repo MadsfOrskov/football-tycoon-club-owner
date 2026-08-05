@@ -332,7 +332,7 @@ function newGame(name,hue,mode){
     fac:{shop:0,pub:0,screen:0,clinic:0,training:0,basics:0,vip:0},facBuild:null,
     fund:0,fundBonus:0,fundTarget:null,fundRaided:false,seasonTix:{price:150,sold:0},bigExtra:2,jerseyFactor:1,jerseyName:null,
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
-    myShare:51,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,
+    myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,
     build:null,buildCost:80000,loan:null,warnedNeg:false,bankForced:false,
     sponsor:null,sponsorOffered:false,
     coach:{...pick(COACHES)},
@@ -1042,13 +1042,30 @@ function midwayConfirm(){
   if(G.md%4===0){G.adCount++;modal={type:"interstitial"};}
   render();
 }
+/* Buying the boardroom out is meant to be a long game, not a shopping trip:
+   they want to see a direction first, they price a life's work well above fair
+   value, only one of them leaves in any season, and a failed talk shuts the
+   door for two. */
+const OWNER_GATE_SEASON=3;
+function ownerGate(o){
+  if(G.season<OWNER_GATE_SEASON)return {title:"\"Not yet, chairman.\"",
+    body:"Whitmore speaks for all three: \"You've had "+(G.season===1?"one season":G.season+" seasons")+". We'd like to see the direction of travel before anyone sells the thing their name is on. Ask us again in season "+OWNER_GATE_SEASON+".\""};
+  if(G.ownerBoughtSeason===G.season)return {title:"One a season",
+    body:"You already bought somebody out this season. \"The boardroom needs time to get used to the empty chair,\" says Whitmore. \"And frankly, so do our accountants.\""};
+  if(o.lockedUntil&&G.season<o.lockedUntil)return {title:"\"We're still not talking.\"",
+    body:o.n.split(" ")[0]+" hasn't forgotten how the last conversation ended. The door stays shut until season "+o.lockedUntil+"."};
+  return null;
+}
 function buyOutOwner(i){
   const o=G.owners[i];
-  if(o.lockedUntil&&G.season<o.lockedUntil){modal={type:"info",title:"\"Not this season.\"",body:o.n.split(" ")[0]+" hasn't forgotten the last conversation. Try again next season."};render();return;}
+  const gate=ownerGate(o);
+  if(gate){modal={type:"info",title:gate.title,body:gate.body};render();return;}
   const fair=Math.round(clubValuation()*o.share/100/1000)*1000;
-  // it's their life's work — they want a premium, and mood matters
-  const min=Math.round(fair*(1.08+Math.random()*0.12-(G.fanMood>70?0.05:0))/1000)*1000;
-  modal={type:"ownerNego",i,round:0,offer:fair,min,ask:Math.round(fair*1.3/1000)*1000,
+  // it's their life's work — they want a serious premium, and mood matters
+  const min=Math.round(fair*(1.35+Math.random()*0.25-(G.fanMood>70?0.05:0))/1000)*1000;
+  modal={type:"ownerNego",i,round:0,fair,min,
+    offer:Math.round(fair*1.25/1000)*1000,
+    ask:Math.round(fair*1.8/1000)*1000,
     line:{"butcher":"\"Twenty-four percent of this club is forty years of Saturdays, chairman. It has a price. It isn't small.\"",
           "solicitor":"\"Everything is for sale, dear boy. The question, as ever, is the consideration.\"",
           "pie magnate":"\"My share? You couldn't afford my pie recipe. But make me an offer.\""}[o.role]||"\"Make me an offer.\""};
@@ -1060,6 +1077,7 @@ function ownerNegoSubmit(){
   if(m.offer>=m.min){
     if(G.balance<m.offer){modal={type:"info",title:"Agreed — and unaffordable",body:"You shook hands on "+kfmt(m.offer)+" and the bank said no. "+o.n.split(" ")[0]+" will dine out on this."};render();return;}
     G.balance-=m.offer;G.myShare+=o.share;
+    G.ownerBoughtSeason=G.season;          // one empty chair per season
     const name=o.n,role=o.role,share=o.share;
     G.owners.splice(m.i,1);
     addNews("CLUB","You bought out "+name+" for "+kfmt(m.offer)+". Your stake: "+G.myShare+"%.");
@@ -1071,9 +1089,10 @@ function ownerNegoSubmit(){
     }
     modal=null;render();return;
   }
-  if(m.round>=3||m.offer<m.min*0.8){
-    o.lockedUntil=G.season+1;
-    modal={type:"info",title:"\"We're done here.\"",body:o.n.split(" ")[0]+" closes the folder. \"Not this season, chairman.\" The door clicks politely."};render();return;
+  // only a genuinely insulting number kills it outright — a collapse costs two seasons
+  if(m.round>=3||m.offer<m.min*0.62){
+    o.lockedUntil=G.season+2;
+    modal={type:"info",title:"\"We're done here.\"",body:o.n.split(" ")[0]+" closes the folder. \"Not this season, chairman. Nor the next one.\" The door clicks politely, and stays shut until season "+o.lockedUntil+"."};render();return;
   }
   m.ask=Math.round(((m.min*1.08+m.offer)/2)/1000)*1000;
   m.line="\"Closer. But my number starts with "+kfmt(m.ask).slice(0,3)+"…\" (wants ~"+kfmt(m.ask)+")";
@@ -1802,8 +1821,16 @@ function viewClub(){
     <span class="stepper" style="margin:0"><button onclick="G.bigExtra=Math.max(0,G.bigExtra-1);render()">‹</button><span class="val" style="font-size:20px;min-width:50px">+£${G.bigExtra}</span><button onclick="G.bigExtra=Math.min(8,G.bigExtra+1);render()">›</button></span></div>
     <div class="kick" style="font-size:9px;margin-top:6px">Expected gate at current form: ~${attendance().toLocaleString("en-GB")} of ${G.capacity.toLocaleString("en-GB")}</div></div>
   <div class="card"><div class="kick" style="margin-bottom:4px">Ownership · you hold <b>${G.myShare}%</b> · club value ~${kfmt(clubValuation())}</div>
-    ${G.owners.map((o,i)=>`<div class="rowline"><span>${o.n} <small>· ${o.role} · ${o.share}%</small></span>
-      <button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="buyOutOwner(${i})">Buy out · ${kfmt(Math.round(clubValuation()*o.share/100/1000)*1000)}</button></div>`).join("")||'<div class="newsline">Sole owner. The kingdom is yours — cap-free and excuse-free.</div>'}</div>
+    ${G.owners.map((o,i)=>{
+      const fair=Math.round(clubValuation()*o.share/100/1000)*1000;
+      const gate=G.season<OWNER_GATE_SEASON?"From season "+OWNER_GATE_SEASON
+        :G.ownerBoughtSeason===G.season?"One a season"
+        :(o.lockedUntil&&G.season<o.lockedUntil)?"Shut until S"+o.lockedUntil:null;
+      return `<div class="rowline"><span>${o.n} <small>· ${o.role} · ${o.share}% · fair value ~${kfmt(fair)}</small></span>
+        ${gate?`<span class="sc" style="opacity:.65;flex-shrink:0">${gate}</span>`
+          :`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="buyOutOwner(${i})">Buy out…</button>`}</div>`;
+    }).join("")||'<div class="newsline">Sole owner. The kingdom is yours — cap-free and excuse-free.</div>'}
+    ${G.owners.length?`<div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">A share is a life's work, not a line in a ledger: they want well above fair value, only one of them leaves the boardroom in any season, and a failed negotiation shuts that door for two.</div>`:""}</div>
   <div class="card"><div class="kick" style="margin-bottom:4px">Partners & staff</div>
     ${G.sponsor?`<div class="rowline"><span>${G.sponsor.n} <small>· main · ${G.sponsor.seasonsLeft} season${G.sponsor.seasonsLeft===1?"":"s"} left${G.sponsor.demand?" · "+G.sponsor.demand:""}</small></span><span class="amt num">${kfmt(G.sponsor.per)}/W</span></div>
     <div class="rowline"><span>Sponsor bonus <small>· hear out their 'big idea'</small></span><button class="abtn comm" onclick="sponsorBoost()" ${G.sponsorBoost?"disabled style='opacity:.4'":""}>▶ +£8,000 <span style="font-size:8px">AD</span></button></div>`
@@ -2262,8 +2289,9 @@ function renderModal(){
     return `<div class="overlay"><div class="sheet">
       <div class="kick">Buyout talks · round ${Math.min(modal.round+1,3)}/3</div>
       <h2>${o.n}</h2>
-      <p>${o.role} · holds <b>${o.share}%</b> · fair value ~${kfmt(Math.round(clubValuation()*o.share/100/1000)*1000)} — but it's his life's work, and life's work carries a premium.</p>
+      <p>${o.role} · holds <b>${o.share}%</b> · fair value ~${kfmt(modal.fair)} — but it's his life's work, and life's work carries a premium well above the ledger.</p>
       <div class="dlg"><div class="iav">CO</div><div class="bubble">${modal.line}</div></div>
+      <div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.07)">Three rounds. Walk away empty-handed — or insult him — and he won't take a meeting until <b>season ${G.season+2}</b>.</div>
       <div class="stepper">
         <button onclick="modal.offer=Math.max(5000,modal.offer-25000);render()" title="−£25k">‹‹</button>
         <button onclick="modal.offer=Math.max(5000,modal.offer-5000);render()" title="−£5k">‹</button>

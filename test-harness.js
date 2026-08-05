@@ -261,6 +261,67 @@ function runSeed(seed) {
     H.call("render");
   }
 
+  /* Medejer-opkoeb er gated saa haardt, at botten sjaeldent naar dertil af sig
+     selv. Her tvinges scenariet igennem og reglerne efterproeves direkte. */
+  function checkOwnerBuyout() {
+    const G = H.G;
+    if (!G.owners.length) return;
+    where = "ownerBuyout";
+    const snap = { balance: G.balance, season: G.season, bought: G.ownerBoughtSeason };
+
+    const expectInfo = (label) => {
+      if (!H.modal || H.modal.type !== "info") fail(label + ": forventede info-modal, fik " + (H.modal ? H.modal.type : "ingen"));
+      H.modal = null;
+    };
+
+    G.season = 2; G.ownerBoughtSeason = 0; G.owners[0].lockedUntil = 0;
+    H.call("buyOutOwner", 0);
+    expectInfo("saesongate (foer saeson 3)");
+
+    G.season = 4; G.ownerBoughtSeason = 4;
+    H.call("buyOutOwner", 0);
+    expectInfo("ét opkoeb pr. saeson");
+
+    G.season = 4; G.ownerBoughtSeason = 0; G.owners[0].lockedUntil = 6;
+    H.call("buyOutOwner", 0);
+    expectInfo("laast efter kollaps");
+
+    // pris-gulv og aabningskrav
+    G.owners[0].lockedUntil = 0; G.balance = 5000000;
+    H.call("buyOutOwner", 0);
+    if (!H.modal || H.modal.type !== "ownerNego") fail("buyOutOwner aabnede ikke ownerNego");
+    const { fair, min, ask } = H.modal;
+    if (min < Math.round(fair * 1.29) || min > Math.round(fair * 1.61)) {
+      fail("minimumspris uden for 1,35-1,60x fair: min=" + min + " fair=" + fair + " (" + (min / fair).toFixed(3) + "x)");
+    }
+    if (ask < Math.round(fair * 1.75)) fail("aabningskrav for lavt: " + ask + " vs fair " + fair);
+
+    // kollaps skal laase i 2 saesoner
+    H.modal.offer = Math.round(min * 0.4);
+    H.call("ownerNegoSubmit");
+    const locked = G.owners[0].lockedUntil;
+    if (locked !== G.season + 2) fail("kollaps laaser ikke 2 saesoner: lockedUntil=" + locked + ", saeson " + G.season);
+    H.modal = null;
+
+    // og en gennemfoert handel skal saette ownerBoughtSeason
+    G.owners[0].lockedUntil = 0; G.ownerBoughtSeason = 0;
+    const nOwners = G.owners.length;
+    H.call("buyOutOwner", 0);
+    let g = 0;
+    while (H.modal && H.modal.type === "ownerNego") {
+      if (g++ > 8) fail("ownerNego afsluttes ikke");
+      handleModal();
+    }
+    if (G.owners.length === nOwners - 1) {
+      if (G.ownerBoughtSeason !== G.season) fail("ownerBoughtSeason blev ikke sat efter opkoeb");
+    }
+    if (H.modal) { H.modal = null; }
+    checkInvariants();
+
+    G.balance = snap.balance; G.season = snap.season; G.ownerBoughtSeason = snap.bought;
+    H.screen = "home"; H.call("render");
+  }
+
   function checkInvariants() {
     const G = H.G;
     if (!G) return;
@@ -655,6 +716,7 @@ function runSeed(seed) {
   renderAllScreens();
   checkInvariants();
   checkGroundStates();
+  checkOwnerBuyout();
 
   return { seed, stats, G: H.G, steps };
 }
