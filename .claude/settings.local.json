@@ -4,7 +4,8 @@
       "PowerShell(node --version; git --version)",
       "Bash(git --version)",
       "PowerShell($g = \\(Get-ChildItem \"C:\\\\Program Files\\\\Git\\\\cmd\\\\git.exe\" -ErrorAction SilentlyContinue\\); if\\($g\\){$g.FullName}else{\"not found\"})",
-      "PowerShell(node test-harness.js --seeds=5 --seasons=3 --stats 2>&1)"
+      "PowerShell(node test-harness.js --seeds=5 --seasons=3 --stats 2>&1)",
+      "PowerShell(node test-harness.js --seeds=5 --seasons=3 2>&1)"
     ]
   }
 }

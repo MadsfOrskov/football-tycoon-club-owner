@@ -35,6 +35,10 @@ const SEEDS = parseInt(arg("seeds", "5"), 10);
 const SEASONS = parseInt(arg("seasons", "3"), 10);
 const SHOW_STATS = flag("stats");
 const EXTRACT_TO = path.join(path.dirname(HTML_FILE), "proto-extract.js");
+/* --echo=budget,player,screen:club  → skriv den renderede markup ud første gang
+   den optræder, så man kan inspicere den uden en browser. */
+const ECHO = new Set(arg("echo", "").split(",").filter(Boolean));
+const ECHO_DIR = arg("echodir", require("os").tmpdir());
 
 /* ---------------- extract + syntax check ---------------- */
 if (!fs.existsSync(HTML_FILE)) {
@@ -231,6 +235,15 @@ function runSeed(seed) {
 
   const hasFn = name => lastHtml.v.includes(name + "(");
 
+  const echoed = new Set();
+  function maybeEcho(tag) {
+    if (!ECHO.has(tag) || echoed.has(tag)) return;
+    echoed.add(tag);
+    const f = path.join(ECHO_DIR, "echo-" + tag.replace(/[:\\/]/g, "-") + ".html");
+    fs.writeFileSync(f, lastHtml.v, "utf8");
+    console.log("  [echo] " + tag + " (S" + H.G.season + " MD" + H.G.md + ") → " + f);
+  }
+
   /* ---------------- onboarding ---------------- */
   where = "onboarding";
   {
@@ -337,6 +350,7 @@ function runSeed(seed) {
       H.call("render");
       where = "render:" + s;
       checkHtml();
+      maybeEcho("screen:" + s);
     }
     H.screen = keep;
     H.call("render");
@@ -369,6 +383,8 @@ function runSeed(seed) {
   function handleModal() {
     const md = H.modal;
     where = "modal:" + md.type;
+    maybeEcho(md.type);
+    if (md.type === "budget") maybeEcho("budget" + (md.step || 0));
     switch (md.type) {
 
       case "prematch":

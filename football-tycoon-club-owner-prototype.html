@@ -205,6 +205,14 @@ body.light .modes button.on{color:var(--accDeep);}
 .truth b{color:var(--ink);}
 .truth .n{font-family:'BarlowC';font-style:italic;font-weight:900;color:var(--acc);font-size:17px;}
 body.light .truth .n{color:var(--accDeep);}
+/* one-line consequence note — onboarding steps & the budget wizard */
+.obwhy,.why{margin-top:13px;padding:11px 13px;border-left:2px solid var(--strokeAcc);background:var(--wBg,rgba(201,247,58,.07));border-radius:0 10px 10px 0;font-size:12px;line-height:1.55;font-weight:500;color:var(--muted);}
+.obwhy b,.why b{color:var(--acc);}
+body.light .obwhy b,body.light .why b{color:var(--accDeep);}
+.bsteps{display:flex;gap:5px;justify-content:center;margin:4px 0 2px;}
+.bsteps i{height:6px;width:7px;border-radius:4px;background:var(--stroke);}
+.bsteps i.done{background:var(--accDeep);}
+.bsteps i.on{width:20px;background:var(--acc);}
 .protonote{text-align:center;font-size:9.5px;color:var(--muted);padding:10px 14px 0;letter-spacing:.4px;}
 .winbanner{margin-top:12px;padding:10px 14px;border-radius:12px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;display:flex;justify-content:space-between;border:1px solid var(--strokeAcc);background:var(--wBg,rgba(201,247,58,.08));color:var(--acc);}
 body.light .winbanner{color:var(--accDeep);}
@@ -952,17 +960,27 @@ function applyRetirements(){
   }
 }
 /* ---------- budget & midway meetings, owners ---------- */
+/* one formula, two callers: the live estimate in the budget wizard and the
+   actual sale in budgetConfirm() must never drift apart */
+function seasonTixEstimate(price){
+  const priceF=clamp(1.6-price/(G.ticket*13),0.2,1.4);
+  const sold=Math.round(G.capacity*0.28*priceF*(0.5+G.fanMood/150));
+  return {sold,cash:sold*price};
+}
+const BUDGET_STEPS=["Season tickets","The kit","Stadium fund","The frame"];
 function openBudgetMeeting(){
-  modal={type:"budget",tixPrice:G.seasonTix.price,fundAdd:0,jersey:null,capAsked:false,capMsg:null,target:G.fundTarget?G.fundTarget.key:null};
+  modal={type:"budget",step:0,tixPrice:G.seasonTix.price,fundAdd:0,jersey:null,capAsked:false,capMsg:null,target:G.fundTarget?G.fundTarget.key:null};
   render();
 }
+function budgetNext(){modal.step=Math.min(BUDGET_STEPS.length-1,(modal.step||0)+1);render();}
+function budgetBack(){modal.step=Math.max(0,(modal.step||0)-1);render();}
 function budgetConfirm(){
   const m=modal;
   // season tickets sell
   G.seasonTix.price=m.tixPrice;
-  const priceF=clamp(1.6-m.tixPrice/(G.ticket*13),0.2,1.4);
-  G.seasonTix.sold=Math.round(G.capacity*0.28*priceF*(0.5+G.fanMood/150));
-  const tixCash=G.seasonTix.sold*m.tixPrice;
+  const est=seasonTixEstimate(m.tixPrice);
+  G.seasonTix.sold=est.sold;
+  const tixCash=est.cash;
   G.balance+=tixCash;
   // fund + project
   G.fund+=m.fundAdd;G.balance-=m.fundAdd;
@@ -1955,33 +1973,80 @@ function renderModal(){
       <button class="glowbtn" onclick="modal=null;openBudgetMeeting()">Start season ${G.season} — to the boardroom ▸</button></div></div>`;
   }
   if(modal.type==="budget"){
-    const m=modal;
+    const m=modal;const st=m.step||0;
+    const LAST=BUDGET_STEPS.length-1;
+    const dots=BUDGET_STEPS.map((t,i)=>`<i class="${i===st?'on':i<st?'done':''}"></i>`).join("");
+    let body="";
+    if(st===0){
+      const est=seasonTixEstimate(m.tixPrice);
+      const given=est.sold*G.ticket;
+      body=`<div class="kick" style="margin-top:10px">Season ticket price · one payment for the whole season</div>
+        <div class="stepper">
+          <button onclick="modal.tixPrice=Math.max(60,modal.tixPrice-10);render()" title="−£10">‹</button>
+          <span class="val num" style="font-size:26px">£${m.tixPrice}</span>
+          <button onclick="modal.tixPrice=Math.min(600,modal.tixPrice+10);render()" title="+£10">›</button></div>
+        <div class="card" style="margin-top:10px">
+          <div class="rowline"><span>Holders sold <small>· estimate</small></span><span class="amt num">${est.sold.toLocaleString("en-GB")} <small style="color:var(--muted)">of ${G.capacity.toLocaleString("en-GB")}</small></span></div>
+          <div class="rowline"><span>Cash in the bank <b>now</b></span><span class="amt num">+${kfmt(est.cash)}</span></div>
+          <div class="rowline"><span>Turnstile money given up <small>· per home game</small></span><span class="num" style="color:#E07A6A">−${kfmt(given)}</span></div></div>
+        <div class="why"><b>Konsekvens:</b> a holder pays once, then walks in free all season. Cheap seats mean money today and a guaranteed crowd for the atmosphere — but every holder is a turnstile that has stopped paying.</div>`;
+    }
+    if(st===1){
+      const j=m.jersey;
+      const why={classic:"Safe. The fans nod, merch sells steadily, nobody writes a letter to the Gazette.",
+                 modern:"A gamble worth taking: usually shifts more shirts than the classic, sometimes fewer.",
+                 wild:"A proper coin-flip. Iconic and merch goes through the roof — or a war crime that nobody buys."}[j];
+      body=`<div class="kick" style="margin-top:10px">This season's kit · sets merch income all season</div>
+        <div class="modes" style="margin-top:8px;flex-direction:column">
+          ${["classic","modern","wild"].map(x=>`<button class="${j===x?'on':''}" onclick="modal.jersey='${x}';render()">${x[0].toUpperCase()+x.slice(1)}</button>`).join("")}</div>
+        <div class="why"><b>Konsekvens:</b> ${why||"Pick one — the kit multiplies every shirt sold on a matchday, for better or worse, until next summer."}</div>`;
+    }
+    if(st===2){
+      const opts=Object.entries(STANDS).filter(([k])=>G.stands[k]<2);
+      const tgt=m.target&&STANDS[m.target]?{key:m.target,lvl:G.stands[m.target]+1}:null;
+      body=`<div class="kick" style="margin-top:10px">Stadium fund · which stand are we saving for?</div>
+        <div class="modes" style="margin-top:8px;flex-wrap:wrap">
+          ${opts.map(([k,s])=>{
+            const lvl=G.stands[k]+1;
+            return `<button class="${m.target===k?'on':''}" style="flex:1 1 45%" onclick="modal.target='${k}';render()">${s.n}<br><span style="font-size:10px;opacity:.7">lvl ${lvl} · ${kfmt(STANDCOST[lvl])}</span></button>`;
+          }).join("")||'<div class="newsline">Every stand is at its final glory. Nothing left to save for.</div>'}</div>
+        <div class="kick" style="margin-top:10px">Deposit from the bank <small style="text-transform:none">· you hold ${kfmt(G.balance)}</small></div>
+        <div class="stepper">
+          <button onclick="modal.fundAdd=Math.max(0,modal.fundAdd-10000);render()" title="−£10k">‹</button>
+          <span class="val num" style="font-size:26px">${kfmt(m.fundAdd)}</span>
+          <button onclick="modal.fundAdd=Math.min(Math.max(0,G.balance),modal.fundAdd+10000);render()" title="+£10k">›</button></div>
+        ${tgt?`<div class="card" style="margin-top:10px"><div class="rowline"><span>${STANDS[tgt.key].n} lvl ${tgt.lvl}</span><span class="amt num">${kfmt(STANDCOST[tgt.lvl])}</span></div>
+          <div class="rowline"><span>In the fund after tonight</span><span class="num">${kfmt(G.fund+m.fundAdd)}</span></div>
+          <div class="bar"><i style="width:${clamp(Math.round(100*(G.fund+m.fundAdd)/STANDCOST[tgt.lvl]),2,100)}%"></i></div></div>`:""}
+        <div class="why"><b>Konsekvens:</b> money in the fund earns 1.5% a matchday, up to +15%, and building starts by itself when it's full. But it is money you cannot spend on players — and if the bank ever comes calling, the fund is the first thing they take.</div>`;
+    }
+    if(st===3){
+      const est=seasonTixEstimate(m.tixPrice);
+      const after=G.balance+est.cash-m.fundAdd;
+      const wages=G.squad.reduce((s,p)=>s+p.wage,0);
+      body=`<div class="card" style="margin-top:10px">
+          <div class="rowline"><span>Season tickets</span><span class="amt num">£${m.tixPrice} · ${est.sold.toLocaleString("en-GB")} holders</span></div>
+          <div class="rowline"><span>Kit</span><span class="amt">${m.jersey?m.jersey[0].toUpperCase()+m.jersey.slice(1):"Classic (default)"}</span></div>
+          <div class="rowline"><span>Fund deposit${m.target&&STANDS[m.target]?" · "+STANDS[m.target].n:""}</span><span class="amt num">${kfmt(m.fundAdd)}</span></div>
+          <div class="rowline"><span><b>Working capital after tonight</b></span><span class="amt num" style="color:${after<0?"#E07A6A":"var(--acc)"}">${kfmt(after)}</span></div>
+          <div class="rowline"><span>Wage bill <small>· of ${kfmt(G.wageCap)} cap</small></span><span class="num">${kfmt(wages)}/w</span></div></div>
+        ${G.myShare<100?(m.capMsg?`<p style="margin-top:10px"><b>${m.capMsg}</b></p>`:`<button class="abtn comm" onclick="askCapRaise()" ${G.capRaiseUsed?"disabled style='opacity:.4'":""}>Ask the co-owners to raise the wage cap <small>(once per season)</small></button>`):""}
+        <div class="why"><b>Konsekvens:</b> this is your whole season's room for manoeuvre. Wages leave the bank <b>every matchday</b>, home or away — ${kfmt(wages*G.rounds)} across the ${G.rounds} of them. Objective: top ${G.objectivePos}.</div>`;
+    }
     return `<div class="overlay"><div class="sheet">
       <div class="biglabel">The Budget Meeting</div>
-      <h2>Season ${G.season}</h2>
-      <p>Trencher pours terrible coffee. Whitmore reads the frame aloud: wage cap <b>${kfmt(G.wageCap)}/w</b> · objective <b>top ${G.objectivePos}</b>. Then all eyes turn to you.</p>
-      <div class="kick" style="margin-top:12px">Season ticket price</div>
-      <div class="stepper">
-        <button onclick="modal.tixPrice=Math.max(60,modal.tixPrice-10);render()" title="−£10">‹</button>
-        <span class="val num" style="font-size:24px">£${m.tixPrice}</span>
-        <button onclick="modal.tixPrice+=10;render()" title="+£10">›</button></div>
-      <div class="kick" style="text-align:center;font-size:9px;margin-top:4px">Cheaper = more sold = guaranteed crowds. Dearer = cash now.</div>
-      <div class="kick" style="margin-top:12px">This season's kit</div>
-      <div class="modes" style="margin-top:8px">
-        ${["classic","modern","wild"].map(j=>`<button class="${m.jersey===j?'on':''}" onclick="modal.jersey='${j}';render()">${j[0].toUpperCase()+j.slice(1)}</button>`).join("")}</div>
-      <div class="kick" style="margin-top:12px">Stadium fund · pick the project <span style="font-size:9px">(patience earns 1.5%/MD, up to +15%)</span></div>
-      <div class="modes" style="margin-top:8px;flex-wrap:wrap">
-        ${Object.entries(STANDS).filter(([k])=>G.stands[k]<2).map(([k,s])=>{
-          const lvl=G.stands[k]+1;const on=m.target===k;
-          return `<button class="${on?'on':''}" style="flex:1 1 45%" onclick="modal.target='${k}';render()">${s.n}<br><span style="font-size:10px;opacity:.7">lvl ${lvl} · ${kfmt(STANDCOST[lvl])}</span></button>`;
-        }).join("")}</div>
-      <div class="kick" style="margin-top:10px">Deposit</div>
-      <div class="stepper">
-        <button onclick="modal.fundAdd=Math.max(0,modal.fundAdd-10000);render()" title="−£10k">‹</button>
-        <span class="val num" style="font-size:24px">${kfmt(m.fundAdd)}</span>
-        <button onclick="modal.fundAdd=Math.min(Math.max(0,G.balance),modal.fundAdd+10000);render()" title="+£10k">›</button></div>
-      ${G.myShare<100?(m.capMsg?`<p style="margin-top:10px"><b>${m.capMsg}</b></p>`:`<button class="abtn comm" onclick="askCapRaise()" ${G.capRaiseUsed?"disabled style='opacity:.4'":""}>Request wage-cap raise (once per season)</button>`):""}
-      <button class="glowbtn" onclick="budgetConfirm()">Adjourn the meeting ▸</button>
+      <div class="bsteps">${dots}</div>
+      <h2>${BUDGET_STEPS[st]}</h2>
+      <p style="font-size:12.5px">${st===0?`Trencher pours terrible coffee. Whitmore reads the frame aloud: wage cap <b>${kfmt(G.wageCap)}/w</b> · objective <b>top ${G.objectivePos}</b>. Then all eyes turn to you — one question at a time.`
+        :st===1?`Whitmore slides three kit mock-ups across the table. Trencher already has an opinion. Trencher always has an opinion.`
+        :st===2?`Marjorie leans in. "The ground, chairman. Nothing gets better here until the ground does."`
+        :`Whitmore caps his pen. "Then that is the season, agreed and minuted."`}</p>
+      ${body}
+      <div style="display:flex;gap:8px;margin-top:6px">
+        ${st>0?`<button class="abtn ghost" style="flex:0 0 34%" onclick="budgetBack()">‹ Back</button>`:""}
+        ${st<LAST?`<button class="glowbtn" style="flex:1;margin-top:0" onclick="budgetNext()">Next ▸</button>`
+          :`<button class="glowbtn" style="flex:1;margin-top:0" onclick="budgetConfirm()">Adjourn the meeting ▸</button>`}
+      </div>
     </div></div>`;
   }
   if(modal.type==="midway"){
@@ -2227,17 +2292,25 @@ function renderOnboarding(){
       <button class="glowbtn" style="margin-top:14px" onclick="obNext()">Sign the papers ▸</button>`;
   }
   if(obStep===1){
-    inner=`<div class="letter"><div class="lh">CLUB IDENTITY — STEP 2 OF 3</div>
-      Every club bleeds a colour, chairman. Choose <b>${obData.name}</b>'s — the whole world takes it on. And pick your light: some of us live for evening kick-offs, some for Saturday three o'clock.</div>
+    const sw=SWATCHES.find(s=>s.h===obData.hue);
+    inner=`<div class="letter"><div class="lh">CLUB COLOURS — STEP 2 OF 4</div>
+      Every club bleeds a colour, chairman. Choose <b>${obData.name}</b>'s — and choose carefully, because the whole world takes it on.</div>
       <div class="swatches">${SWATCHES.map(s=>`<div class="sw ${obData.hue===s.h?'on':''}" style="background:linear-gradient(135deg,hsl(${s.h},88%,60%),hsl(${s.h},75%,42%))" onclick="obHue(${s.h})" title="${s.n}"></div>`).join("")}</div>
-      <div class="modes">
-        <button class="${obData.mode==='dark'?'on':''}" onclick="obMode('dark')">◗ Floodlight (dark)</button>
-        <button class="${obData.mode==='light'?'on':''}" onclick="obMode('light')">☀ Matchday (light)</button></div>
+      <div class="obwhy"><b>${sw?sw.n:"Your colour"}.</b> Badge, shirt, seats, the banner in the Shed End — every screen in this club takes its accent from here. Cosmetic only: it changes nothing on the pitch.</div>
       <button class="glowbtn" style="margin-top:16px" onclick="obNext()">These are our colours ▸</button>`;
   }
   if(obStep===2){
+    inner=`<div class="letter"><div class="lh">YOUR LIGHT — STEP 3 OF 4</div>
+      Some of us live for evening kick-offs under the lamps. Some for Saturday, three o'clock, sun in your eyes. Which is yours?</div>
+      <div class="modes" style="margin-top:14px;flex-direction:column">
+        <button class="${obData.mode==='dark'?'on':''}" onclick="obMode('dark')">◗&nbsp; Floodlight — dark</button>
+        <button class="${obData.mode==='light'?'on':''}" onclick="obMode('light')">☀&nbsp; Matchday — light</button></div>
+      <div class="obwhy"><b>${obData.mode==='dark'?"Floodlight":"Matchday"}.</b> ${obData.mode==='dark'?"The club's own look — a dark ground with your colour glowing off it. Easier on the eyes on a late bus home.":"Bright and paper-white, like a printed programme. Easier to read in daylight on the terrace."} You can flip it any time with the button up in the corner.</div>
+      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">That's our light ▸</button>`;
+  }
+  if(obStep===3){
     const c=obData.coach||(obData.coach=pick(COACHES));
-    inner=`<div class="letter"><div class="lh">THE GAFFER'S OFFICE — STEP 3 OF 3</div>
+    inner=`<div class="letter"><div class="lh">THE GAFFER'S OFFICE — STEP 4 OF 4</div>
       <b>${c.n}</b> — your inherited head coach (${c.style} · TAC ${c.tac} · MAN ${c.man} · DEV ${c.dev}) — looks up from a cold tea:<br><br><i>"${c.line} Three things you should know, chairman:"</i></div>
       <div class="truth"><span class="n">1</span><span>The squad is <b>honest but limited</b>. Two of them are good. I won't say which two in front of the others.</span></div>
       <div class="truth"><span class="n">2</span><span>We have <b>no sponsor</b>, and the ground holds <b>1,500 souls</b> on a good day. Everything must be built. By you.</span></div>
