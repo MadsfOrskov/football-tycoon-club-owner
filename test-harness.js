@@ -389,6 +389,11 @@ function runSeed(seed) {
     where = "modal:" + md.type;
     maybeEcho(md.type);
     if (md.type === "budget") maybeEcho("budget" + (md.step || 0));
+    if (md.type === "nego" && H.nego && H.nego.stage === "contract" && !H.nego.doneDeal && !H.nego.dead) {
+      const seen = !!H.nego.renewal || H.nego.cround >= 1;
+      maybeEcho("nego:" + (seen ? "seen" : "blind"));
+      if (H.nego.renewal) maybeEcho("nego:renewal");
+    }
     switch (md.type) {
 
       case "prematch":

@@ -1221,7 +1221,9 @@ function resolveBids(){
   }
 }
 function marketIndexByName(n){return G.market.findIndex(x=>x.name===n);}
-function wageDemand(){
+/* Prices a hypothetical set of terms — lets the sheet show what each contract
+   length and each promised role would cost, without a second formula to drift. */
+function wageDemandFor(years,role){
   const n=nego;
   let power=1.05;
   if(!n.renewal&&playerAmbitious(n.p))power*=1.12; // stepping DOWN a level costs extra
@@ -1230,8 +1232,13 @@ function wageDemand(){
     if(n.p.sg>=10||n.p.smotm>=4)power*=1.2;             // big season = bigger number
     if(n.p.age>=31)power*=0.85;                          // he knows the legs are going
   }
-  return Math.round(n.p.wage*ROLES[n.role].f*YEARF[n.years]*power/100)*100;
+  return Math.round(n.p.wage*ROLES[role].f*YEARF[years]*power/100)*100;
 }
+function wageDemand(){return wageDemandFor(nego.years,nego.role);}
+/* The poker rule (GDD): round one is blind. His number only becomes visible
+   once he has countered — or immediately on a renewal, where he already knows
+   exactly what he is worth to you. */
+function demandVisible(){return !!nego.renewal||nego.cround>=1;}
 function startRenewal(ix){
   const p=G.squad[ix];
   if(G.md<p.renewLockMD){modal={type:"info",title:"\"Not yet.\"",body:"Talks with "+p.name.split(" ")[1]+" collapsed recently. Both sides agreed to revisit later — in "+(p.renewLockMD-G.md)+" matchdays."};render();return;}
@@ -1921,10 +1928,12 @@ function renderModal(){
         ${!n.finalUsed?`<button class="abtn comm" onclick="negoSubmit(true)">⚡ FINAL OFFER · ${kfmt(n.fee)} — instant yes/no</button>`:""}
         <button class="abtn ghost" onclick="nego=null;modal=null;render()">Not today</button>`;
     }else{
-      body=`<div class="kick" style="margin-top:14px">Contract length</div>
-        <div class="modes" style="margin-top:8px">${[1,2,3,4].map(y=>`<button class="${n.years===y?'on':''}" onclick="nego.years=${y};render()">${y} yr</button>`).join("")}</div>
-        <div class="kick" style="margin-top:12px">Promised playing time</div>
-        <div class="modes" style="margin-top:8px">${Object.entries(ROLES).map(([k,r])=>`<button class="${n.role===k?'on':''}" onclick="nego.role='${k}';render()">${r.n}</button>`).join("")}</div>
+      const seen=demandVisible();
+      const sub=v=>seen?`<br><span style="font-size:10px;opacity:.75" class="num">${kfmt(v)}</span>`:"";
+      body=`<div class="kick" style="margin-top:14px">Contract length${seen?` <span style="font-size:9px;text-transform:none">· longer deals come cheaper per week</span>`:""}</div>
+        <div class="modes" style="margin-top:8px">${[1,2,3,4].map(y=>`<button class="${n.years===y?'on':''}" onclick="nego.years=${y};render()">${y} yr${sub(wageDemandFor(y,n.role))}</button>`).join("")}</div>
+        <div class="kick" style="margin-top:12px">Promised playing time${seen?` <span style="font-size:9px;text-transform:none">· status is worth money to him</span>`:""}</div>
+        <div class="modes" style="margin-top:8px">${Object.entries(ROLES).map(([k,r])=>`<button class="${n.role===k?'on':''}" onclick="nego.role='${k}';render()">${r.n}${sub(wageDemandFor(n.years,k))}</button>`).join("")}</div>
         <div class="kick" style="margin-top:12px">Weekly wage</div>
         <div class="stepper">
           <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-1000);render()" title="−£1,000">‹‹</button>
@@ -1933,6 +1942,14 @@ function renderModal(){
           <button onclick="nego.wageOffer+=100;render()" title="+£100">›</button>
           <button onclick="nego.wageOffer+=1000;render()" title="+£1,000">››</button></div>
         <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £100 · ‹‹ ›› = £1,000</div>
+        ${(()=>{
+          if(!seen)return `<div class="why"><b>He hasn't named his number.</b> Contract length and the role you promise both move it — make an offer and his agent will tell you how far off you are.</div>`;
+          const d=wageDemand();
+          const short=d-n.wageOffer;
+          return `<div class="why"><b>On ${n.years} year${n.years>1?"s":""} as ${ROLES[n.role].n.toLowerCase()}</b> he expects <b class="num">~${kfmt(d)}/w</b>.
+            ${short<=Math.round(d*0.03)?`Your <b class="num">${kfmt(n.wageOffer)}</b> should do it.`
+              :`Your <b class="num">${kfmt(n.wageOffer)}</b> is about <b class="num">${kfmt(short)}</b> short — or change the terms above.`}</div>`;
+        })()}
         <div class="kick" style="text-align:center;margin-top:8px;font-size:9px">Wage budget: ${kfmt(G.squad.reduce((s,p)=>s+p.wage,0))} used of ${kfmt(G.wageCap)}/w cap</div>
         <button class="glowbtn" onclick="negoSubmit()">Offer terms</button>
         ${!n.finalUsed?`<button class="abtn comm" onclick="negoSubmit(true)">⚡ FINAL OFFER — instant yes/no</button>`:""}
