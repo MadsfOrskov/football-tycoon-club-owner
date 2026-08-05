@@ -1820,30 +1820,139 @@ function fanQuote(){
   if(G.fanMood>30)return `"The pies are good. The football… the pies are good."`;
   return `"SOLD OUR SOUL. AND OUR STRIKER."`;
 }
+/* ---------- the ground ----------
+   Everything below is derived from ONE pitch trapezoid: the far touchline is
+   narrower than the near one, and every stand, roof and crowd dot is placed by
+   interpolating along it. Change the trapezoid and the whole ground follows. */
+const STAD={fy:100,ny:205,fl:134,fr:256,nl:52,nr:338};
+function stadHash(n){const x=Math.sin(n*127.1+0.7)*43758.5453;return x-Math.floor(x);}
 function stadiumSvg(){
-  const dark=G.mode==="dark";
-  return `<div class="stadwrap"><svg viewBox="0 0 390 230" style="display:block;background:${dark?'linear-gradient(180deg,hsl('+G.hue+',24%,10%),hsl('+G.hue+',24%,5%))':'linear-gradient(180deg,#DDE7F0,#EFF2EA)'}">
-    ${dark?`<polygon points="60,34 22,140 118,140" fill="url(#cone1)"/><polygon points="330,34 272,140 368,140" fill="url(#cone1)"/>
-    <defs><linearGradient id="cone1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgba(245,250,220,.3)"/><stop offset="1" stop-color="rgba(245,250,220,0)"/></linearGradient></defs>
-    <rect x="46" y="24" width="28" height="11" rx="3" fill="#0E140F"/><circle cx="53" cy="29.5" r="2.6" fill="#F7FBDF"/><circle cx="60" cy="29.5" r="2.6" fill="#F7FBDF"/><circle cx="67" cy="29.5" r="2.6" fill="#F7FBDF"/>
-    <rect x="316" y="24" width="28" height="11" rx="3" fill="#0E140F"/><circle cx="323" cy="29.5" r="2.6" fill="#F7FBDF"/><circle cx="330" cy="29.5" r="2.6" fill="#F7FBDF"/><circle cx="337" cy="29.5" r="2.6" fill="#F7FBDF"/>
-    <rect x="58" y="35" width="3.5" height="46" fill="#1B241C"/><rect x="328" y="35" width="3.5" height="46" fill="#1B241C"/>`:
-    `<rect x="46" y="24" width="28" height="11" rx="3" fill="#C3CEC0"/><rect x="316" y="24" width="28" height="11" rx="3" fill="#C3CEC0"/>
-    <rect x="58" y="35" width="3.5" height="46" fill="#A9B4A1"/><rect x="328" y="35" width="3.5" height="46" fill="#A9B4A1"/>`}
-    ${G.stands.shed>=1?`<rect x="82" y="58" width="226" height="30" rx="7" fill="${dark?'#0F1911':'#DCE3D4'}" stroke="${dark?'#22301F':'#C2CDB8'}" ${G.stands.shed>=2?'stroke-width="2.5"':''}/>
-    <text x="195" y="78" text-anchor="middle" font-family="BarlowC" font-style="italic" font-weight="900" font-size="10.5" fill="var(--acc)" letter-spacing="3">${fanBanner()}</text>`:`<rect x="82" y="58" width="226" height="30" rx="7" fill="none" stroke="${dark?'#22301F':'#C2CDB8'}" stroke-dasharray="5 4" opacity=".5"/>`}
-    <polygon points="95,96 295,96 328,212 62,212" fill="${dark?'#1E5B36':'#3E9159'}"/>
-    <polygon points="95,96 295,96 328,212 62,212" fill="none" stroke="rgba(245,255,235,.55)" stroke-width="1.5"/>
-    <ellipse cx="195" cy="152" rx="32" ry="15" fill="none" stroke="rgba(245,255,235,.55)" stroke-width="1.5"/>
-    <line x1="82" y1="152" x2="308" y2="152" stroke="rgba(245,255,235,.55)" stroke-width="1.5"/>
-    ${G.stands.main>=1?`<polygon points="56,96 86,96 68,212 32,212" fill="${dark?'#0E160F':'#D5DCCB'}" stroke="${dark?'#22301F':'#C2CDB8'}" ${G.stands.main>=2?'stroke-width="2.5"':''}/>`:""}
-    ${G.stands.family>=1?`<polygon points="304,96 334,96 358,212 322,212" fill="${dark?'#0E160F':'#D5DCCB'}" stroke="${dark?'#22301F':'#C2CDB8'}" ${G.stands.family>=2?'stroke-width="2.5"':''}/>`:""}
-    ${G.stands.away>=1?`<rect x="110" y="216" width="170" height="10" rx="4" fill="${dark?'#0E160F':'#D5DCCB'}" stroke="${dark?'#22301F':'#C2CDB8'}"/>`:""}
-    ${G.standBuild?`<polygon points="${G.standBuild.key==='main'?'56,96 86,96 68,212 32,212':G.standBuild.key==='family'?'304,96 334,96 358,212 322,212':G.standBuild.key==='away'?'110,216 280,216 280,226 110,226':'82,58 308,58 308,88 82,88'}" fill="none" stroke="var(--comm)" stroke-width="2" stroke-dasharray="6 5"/>
-      <line x1="345" y1="52" x2="345" y2="110" stroke="var(--comm)" stroke-width="2.4"/><line x1="345" y1="52" x2="314" y2="64" stroke="var(--comm)" stroke-width="2.4"/>`:""}
+  const dark=G.mode==="dark",P=STAD;
+  const cap=Math.max(1,G.capacity);
+  const full=clamp(attendance()/cap,0,1);          // crowd density = how full we are
+  const C=dark
+   ?{grass1:"#1C5533",grass2:"#22643C",line:"rgba(238,255,232,.52)",stand:"#101A12",tier:"#16241A",
+     roof:"#090F0A",edge:"#26351F",crowd:"#8E9C92",hut:"#141F16",mast:"#1B241C",lamp:"#F7FBDF",scr:"#070B08",ghost:"#3A4A3C"}
+   :{grass1:"#3E9159",grass2:"#48A063",line:"rgba(255,255,255,.8)",stand:"#DAE1D2",tier:"#E6EBE0",
+     roof:"#C0CBB8",edge:"#B7C4AD",crowd:"#6C7A71",hut:"#D2DACA",mast:"#A9B4A1",lamp:"#FDFFF0",scr:"#2B332C",ghost:"#AFBCA6"};
+
+  /* --- geometry --- */
+  const yAt=v=>P.fy+(P.ny-P.fy)*v;
+  const inL=v=>P.fl+(P.nl-P.fl)*v, inR=v=>P.fr+(P.nr-P.fr)*v;
+  const depth=v=>28+10*v;                          // nearer stands read deeper
+  const sideMap=(side,lvl)=>{const inn=side<0?inL:inR,k=lvl>=2?1.28:1;
+    return (u,v)=>[inn(v)+side*depth(v)*k*u,yAt(v)];};
+  const mapP=(u,v)=>[inL(v)+(inR(v)-inL(v))*u,yAt(v)];
+  const shedMap=lvl=>{const h=lvl>=2?46:33;return (u,v)=>[132+126*v,P.fy-h*u];};
+  const awayMap=lvl=>{const h=lvl>=2?25:18;return (u,v)=>[(P.nl-11*u)+((P.nr+11*u)-(P.nl-11*u))*v,P.ny+h*u];};
+
+  const pt=([x,y])=>x.toFixed(1)+","+y.toFixed(1);
+  const quad=(m,u0,u1,v0,v1,a)=>`<polygon points="${[m(u0,v0),m(u0,v1),m(u1,v1),m(u1,v0)].map(pt).join(" ")}" ${a}/>`;
+  const seg=(m,u,v0,v1,a)=>{const [x1,y1]=m(u,v0),[x2,y2]=m(u,v1);
+    return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" ${a}/>`;};
+
+  /* --- the crowd: a stable dot field, thinned by how full the ground is --- */
+  const crowd=(m,u0,u1,cols,rows,r,base)=>{
+    let s="";
+    for(let c=0;c<cols;c++)for(let w=0;w<rows;w++){
+      const i=base+c*37+w*11;
+      if(stadHash(i*3.13)>full)continue;            // empty seat
+      const v=clamp((c+0.5+(stadHash(i*1.7)-0.5)*0.8)/cols,0.01,0.99);
+      const u=clamp(u0+(u1-u0)*((w+0.5+(stadHash(i*2.9)-0.5)*0.5)/rows),0,1);
+      const [x,y]=m(u,v);
+      const acc=stadHash(i*5.7)<0.13;               // a scarf in the club colour
+      s+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${acc?"var(--acc)":C.crowd}" opacity="${acc?".95":".68"}"/>`;
+    }
+    return s;
+  };
+
+  /* --- a stand, in tiers, with a roof --- */
+  const building=k=>G.standBuild&&G.standBuild.key===k;
+  function stand(key,m,cols,rows,r,base){
+    const lvl=G.stands[key];
+    if(lvl<1){
+      const c=building(key)?"var(--comm)":C.ghost;
+      const [lx,ly]=m(0.55,0.5);
+      return quad(m,0,1,0,1,`fill="none" stroke="${c}" stroke-width="1.6" stroke-dasharray="6 5" opacity="${building(key)?".95":".55"}"`)+
+        `<text x="${lx.toFixed(1)}" y="${(ly+3).toFixed(1)}" text-anchor="middle" font-family="BarlowCN" font-size="8" letter-spacing="2" fill="${c}" opacity="${building(key)?"1":".8"}">${building(key)?"BUILDING":"BUILD"}</text>`;
+    }
+    let s=quad(m,0,1,0,1,`fill="${C.stand}" stroke="${C.edge}" stroke-width="1"`);
+    s+=quad(m,0.62,1,0,1,`fill="${C.roof}"`);                        // roof, seen from in front
+    s+=seg(m,0.62,0,1,`stroke="${C.edge}" stroke-width="1.4"`);      // the roof lip
+    s+=crowd(m,0.06,0.58,cols,rows,r,base);                          // lower tier
+    if(lvl>=2){
+      s+=quad(m,0.28,0.34,0,1,`fill="${C.tier}" opacity=".55"`);     // the step between tiers
+      s+=crowd(m,0.36,0.58,cols,Math.max(2,rows-1),r,base+911);      // upper tier
+      s+=seg(m,1,0,1,`stroke="${C.edge}" stroke-width="1.8"`);
+    }
+    if(building(key)){                                               // upgrade in progress
+      s+=quad(m,0,1,0,1,`fill="none" stroke="var(--comm)" stroke-width="1.8" stroke-dasharray="6 5"`);
+    }
+    return s;
+  }
+
+  /* --- floodlights --- */
+  const pylon=(x,by,h,w)=>{
+    const hh=w*0.38;
+    return `<rect x="${(x-1.7).toFixed(1)}" y="${(by-h+hh).toFixed(1)}" width="3.4" height="${(h-hh).toFixed(1)}" fill="${C.mast}"/>
+      <rect x="${(x-w/2).toFixed(1)}" y="${(by-h).toFixed(1)}" width="${w}" height="${hh.toFixed(1)}" rx="2" fill="${C.mast}"/>
+      ${[0.2,0.5,0.8].map(t=>`<circle cx="${(x-w/2+w*t).toFixed(1)}" cy="${(by-h+hh/2).toFixed(1)}" r="${(w*0.105).toFixed(1)}" fill="${C.lamp}" opacity="${dark?"1":".75"}"/>`).join("")}`;
+  };
+  const cone=(x,by,h,spread)=>dark?`<polygon points="${x},${(by-h+5).toFixed(1)} ${(x-spread)},${P.ny} ${(x+spread)},${P.ny}" fill="url(#stCone)"/>`:"";
+
+  /* --- kiosks & kit --- */
+  const hut=(x,y,w,hh,label)=>`<rect x="${x}" y="${y}" width="${w}" height="${hh}" rx="3" fill="${C.hut}" stroke="${C.edge}"/>
+    <rect x="${x-3}" y="${y-4.5}" width="${w+6}" height="5" rx="2" fill="var(--acc)" opacity=".8"/>
+    <text x="${x+w/2}" y="${y+hh-6}" text-anchor="middle" font-family="BarlowCN" font-size="7.5" letter-spacing="1.1" fill="var(--acc)">${label}</text>`;
+  const crane=(x,y)=>`<g stroke="var(--comm)" stroke-width="2.1" fill="none" stroke-linecap="round" opacity=".95">
+    <line x1="${x}" y1="${y}" x2="${x}" y2="${y-56}"/><line x1="${x-9}" y1="${y-47}" x2="${x+35}" y2="${y-47}"/>
+    <line x1="${x}" y1="${y-56}" x2="${x+31}" y2="${y-47}"/><line x1="${x}" y1="${y-56}" x2="${x-9}" y2="${y-47}"/>
+    <line x1="${x+27}" y1="${y-47}" x2="${x+27}" y2="${y-33}"/></g>
+    <rect x="${x+23}" y="${y-35}" width="8" height="5" rx="1.5" fill="var(--comm)"/>`;
+  const CRANE_AT={shed:[300,98],main:[26,196],family:[364,196],away:[196,240]};
+
+  /* --- pitch --- */
+  let pitch="";
+  for(let i=0;i<9;i++){
+    const v0=i/9,v1=(i+1)/9;
+    pitch+=`<polygon points="${[[inL(v0),yAt(v0)],[inR(v0),yAt(v0)],[inR(v1),yAt(v1)],[inL(v1),yAt(v1)]].map(pt).join(" ")}" fill="${i%2?C.grass2:C.grass1}"/>`;
+  }
+  const mk=`stroke="${C.line}" stroke-width="1.4" fill="none"`;
+  const [cx,cy]=mapP(0.5,0.5);
+  pitch+=quad(mapP,0,1,0,1,mk);
+  pitch+=`<line x1="${inL(0.5).toFixed(1)}" y1="${yAt(0.5).toFixed(1)}" x2="${inR(0.5).toFixed(1)}" y2="${yAt(0.5).toFixed(1)}" ${mk}/>
+    <ellipse cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" rx="${((inR(0.5)-inL(0.5))*0.185).toFixed(1)}" ry="${((inR(0.5)-inL(0.5))*0.078).toFixed(1)}" ${mk}/>
+    <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="1.6" fill="${C.line}"/>`
+    +quad(mapP,0.26,0.74,0,0.15,mk)+quad(mapP,0.22,0.78,0.85,1,mk)
+    +quad(mapP,0.42,0.58,-0.022,0,`stroke="${C.line}" stroke-width="1.8" fill="none"`)
+    +quad(mapP,0.435,0.565,1,1.022,`stroke="${C.line}" stroke-width="1.8" fill="none"`);
+
+  const shedM=shedMap(G.stands.shed),awayM=awayMap(G.stands.away);
+  const bnr=G.stands.shed>=1?(([bx,by])=>`<text x="${bx.toFixed(1)}" y="${by.toFixed(1)}" text-anchor="middle" font-family="BarlowC" font-style="italic" font-weight="900" font-size="10" fill="var(--acc)" letter-spacing="2.6">${fanBanner()}</text>`)(shedM(G.stands.shed>=2?0.82:0.78,0.5)):"";
+
+  return `<div class="stadwrap"><svg viewBox="0 0 390 250" style="display:block;background:${dark?`linear-gradient(180deg,hsl(${G.hue},24%,11%),hsl(${G.hue},26%,5%))`:"linear-gradient(180deg,#DCE6F1,#EFF2EA)"}">
+    <defs>
+      <linearGradient id="stCone" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="rgba(247,251,223,.26)"/><stop offset="1" stop-color="rgba(247,251,223,0)"/></linearGradient>
+    </defs>
+    ${G.fac.screen?`<rect x="193.2" y="50" width="3.6" height="50" fill="${C.mast}"/>
+      <rect x="161" y="24" width="68" height="31" rx="3" fill="${C.scr}" stroke="${C.edge}"/>
+      <rect x="164" y="27" width="62" height="25" rx="2" fill="${dark?"#0D170F":"#1A231B"}"/>
+      <text x="195" y="45" text-anchor="middle" font-family="BarlowC" font-style="italic" font-weight="900" font-size="15" fill="var(--acc)">${G.badge}</text>`:""}
+    ${pylon(86,P.fy,34,19)}${pylon(304,P.fy,34,19)}
+    ${stand("shed",shedM,22,G.stands.shed>=2?4:3,1.35,100)}${bnr}
+    ${pitch}
+    ${stand("main",sideMap(-1,G.stands.main),17,3,1.5,2200)}
+    ${stand("family",sideMap(1,G.stands.family),17,3,1.5,4400)}
+    ${stand("away",awayM,20,2,1.4,6600)}
+    ${G.fac.vip&&G.stands.main>=1?[0.28,0.4,0.52,0.64].map(v=>quad(sideMap(-1,G.stands.main),0.66,0.86,v,v+0.085,`fill="var(--acc)" opacity=".5" stroke="${C.edge}" stroke-width=".6"`)).join(""):""}
+    ${cone(86,P.fy,34,54)}${cone(304,P.fy,34,54)}${cone(24,P.ny,48,74)}${cone(366,P.ny,48,74)}
+    ${pylon(24,P.ny,48,26)}${pylon(366,P.ny,48,26)}
+    ${G.fac.pub?hut(88,74,30,22,"PIES"):""}${G.fac.shop?hut(272,74,30,22,"SHOP"):""}
+    ${G.standBuild?crane(CRANE_AT[G.standBuild.key][0],CRANE_AT[G.standBuild.key][1]):""}
   </svg>
   <div class="plaque"><div class="pn">${G.club.split(" ")[0]} Ground</div>
-  <div class="pc"><small>CAPACITY</small><b class="num">${G.capacity.toLocaleString("en-GB")}</b></div></div></div>`;
+  <div class="pc"><small>${Math.round(full*100)}% FULL · CAPACITY</small><b class="num">${G.capacity.toLocaleString("en-GB")}</b></div></div></div>`;
 }
 function fanBanner(){
   if(G.fanMood>55)return "WE ARE "+G.club.split(" ")[0].toUpperCase();

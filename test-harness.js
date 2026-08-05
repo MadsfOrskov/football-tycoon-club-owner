@@ -200,6 +200,67 @@ function runSeed(seed) {
     }
   }
 
+  /* Simpel tag-stak: fanger uafsluttede eller forkert lukkede elementer i den
+     genererede SVG (stadion-tegningen er nu den stoerste markup i filen). */
+  const VOIDISH = new Set(["polygon", "circle", "rect", "line", "ellipse", "path", "stop", "use", "image", "polyline"]);
+  function checkSvg(html) {
+    const svgs = html.match(/<svg[\s\S]*?<\/svg>/g) || [];
+    if (!svgs.length) fail("ingen <svg> fundet i renderet markup");
+    for (const svg of svgs) {
+      const stack = [];
+      const re = /<(\/?)([a-zA-Z][\w:-]*)([^>]*?)(\/?)>/g;
+      let mm;
+      while ((mm = re.exec(svg))) {
+        const [, close, name, attrs, self] = mm;
+        if (close) {
+          const open = stack.pop();
+          if (open !== name) fail("SVG: </" + name + "> lukker '" + open + "'");
+        } else if (!self && !VOIDISH.has(name)) {
+          stack.push(name);
+        } else if (!self && VOIDISH.has(name)) {
+          fail("SVG: <" + name + "> er ikke selvlukkende");
+        }
+        if (/=\s*"[^"]*(undefined|NaN)/.test(attrs)) fail("SVG: attribut med undefined/NaN i <" + name + ">");
+      }
+      if (stack.length) fail("SVG: uafsluttet <" + stack.join("><") + ">");
+    }
+  }
+
+  /* Kør stadion-tegningen gennem alle byggetilstande — det er den mest
+     forgrenede markup i spillet (4 tribuner × 3 niveauer × faciliteter). */
+  function checkGroundStates() {
+    const G = H.G;
+    const keys = Object.keys(H.consts.STANDS);
+    const facs = Object.keys(H.consts.FACS);
+    const snap = { stands: { ...G.stands }, fac: { ...G.fac }, build: G.standBuild, mode: G.mode };
+    const states = [];
+    for (const lvl of [0, 1, 2]) states.push({ lbl: "alle tribuner lvl " + lvl, stands: keys.reduce((o, k) => (o[k] = lvl, o), {}) });
+    states.push({ lbl: "blandet", stands: { shed: 2, main: 0, family: 1, away: 0 } });
+    for (const k of keys) states.push({ lbl: "bygger " + k, stands: keys.reduce((o, x) => (o[x] = x === k ? 0 : 1, o), {}), build: { key: k, remain: 3, lvl: 1 } });
+    for (const f of facs) states.push({ lbl: "facilitet " + f, stands: { shed: 1, main: 1, family: 1, away: 1 }, fac: { [f]: 1 } });
+    states.push({ lbl: "alt bygget", stands: keys.reduce((o, k) => (o[k] = 2, o), {}), fac: facs.reduce((o, f) => (o[f] = 1, o), {}) });
+
+    for (const st of states) {
+      for (const mode of ["dark", "light"]) {
+        G.stands = { ...st.stands };
+        G.fac = facs.reduce((o, f) => (o[f] = (st.fac && st.fac[f]) ? 1 : 0, o), {});
+        G.standBuild = st.build || null;
+        G.mode = mode;
+        H.call("recalcCapacity");
+        H.screen = "club";
+        where = "ground:" + st.lbl + "/" + mode;
+        H.call("render");
+        checkHtml();
+        checkSvg(lastHtml.v);
+        maybeEcho("ground:" + st.lbl.replace(/ /g, "_") + ":" + mode);
+      }
+    }
+    G.stands = snap.stands; G.fac = snap.fac; G.standBuild = snap.build; G.mode = snap.mode;
+    H.call("recalcCapacity");
+    H.screen = "home";
+    H.call("render");
+  }
+
   function checkInvariants() {
     const G = H.G;
     if (!G) return;
@@ -354,6 +415,7 @@ function runSeed(seed) {
       H.call("render");
       where = "render:" + s;
       checkHtml();
+      if (s === "club") checkSvg(lastHtml.v);
       maybeEcho("screen:" + s);
     }
     H.screen = keep;
@@ -592,6 +654,7 @@ function runSeed(seed) {
   where = "slut";
   renderAllScreens();
   checkInvariants();
+  checkGroundStates();
 
   return { seed, stats, G: H.G, steps };
 }
