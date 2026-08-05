@@ -552,6 +552,7 @@ function runSeed(seed) {
     where = "modal:" + md.type;
     maybeEcho(md.type);
     if (md.type === "budget") maybeEcho("budget" + (md.step || 0));
+    if (md.type === "sponsorOffer") maybeEcho("sponsor:" + (H.G.sponsorDue && H.G.sponsorDue.renewal ? "renewal" : "first") + ":" + (md.after || "?"));
     if (md.type === "nego" && H.nego && H.nego.stage === "contract" && !H.nego.doneDeal && !H.nego.dead) {
       const seen = !!H.nego.renewal || H.nego.cround >= 1;
       maybeEcho("nego:" + (seen ? "seen" : "blind"));

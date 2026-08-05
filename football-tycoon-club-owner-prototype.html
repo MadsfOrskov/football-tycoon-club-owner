@@ -334,7 +334,7 @@ function newGame(name,hue,mode){
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
     myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,
     build:null,buildCost:80000,loan:null,warnedNeg:false,bankForced:false,
-    sponsor:null,sponsorOffered:false,
+    sponsor:null,sponsorOffered:false,sponsorDue:null,
     coach:{...pick(COACHES)},
     fanMood:60,objectivePos:8,
     squad:posPlan.map(p=>genPlayer(p,R(42,58),G_DIV_WAGE(3))),
@@ -698,12 +698,12 @@ function settleFinances(res){
   G.periodNet+=net;G.periodMD++;
   if(G.periodMD>=6)bookkeeperReport();
   sponsorLifeEvents();
-  // first sponsor offers arrive after MD 1
+  // first sponsor offers arrive after MD 1 — as a decision you cannot walk past
   if(!G.sponsor&&!G.sponsorOffered){G.sponsorOffered=true;
     const a={...SPONSORS[0]},b={...SPONSORS[2]};
     a.per=2800;a.seasonsLeft=2;a.demand=null;
     b.per=4200;b.seasonsLeft=1;b.demand="top 8 finish or 20% penalty";
-    msg("Commercial dept.","£","Your first sponsorship — two offers","The club has NO main sponsor. A: "+a.n+" · "+kfmt(a.per)+"/w · 2 seasons, no strings. B: "+b.n+" · "+kfmt(b.per)+"/w · 1 season · demand: "+b.demand+". The shirt looks naked, chairman.",{kind:"sponsorChoice",offers:[a,b]});}
+    G.sponsorDue={offers:[a,b],renewal:false};}
   // build progress
   if(G.standBuild){G.standBuild.remain--;if(G.standBuild.remain<=0)finishStand();}
   if(G.facBuild){G.facBuild.remain--;if(G.facBuild.remain<=0)finishFac();}
@@ -787,6 +787,7 @@ function afterMatchday(){
   if(G.bankDue){G.bankDue=false;openBankUltimatum();return;}
   if(G.md>=G.rounds){startPostSeason();return;}
   if(G.md===13&&!G.midwayDone){openMidway();return;}
+  if(G.sponsorDue){modal={type:"sponsorOffer",after:"matchday"};render();return;}
   if(G.md%4===0){G.adCount++;modal={type:"interstitial"};}
   render();
 }
@@ -901,10 +902,36 @@ function finishSeason(o){
   render();
 }
 function sponsorRenewal(){
-  const offers=[{...pick(SPONSORS)},{...pick(SPONSORS)}];
+  const first=pick(SPONSORS);
+  const rest=SPONSORS.filter(s=>s.n!==first.n);          // never two identical cards
+  const offers=[{...first},{...pick(rest.length?rest:SPONSORS)}];
   offers[0].per=Math.round(offers[0].per*(1+(3-G.div)*0.6));offers[0].seasonsLeft=2;offers[0].demand=null;
   offers[1].per=Math.round(offers[1].per*(1+(3-G.div)*0.6)*1.35);offers[1].seasonsLeft=1;offers[1].demand="top "+Math.max(4,G.objectivePos-2)+" finish or 20% penalty";
-  msg("Commercial dept.","£","Sponsorship expires — two offers","A: "+offers[0].n+" · "+kfmt(offers[0].per)+"/w · 2 seasons, no strings. B: "+offers[1].n+" · "+kfmt(offers[1].per)+"/w · 1 season · demand: "+offers[1].demand+".",{kind:"sponsorChoice",offers});
+  // shown after the budget meeting, not buried in the inbox
+  G.sponsorDue={offers,renewal:true};
+}
+function sponsorInbox(d){
+  const [a,b]=d.offers;
+  const line=o=>o.n+" · "+kfmt(o.per)+"/w · "+o.seasonsLeft+" season"+(o.seasonsLeft===1?"":"s")+(o.demand?" · demand: "+o.demand:", no strings");
+  msg("Commercial dept.","£",d.renewal?"Sponsorship expires — two offers":"Your first sponsorship — two offers",
+    (d.renewal?"You asked to think about it. ":"The club has NO main sponsor, and the shirt looks naked. ")+
+    "A: "+line(a)+". B: "+line(b)+".",{kind:"sponsorChoice",offers:[a,b]});
+}
+function sponsorPick(i){
+  const d=G.sponsorDue;if(!d)return;
+  const o=d.offers[i],cont=modal?modal.after:null;
+  G.sponsor={...o};G.sponsorDue=null;
+  addNews("CLUB","New sponsorship: "+o.n+" at "+kfmt(o.per)+"/w."+(o.demand?" Demand: "+o.demand+".":""));
+  msg("Commercial dept.","£","Signed: "+o.n,"\""+(o.demand?"They want "+o.demand+" — read it twice, chairman.":"No strings, no small print, no surprises. Rare, that.")+"\" "+kfmt(o.per)+" lands every matchday.",null);
+  modal=null;
+  if(cont==="matchday")afterMatchday();else render();
+}
+function sponsorLater(){
+  const d=G.sponsorDue;if(!d)return;
+  const cont=modal?modal.after:null;
+  sponsorInbox(d);G.sponsorDue=null;
+  modal=null;
+  if(cont==="matchday")afterMatchday();else render();
 }
 
 /* ---------- captain, office chats, mentors, retirement ---------- */
@@ -1028,6 +1055,8 @@ function budgetConfirm(){
   G.jerseyFactor=verdicts[j][0];G.jerseyName=j;
   addNews("CLUB","New "+j+" kit revealed. "+verdicts[j][1]);
   msg("Ledger (bookkeeper)","L","Season tickets: "+G.seasonTix.sold.toLocaleString("en-GB")+" sold","+"+kfmt(tixCash)+" in the bank before a ball is kicked. "+(G.seasonTix.sold>G.capacity*0.3?"The town believes.":"Room to grow, chairman."),null);
+  // the shirt deal is the last item on the agenda — never buried in the inbox
+  if(G.sponsorDue){modal={type:"sponsorOffer",after:"budget"};render();return;}
   modal=null;render();
 }
 function askCapRaise(){
@@ -2326,6 +2355,25 @@ function renderModal(){
       ${d.warn?`<p><b>The foreman adds:</b> "${d.warn}"</p>`:""}
       <button class="glowbtn" onclick="facConfirm()">Build it · ${kfmt(f.cost)}</button>
       <button class="abtn ghost" onclick="modal=null;render()">Think it over</button>
+    </div></div>`;
+  }
+  if(modal.type==="sponsorOffer"){
+    const d=G.sponsorDue;
+    if(!d)return "";
+    const card=(o,i)=>`<div class="card">
+      <div class="rowline"><span><b>${o.n}</b> <small>· ${o.seasonsLeft} season${o.seasonsLeft===1?"":"s"}</small></span><span class="amt num">${kfmt(o.per)}/MD</span></div>
+      <div class="rowline"><span style="font-weight:500;color:var(--muted);font-size:11.5px">${o.character||"They want their name on the shirt."}</span></div>
+      <div class="rowline"><span>${o.demand?`<b style="color:var(--comm)">Strings:</b> ${o.demand}`:"<b>No strings.</b> No small print, no surprises."}</span></div>
+      <div class="rowline" style="border-bottom:none"><span>Worth over the whole deal</span><span class="amt num">~${kfmt(o.per*G.rounds*o.seasonsLeft)}</span></div>
+      <button class="abtn${i?" comm":""}" onclick="sponsorPick(${i})">Shake on it · ${kfmt(o.per)}/MD</button></div>`;
+    return `<div class="overlay"><div class="sheet">
+      <div class="kick">Commercial department${d.renewal?" · the deal is up":""}</div>
+      <h2>${d.renewal?"Two offers on the table":"Your first sponsor"}</h2>
+      <p>${d.renewal
+        ?"The old deal expires tonight. Two envelopes came in — one safe and long, one rich and conditional."
+        :"The shirt is naked, chairman, and the commercial department has finally found two people willing to change that."}</p>
+      ${card(d.offers[0],0)}${card(d.offers[1],1)}
+      <button class="abtn ghost" onclick="sponsorLater()">Decide later — leave it in my inbox</button>
     </div></div>`;
   }
   if(modal.type==="player"){
