@@ -551,18 +551,28 @@ function playMatchday(){
   const dKey=G.md===5?"summer":G.md===14?"winter":null;
   if(dKey&&!G.deadlineDone[dKey]){G.deadlineDone[dKey]=true;openDeadline(dKey);return;}
   const round=G.fixtures[G.md];
-  let my=null;
+  const my=round.find(([h,a])=>h===0||a===0);
+  const home=my[0]===0;const oppIdx=home?my[1]:my[0];
+  const match=buildMatch(oppIdx,home,false,null);
+  // The weather belongs to the MATCHDAY, not to the visit: otherwise backing out
+  // of the team talk and returning would re-roll it until you liked it.
+  if(!G.mdWeather||G.mdWeather.md!==G.md||G.mdWeather.season!==G.season)G.mdWeather={md:G.md,season:G.season,w:match.weather};
+  match.weather=G.mdWeather.w;
+  // The rest of the division is NOT played yet — that happens the moment you
+  // commit to an approach (choosePrematch), so stepping back costs nothing and,
+  // crucially, cannot simulate the round twice.
+  modal={type:"prematch",match,round};
+  render();
+}
+function simRestOfRound(round){
   for(const [h,a] of round){
-    if(h===0||a===0){my={h,a};continue;}
+    if(h===0||a===0)continue;
     const H=G.teams[h-1],A=G.teams[a-1];
     const lh=clamp(1.15+(H.att-A.def)/22+0.25,0.25,3.4), la=clamp(1.15+(A.att-H.def)/22,0.2,3.2);
     applyPts(h,poisson(lh),a,poisson(la));
   }
-  const home=my.h===0;const oppIdx=home?my.a:my.h;
-  const match=buildMatch(oppIdx,home,false,null);
-  modal={type:"prematch",match};
-  render();
 }
+function prematchBack(){modal=null;render();}
 function gafferRead(match){
   const t=G.teams[match.oppIdx-1];const s=myStrength();
   const bits=[];
@@ -576,6 +586,8 @@ function gafferRead(match){
 }
 function choosePrematch(appr){
   const match=modal.match;
+  // now the word is given, the rest of the division kicks off too (once only)
+  if(modal.round&&!modal.roundPlayed){modal.roundPlayed=true;simRestOfRound(modal.round);}
   match.approach=appr;
   match.h1=simHalf(match,null);
   match.h2=simHalf(match,null); // default; may be re-rolled at HT
@@ -2050,6 +2062,7 @@ function renderModal(){
       <div class="dlg"><div class="iav g">GM</div><div class="bubble">${gafferRead(M)}</div></div>
       <div class="kick" style="margin-top:14px">The gaffer awaits your word</div>
       ${Object.entries(APPROACHES).map(([k,a])=>`<button class="abtn ${k==='allout'?'comm':''}" onclick="choosePrematch('${k}')" style="text-align:left"><b>${a.n}</b> — ${a.txt}</button>`).join("")}
+      ${M.isPlayoff?"":`<button class="abtn ghost" onclick="prematchBack()">‹ Tilbage <small style="opacity:.7">— nothing has kicked off yet</small></button>`}
     </div></div>`;
   }
   if(modal.type==="ticker"){
