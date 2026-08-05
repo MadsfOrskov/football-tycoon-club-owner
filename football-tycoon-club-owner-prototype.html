@@ -550,8 +550,12 @@ function choosePrematch(appr){
   match.approach=appr;
   match.h1=simHalf(match,null);
   match.h2=simHalf(match,null); // default; may be re-rolled at HT
-  match.events=[...halfEvents(match,1,match.h1.gf,match.h1.ga),...matchIncidents(match)].sort((a,b)=>a.m-b.m);
-  match.h2events=halfEvents(match,2,match.h2.gf,match.h2.ga);
+  // incidents carry their own minute — they must land in the half they belong to,
+  // or the ticker waits at 45' for a 78th-minute red card that never comes
+  const inc=matchIncidents(match);
+  match.inc2=inc.filter(e=>e.m>45);
+  match.events=[...halfEvents(match,1,match.h1.gf,match.h1.ga),...inc.filter(e=>e.m<=45)].sort((a,b)=>a.m-b.m);
+  match.h2events=[...halfEvents(match,2,match.h2.gf,match.h2.ga),...match.inc2].sort((a,b)=>a.m-b.m);
   openTicker(match,null);
 }
 function htChoice(c){
@@ -560,7 +564,7 @@ function htChoice(c){
   if(c==="steady")match.h2=simHalf(match,{own:0.85,opp:0.72});
   if(c==="fury")match.h2=simHalf(match,{own:1.35,opp:1.25});
   if(c&&(match.h1.gf<match.h1.ga)&&Math.random()<0.5)match.h2.gf++; // trailing desperation push
-  match.h2events=halfEvents(match,2,match.h2.gf,match.h2.ga);
+  match.h2events=[...halfEvents(match,2,match.h2.gf,match.h2.ga),...(match.inc2||[])].sort((a,b)=>a.m-b.m);
   resumeTicker();
 }
 function finalizeMatch(match){
@@ -2128,7 +2132,11 @@ function startTickLoop(){
     const el=document.getElementById("tmin");if(el)el.textContent=modal.minute+"'";
     const bar=document.getElementById("tbar");if(bar)bar.style.width=Math.round(modal.minute/90*100)+"%";
     while(idx<pool.length&&pool[idx].m<=modal.minute)pushEv(pool[idx++]);
-    if(modal.minute>=capMin&&idx>=pool.length){
+    // spent = nothing left that can still fire inside this half (belt and braces:
+    // an event minute outside the half must never stall the clock)
+    const spent=idx>=pool.length||pool[idx].m>capMin;
+    if(modal.minute>=capMin&&spent){
+      while(idx<pool.length)pushEv(pool[idx++]);
       clearInterval(tickTimer);
       if(modal.half===1)showHT();else showFT();
     }
