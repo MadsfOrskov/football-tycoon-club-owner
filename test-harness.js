@@ -326,9 +326,29 @@ function runSeed(seed) {
       H.modal = null;
     };
 
-    G.season = 2; G.ownerBoughtSeason = 0; G.owners[0].lockedUntil = 0;
+    /* Pakke 4: saesonspaerringen er VAEK. Et opkoeb i saeson 1 skal vaere
+       MULIGT -- men dyrt. Doeren er erstattet af en pris. */
+    const snapTrust = G.trust, snapHist = G.valHistory;
+    G.season = 1; G.ownerBoughtSeason = 0; G.owners[0].lockedUntil = 0;
+    G.trust = H.consts.BAL.owners.trustStart; G.valHistory = [];
+    G.balance = 5000000;
     H.call("buyOutOwner", 0);
-    expectInfo("saesongate (foer saeson 3)");
+    if (!H.modal || H.modal.type !== "ownerNego") {
+      fail("saeson 1: opkoeb er stadig spaerret (fik " + (H.modal ? H.modal.type : "ingen modal") + ") — OWNER_GATE skulle vaere erstattet af en pris");
+    }
+    {
+      const s1 = H.modal.min / H.modal.fair;
+      if (s1 < 1.6) fail("saeson 1 er for billig: " + s1.toFixed(2) + "x fair — opkoeb maa ikke blive let");
+      // ... og en betroet formand efter fem saesoner skal slippe billigere
+      H.modal = null;
+      G.trust = 100;
+      H.call("buyOutOwner", 0);
+      const s5 = H.modal.min / H.modal.fair;
+      if (s5 >= s1) fail("tillid saenker ikke prisen: saeson 1 " + s1.toFixed(2) + "x vs betroet " + s5.toFixed(2) + "x");
+      if (s5 > 1.45) fail("selv fuld tillid giver " + s5.toFixed(2) + "x — kurven flader ikke nok ud");
+      H.modal = null;
+    }
+    G.trust = snapTrust; G.valHistory = snapHist;
 
     G.season = 4; G.ownerBoughtSeason = 4;
     H.call("buyOutOwner", 0);
@@ -343,10 +363,9 @@ function runSeed(seed) {
     H.call("buyOutOwner", 0);
     if (!H.modal || H.modal.type !== "ownerNego") fail("buyOutOwner aabnede ikke ownerNego");
     const { fair, min, ask } = H.modal;
-    if (min < Math.round(fair * 1.29) || min > Math.round(fair * 1.61)) {
-      fail("minimumspris uden for 1,35-1,60x fair: min=" + min + " fair=" + fair + " (" + (min / fair).toFixed(3) + "x)");
-    }
-    if (ask < Math.round(fair * 1.75)) fail("aabningskrav for lavt: " + ask + " vs fair " + fair);
+    if (min <= fair) fail("minimumsprisen er ikke over fair vaerdi: min=" + min + " fair=" + fair);
+    if (min > Math.round(fair * 2.1)) fail("minimumspris over 2,1x fair: " + (min / fair).toFixed(2) + "x — uden for kurven");
+    if (ask <= min) fail("aabningskravet ligger ikke over minimumsprisen: " + ask + " vs " + min);
 
     // kollaps skal laase i 2 saesoner
     H.modal.offer = Math.round(min * 0.4);
@@ -371,6 +390,54 @@ function runSeed(seed) {
     checkInvariants();
 
     G.balance = snap.balance; G.season = snap.season; G.ownerBoughtSeason = snap.bought;
+    H.screen = "home"; H.call("render");
+  }
+
+  /* Pakke 4's hele pointe: den gamle formel kunne i praksis kun STIGE, og saa
+     er det altid billigst at koebe kontrol tidligst muligt. Vaerdien skal
+     kunne falde -- ellers er der ingen klemme, kun en mur. Maalt foer/efter. */
+  function checkValuationDirection() {
+    const G = H.G;
+    where = "klubvaerdi reagerer";
+    const v = () => H.call("clubValuation");
+    if (!Number.isFinite(v()) || v() <= 0) fail("clubValuation() = " + v() + " (skal vaere endelig og > 0)");
+
+    const snap = { div: G.div, admins: G.admins, trust: G.trust, balance: G.balance,
+      mood: G.fanMood, pts: G.me.pts, wages: G.squad.map(p => p.wage), md: G.md, loan: G.loan };
+    const FLOOR = H.consts.BAL.val.floor;
+    const base = v();
+    /* En klub der allerede ligger paa gulvet kan ikke falde laengere -- saa
+       maaler vi ingenting. Sammenlign derfor kun naar der er luft nedad. */
+    const canFall = base > FLOOR * 1.5;
+
+    if (G.div < 3) { G.div++; const down = v(); G.div = snap.div;
+      if (canFall && down >= base) fail("nedrykning saenkede ikke klubvaerdien: " + base + " -> " + down); }
+    if (G.div > 0) { G.div--; const up = v(); G.div = snap.div;
+      if (up <= base) fail("oprykning haevede ikke klubvaerdien: " + base + " -> " + up); }
+
+    /* Indtjeningsleddet maales mod et NEUTRALT nulpunkt, ikke mod klubbens
+       egen netEwma -- den kan i forvejen vaere vaerre end proevevaerdien. */
+    const ewma = G.netEwma;
+    G.netEwma = 0; const neutral = v();
+    G.netEwma = -8000; const losing = v();
+    G.netEwma = 8000; const earning = v();
+    G.netEwma = ewma;
+    if (losing >= earning) fail("indtjeningsleddet virker ikke: taber " + losing + " vs tjener " + earning);
+    if (neutral > FLOOR * 1.5 && losing >= neutral) fail("et vedvarende underskud saenker ikke vaerdien: " + neutral + " -> " + losing);
+
+    // og administration skal efterlade et ar
+    G.md = 0;                                    // undgaa at administration() starter efterspillet
+    H.call("administration");
+    H.modal = null;
+    const after = v();
+    if (canFall && after >= base) fail("administration saenkede ikke klubvaerdien: " + base + " -> " + after);
+    if (!(G.admins > snap.admins)) fail("administration blev ikke talt med (G.admins)");
+    if (!(G.trust < snap.trust)) fail("administration kostede ikke tillid i bestyrelsen");
+
+    G.div = snap.div; G.admins = snap.admins; G.trust = snap.trust; G.balance = snap.balance;
+    G.fanMood = snap.mood; G.me.pts = snap.pts; G.md = snap.md; G.loan = snap.loan;
+    G.squad.forEach((p, i) => { p.wage = snap.wages[i]; });
+    checkInvariants();
     H.screen = "home"; H.call("render");
   }
 
@@ -588,6 +655,11 @@ function runSeed(seed) {
       const f = H.call("freshOf", p);
       if (!Number.isFinite(f) || f < 0 || f > 100) fail("freshOf(" + p.name + ") = " + f + " (skal vaere 0-100)");
     }
+    // pakke 4: vaerdien maa vaere endelig og positiv i ENHVER tilstand
+    const val = H.call("clubValuation");
+    if (!Number.isFinite(val) || val <= 0) fail("clubValuation() = " + val + " (skal vaere endelig og > 0)");
+    if (!Number.isFinite(G.netEwma)) fail("G.netEwma er ikke et tal: " + G.netEwma);
+    if (!Number.isFinite(G.trust) || G.trust < 0 || G.trust > 100) fail("G.trust = " + G.trust);
     if (!Array.isArray(G.lastXI)) fail("G.lastXI er ikke en liste");
     if (G.lastXI.some(id => !Number.isFinite(id))) fail("G.lastXI indeholder andet end id'er");
     for (const k of Object.keys(H.consts.STANDS)) {
@@ -818,10 +890,20 @@ function runSeed(seed) {
     H.call("startRenewal", pick(due).id);
   }
 
+  /* Pakke 4 fjernede saesonspaerringen, og botten begyndte straks at toemme
+     kassen paa en andel i saeson 1 -- 8 administrationer mod 1. En formand med
+     forstand paa sit eget budget koeber ikke magt med driftskapitalen. Det tal
+     har spillet allerede et navn for: loennen ganget med de kampdage der er
+     tilbage, praecis som budgetmoedet formulerer raaderummet. */
+  function workingCapital() {
+    const G = H.G;
+    const wages = G.squad.reduce((s, p) => s + p.wage, 0);
+    return wages * Math.max(6, G.rounds - G.md);
+  }
   function doOwnerBuyout() {
     const G = H.G;
     if (!G.owners.length) return;
-    if (G.balance < 200000) return;
+    if (G.balance < workingCapital() + 150000) return;
     H.call("buyOutOwner", Math.floor(rnd() * G.owners.length));
   }
 
@@ -930,7 +1012,8 @@ function runSeed(seed) {
           stands: { ...H.G.stands }, squad: H.G.squad.length,
           wages: H.G.squad.reduce((s, p) => s + p.wage, 0),
           fund: Math.round(H.G.fund), mood: Math.round(H.G.fanMood),
-          myShare: H.G.myShare, build: stats.build
+          myShare: H.G.myShare, build: stats.build,
+          value: H.call("clubValuation"), trust: Math.round(H.G.trust)   // pakke 4
         });
         H.modal = null;
         H.call("openBudgetMeeting");
@@ -1029,7 +1112,8 @@ function runSeed(seed) {
         md.__t = (md.__t || 0) + 1;
         if (md.__t > 6) { H.modal = null; H.call("render"); break; }
         md.offer = Math.round((md.ask || md.offer) * 1.02 / 1000) * 1000;
-        if (H.G.balance < md.offer) { H.modal = null; H.call("render"); break; }
+        // gaa hjem hvis handlen ville aede driftskapitalen -- ikke bare hvis den ville toemme kontoen
+        if (H.G.balance - md.offer < workingCapital()) { H.modal = null; H.call("render"); break; }
         H.call("ownerNegoSubmit");
         break;
       }
@@ -1103,7 +1187,13 @@ function runSeed(seed) {
      ind i fremdriftstallene og forvride slutkassen. */
   stats.final = {
     balance: H.G.balance, capacity: H.G.capacity, div: H.G.div,
-    season: H.G.season, divName: H.G.divNames[H.G.div], seasons: H.G.history.length
+    season: H.G.season, divName: H.G.divNames[H.G.div], seasons: H.G.history.length,
+    /* Administrationer taelles nu fra spillets EGEN tilstand. Wrapperen om
+       ctx.administration ser kun kald der gaar gennem globalThis, dvs. kun dem
+       harness'en selv laver -- spillets interne kald (resolveBank ->
+       administration) blev aldrig talt med, saa tallet har altid vaeret for
+       lavt. Snapshottet tages her, FOER de tvungne scenarier. */
+    admins: H.G.admins || 0
   };
   renderAllScreens();
   checkInvariants();
@@ -1111,6 +1201,7 @@ function runSeed(seed) {
   checkSaveLoad();
   checkPriceCurves();
   checkGroundStates();
+  checkValuationDirection();
   checkOwnerBuyout();
   checkBankCascade();
   checkPromotionWithoutSponsor();   // sidst: den rykker sæsonen frem
@@ -1181,7 +1272,7 @@ function report(runs) {
       prev = e.balance; prevBuild = e.build;
     });
     if (r.stats.final.capacity > 1500) built++;
-    bank += r.stats.bank; admin += r.stats.admin;
+    bank += r.stats.bank; admin += (r.stats.final.admins || 0);
   }
   const verdict = ok => ok ? "OK" : "UDENFOR";
   console.log("\n─── MÅLTAL (ændring 6) ───");
@@ -1230,6 +1321,34 @@ function report(runs) {
     const m = avg(allEnd);
     console.log("  gennemsnit ved sæsonslut: " + m.toFixed(2) + " spillere   " + verdict(m > 13));
     console.log("  kampdage med under 11 friske: " + Math.round(100 * mdThin / mdTotal) + "% (" + mdThin + " af " + mdTotal + ")");
+  }
+
+  /* ── Pakke 4: klubværdi og ejerandele ── */
+  {
+    const val = new Map(), tr = new Map();
+    for (const r of runs) for (const e of r.stats.seasonEnd) {
+      if (e.value === undefined) continue;
+      if (!val.has(e.season)) { val.set(e.season, []); tr.set(e.season, []); }
+      val.get(e.season).push(e.value); tr.get(e.season).push(e.trust);
+    }
+    if (val.size) {
+      console.log("\n─── KLUBVÆRDI (pakke 4) ───");
+      console.log("  sæson   gns. klubværdi   spænd (min–max)        bestyrelsens tillid");
+      for (const s of [...val.keys()].sort((a, b) => a - b)) {
+        const a = val.get(s);
+        console.log("    " + String(s).padEnd(6) + fmtGbp(avg(a)).padStart(14) +
+          ("  " + fmtGbp(Math.min(...a)) + " – " + fmtGbp(Math.max(...a))).padEnd(26) +
+          Math.round(avg(tr.get(s))) + "%");
+      }
+      // faldt vaerdien nogensinde? det er hele forskellen fra den gamle formel
+      let drops = 0, pairs = 0;
+      for (const r of runs) {
+        const rows = r.stats.seasonEnd.filter(e => e.value !== undefined);
+        for (let i = 1; i < rows.length; i++) { pairs++; if (rows[i].value < rows[i - 1].value) drops++; }
+      }
+      console.log("  sæsoner hvor værdien FALDT: " + drops + " af " + pairs +
+        " (den gamle formel kunne kun stige — " + verdict(drops > 0) + ")");
+    }
   }
 
   /* Sportslig fremdrift: er sværhedsgraden "gennembalanceret" (GDD)?
