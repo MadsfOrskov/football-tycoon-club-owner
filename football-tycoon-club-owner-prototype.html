@@ -304,6 +304,39 @@ const BAL={
   sponsor:{penalty:0.2}      // of a whole season's income, if the clause is missed
 };
 
+/* =========================================================
+   Persistence. Safari drops background tabs, and a career is
+   26 matchdays a season — without this you can only ever test
+   the first twenty minutes of the game.
+
+   Only G is stored. Transient state (the open modal, an
+   in-flight negotiation, the current screen) is deliberately
+   NOT persisted: it holds live object references and half-
+   finished deals, and resuming into a half-open sheet is worse
+   than resuming on the home screen.
+========================================================= */
+const SAVE_KEY="ftco.save.v1";
+let saveBroken=false;
+function saveGame(){
+  if(!G||saveBroken)return;
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify({v:1,club:G.club,season:G.season,div:G.div,G}));}
+  catch(e){saveBroken=true;}   // private mode / quota — play on, just don't nag
+}
+function readSave(){
+  try{const raw=localStorage.getItem(SAVE_KEY);return raw?JSON.parse(raw):null;}catch(e){return null;}
+}
+function loadGame(){
+  const d=readSave();
+  if(!d||!d.G)return false;
+  G=d.G;
+  // the id counter lives outside G — restore it above every id in play
+  PID=1+[...G.squad,...G.market,...G.freeAgents].reduce((m,p)=>Math.max(m,p.id||0),0);
+  modal=null;nego=null;screen="home";
+  applyTheme(G.hue,G.mode);
+  return true;
+}
+function deleteSave(){try{localStorage.removeItem(SAVE_KEY);}catch(e){}}
+
 /* ---------- theme engine ---------- */
 function applyTheme(hue,mode){
   const r=document.documentElement.style, dark=mode!=="light";
@@ -612,8 +645,8 @@ function playMatchday(){
   const match=buildMatch(oppIdx,home,false,null);
   // The weather belongs to the MATCHDAY, not to the visit: otherwise backing out
   // of the team talk and returning would re-roll it until you liked it.
-  if(!G.mdWeather||G.mdWeather.md!==G.md||G.mdWeather.season!==G.season)G.mdWeather={md:G.md,season:G.season,w:match.weather};
-  match.weather=G.mdWeather.w;
+  if(!G.mdWeather||G.mdWeather.md!==G.md||G.mdWeather.season!==G.season)G.mdWeather={md:G.md,season:G.season,w:{...match.weather}};
+  match.weather={...G.mdWeather.w};   // a copy: state stays a tree, never a graph
   // The rest of the division is NOT played yet — that happens the moment you
   // commit to an approach (choosePrematch), so stepping back costs nothing and,
   // crucially, cannot simulate the round twice.
@@ -666,7 +699,7 @@ function htChoice(c){
 }
 function finalizeMatch(match){
   const gf=match.h1.gf+match.h2.gf, ga=match.h1.ga+match.h2.ga;
-  const res={gf,ga,opp:match.opp,home:match.home,big:match.big,label:match.label,weather:match.weather};
+  const res={gf,ga,opp:match.opp,home:match.home,big:match.big,label:match.label,weather:{...match.weather}};
   if(!match.isPlayoff){
     applyPts(match.home?0:match.oppIdx,match.home?gf:ga,match.home?match.oppIdx:0,match.home?ga:gf);
     G.md++;
@@ -865,6 +898,7 @@ function afterMatchday(){
   if(G.md===13&&!G.midwayDone){openMidway();return;}
   if(G.sponsorDue){modal={type:"sponsorOffer",after:"matchday"};render();return;}
   if(G.md%4===0){G.adCount++;modal={type:"interstitial"};}
+  saveGame();
   render();
 }
 
@@ -1332,7 +1366,7 @@ function openFormalBid(ix){
 function sendFormalBid(){
   const p=modal.p;
   p.pendingBid=true;
-  G.bids.push({p,amount:modal.amount,due:G.md+1});
+  G.bids.push({pid:p.id,amount:modal.amount,due:G.md+1});   // id, not a reference: survives a save
   msg("Club secretary","CS","Bid lodged: "+p.name.split(" ")[1],"A formal offer of "+kfmt(modal.amount)+" for "+p.name+" has been faxed. Answer expected after the next matchday. Other clubs can smell an auction, chairman.",null);
   modal=null;render();
 }
@@ -1340,8 +1374,8 @@ function resolveBids(){
   const due=G.bids.filter(b=>b.due<=G.md);
   G.bids=G.bids.filter(b=>b.due>G.md);
   for(const b of due){
-    const p=b.p;
-    if(!G.market.includes(p)){continue;}
+    const p=G.market[marketById(b.pid)];
+    if(!p){continue;}
     const fmin=Math.round(p.value*(0.98+Math.random()*0.12)/1000)*1000;
     if(b.amount>=fmin){
       if(Math.random()<0.35){
@@ -1696,7 +1730,7 @@ function svgShield(txt,accent,size){
    <text x="23" y="33" text-anchor="middle" font-family="BarlowC" font-style="italic" font-weight="900" font-size="16" fill="${accent?'var(--acc)':'#8FA3BC'}">${txt}</text></svg>`;
 }
 function render(){
-  if(!G){renderOnboarding();return;}
+  if(!G){if(bootSave)renderTitle();else renderOnboarding();return;}
   let html=header()+'<div class="content">';
   if(screen==="home")html+=viewHome();
   if(screen==="inbox")html+=viewInbox();
@@ -1704,7 +1738,7 @@ function render(){
   if(screen==="market")html+=viewMarket();
   if(screen==="club")html+=viewClub();
   if(screen==="table")html+=viewTable();
-  html+='<div class="protonote">PROTOTYPE · AD-mærkede elementer er placeholders · intet gemmes</div></div>'+navbar();
+  html+='<div class="protonote">PROTOTYPE · AD-mærkede elementer er placeholders · karrieren gemmes automatisk på denne enhed</div></div>'+navbar();
   if(modal)html+=renderModal();
   app().innerHTML=html;
   if(modal&&modal.type==="ticker")runTicker();
@@ -1721,7 +1755,7 @@ function navbar(){
   const t=[["home","Home"],["inbox","Inbox"],["squad","Squad"],["market","Market"],["club","Club"],["table","Table"]];
   return '<nav>'+t.map(([k,l])=>`<button class="${screen===k?'on':''}" onclick="go('${k}')">${l}${k==='inbox'&&u?`<span class="badge num">${u}</span>`:''}</button>`).join("")+'</nav>';
 }
-function go(s){screen=s;if(s==="inbox")G.inbox.forEach(m=>m.unread=false);render();}
+function go(s){screen=s;if(s==="inbox")G.inbox.forEach(m=>m.unread=false);saveGame();render();}
 
 /* ---------- views ---------- */
 function viewHome(){
@@ -2718,6 +2752,30 @@ function closeTicker(){
   afterMatchday();
 }
 
+/* ---------- title screen (only when a career is waiting) ---------- */
+let bootSave=null;
+function renderTitle(){
+  const d=bootSave;
+  applyTheme(obData.hue,obData.mode);
+  const divName=({3:"League Three",2:"League Two",1:"League One",0:"Premier Division"})[d.div]||"";
+  app().innerHTML=`<div class="ob"><div class="box">
+    <div style="text-align:center;margin-bottom:14px">${svgShield(initials(d.club||"AR"),true,52)}
+    <div class="disp" style="font-size:30px;margin-top:8px">FOOTBALL TYCOON</div>
+    <div class="kick" style="margin-top:4px">Club owner</div></div>
+    <div class="letter"><div class="lh">THERE IS A CAREER IN PROGRESS</div>
+      <b>${d.club||"Your club"}</b> — ${divName}, season ${d.season||1}. The kettle is still warm.</div>
+    <button class="glowbtn" style="margin-top:16px" onclick="continueCareer()">Continue ▸</button>
+    <button class="abtn ghost" onclick="newCareer()">Start a new career <small style="opacity:.7">— this deletes the one above</small></button>
+  </div></div>`;
+}
+function continueCareer(){
+  if(loadGame()){bootSave=null;render();}
+  else{bootSave=null;renderOnboarding();}
+}
+function newCareer(){
+  deleteSave();bootSave=null;obStep=0;renderOnboarding();
+}
+
 /* ---------- onboarding ---------- */
 const SWATCHES=[{h:85,n:"Grass green"},{h:0,n:"Blood red"},{h:210,n:"Navy"},{h:28,n:"Tangerine"},{h:275,n:"Violet"},{h:180,n:"Teal"},{h:330,n:"Fuchsia"},{h:48,n:"Gold"}];
 function renderOnboarding(){
@@ -2779,6 +2837,7 @@ function obFinish(){
 document.addEventListener("keydown",e=>{
   if(e.key==="Enter"&&G&&!modal&&screen==="home"&&G.phase==="season"&&G.md<G.rounds)playMatchday();
 });
+bootSave=readSave();
 render();
 </script>
 </body>

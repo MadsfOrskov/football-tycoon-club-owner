@@ -148,7 +148,17 @@ function makeSandbox() {
     setTimeout(fn) { return 0; },
     clearTimeout() { },
     requestAnimationFrame() { return 0; },
-    localStorage: { getItem() { return null; }, setItem() { }, removeItem() { } }
+    // ægte (in-memory) localStorage, så gem/indlæs rent faktisk kan afprøves
+    localStorage: (() => {
+      const m = new Map();
+      return {
+        getItem: k => (m.has(k) ? m.get(k) : null),
+        setItem: (k, v) => { m.set(k, String(v)); },
+        removeItem: k => { m.delete(k); },
+        clear: () => m.clear(),
+        get length() { return m.size; }
+      };
+    })()
   };
   return { sandbox, timers, lastHtml, els };
 }
@@ -391,6 +401,49 @@ function runSeed(seed) {
     assertUnimodal(rev, "gate-indtægt");
     assertNonIncreasing(att, "fremmøde ved stigende billetpris");
     H.call("render");
+  }
+
+  /* Gem/indlæs skal være tabsfri. Fanger den klasse fejl hvor state indeholder
+     funktioner eller objektreferencer, der ikke overlever JSON. */
+  /* Funktioner forsvinder over JSON, og en DELT objektreference bliver til to
+     uafhængige kopier — så `G.market.includes(bid.p)` pludselig er falsk.
+     Begge dele er tavse fejl, så de fanges strukturelt her. */
+  function assertSerialisable(root) {
+    const seen = new Map();
+    (function walk(v, path) {
+      if (v === null || typeof v !== "object") {
+        if (typeof v === "function") fail("state indeholder en funktion: " + path + " — overlever ikke JSON");
+        return;
+      }
+      if (seen.has(v)) fail("state indeholder samme objekt to steder: " + seen.get(v) + " og " + path +
+        " — JSON gør dem til to kopier, og identitetstjek holder op med at virke");
+      seen.set(v, path);
+      for (const k of Object.keys(v)) walk(v[k], path + "." + k);
+    })(root, "G");
+  }
+  function checkSaveLoad() {
+    where = "saveLoad";
+    assertSerialisable(H.G);
+    H.call("saveGame");
+    const before = JSON.stringify(H.G);
+    const beforeIds = H.G.squad.map(p => p.id).join(",");
+    const beforeCaptain = H.G.captain;
+    if (!H.call("loadGame")) fail("loadGame() kunne ikke læse det, saveGame() lige skrev");
+    const after = JSON.stringify(H.G);
+    if (before !== after) {
+      let i = 0; while (i < before.length && before[i] === after[i]) i++;
+      fail("gem/indlæs er ikke tabsfri — første forskel ved tegn " + i + ":\n      før:  …" +
+        before.slice(Math.max(0, i - 60), i + 80) + "\n      efter:…" + after.slice(Math.max(0, i - 60), i + 80));
+    }
+    if (H.G.squad.map(p => p.id).join(",") !== beforeIds) fail("spiller-id'er ændrede sig over gem/indlæs");
+    if (H.G.captain !== beforeCaptain) fail("anføreren ændrede sig over gem/indlæs");
+    // et nyt id må aldrig kollidere med et indlæst
+    const maxId = Math.max(...H.G.squad.concat(H.G.market, H.G.freeAgents).map(p => p.id));
+    const fresh = H.call("genPlayer", "MF", 50, 1);
+    if (fresh.id <= maxId) fail("PID blev ikke gendannet ved load: nyt id " + fresh.id + " ≤ eksisterende " + maxId);
+    checkInvariants();
+    // og spillet skal kunne fortsætte bagefter
+    H.screen = "home"; H.call("render"); checkHtml();
   }
 
   function checkInvariants() {
@@ -827,6 +880,7 @@ function runSeed(seed) {
   where = "slut";
   renderAllScreens();
   checkInvariants();
+  checkSaveLoad();
   checkPriceCurves();
   checkGroundStates();
   checkOwnerBuyout();
