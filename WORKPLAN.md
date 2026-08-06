@@ -172,6 +172,87 @@ Bottens gennemsnitlige trupstørrelse er **over 13** ved sæsonslut, ingen invar
 
 ---
 
+# Pakke 4 — Værdiansættelsesmotor og ejerandele
+
+**Erstatter sæson-3-spærringen fra ændring 5.** Mads (6/8): *"Jeg vil ikke have at det først er muligt at købe medejere ud efter sæson 3. Men vi skal have lavet en motor som gør det svært."*
+
+## Hvorfor spærringen fandtes
+
+```js
+clubValuation() = trupværdi + kapacitet*40 + (3-div)*180000 + 250000
+```
+
+Den kan i praksis kun **stige**: truppen vokser, kapaciteten vokser, divisionen forbedres. Når værdien er monotont stigende, er det altid billigst at købe tidligst muligt — og så skal der en kunstig mur til. Muren var symptomet; modellen er sygdommen.
+
+## Motoren
+
+Værdi = **aktiver + indtjening + brand − gæld**. De to sidste led er dem, der kan trække nedad:
+
+```
+aktiver    = trupværdi
+           + kapacitet × val.perSeat
+           + antal byggede faciliteter × val.perFacility
+           + val.freehold                       // selve grunden
+
+indtjening = netEwma × val.earningsMultiple      // KAN VÆRE NEGATIV
+           + sponsor.per × rounds × seasonsLeft × val.sponsorWeight
+           + tvMoney() × rounds × val.tvWeight
+
+brand      = townDemand() × val.perFan × (0.6 + fanMood/150)
+           + titles × val.perTitle
+           + oprykninger × val.perPromotion
+
+gæld       = loan.perMD × loan.left
+           + summen af G.commitments (pakke 3)
+           + max(0, −balance) × val.debtWeight
+           + administrationer × val.adminScar    // et ar der bliver siddende
+```
+
+`netEwma` er et rullende gennemsnit af netto pr. kampdag, opdateret i `settleFinances()` med eksponentiel udglatning — **samme teknik som friskheden i pakke 1**, så modellen er konsistent. `G.periodNet/periodMD` duer ikke; den nulstilles hver 6. kampdag.
+
+**Værdien falder** ved nedrykning, underskud, banklån, administration, sure fans og frasolgte spillere. **Den stiger** ved oprykning, overskud, byggeri, mesterskaber og en voksende by. Det er dét, der gør ejerandelen til rigtig egenkapital.
+
+## Spærringen erstattes af tillid
+
+Slet `OWNER_GATE_SEASON` og den første gren i `ownerGate()`. Beholdes: ét opkøb pr. sæson, og 2-sæsons låsen efter kollaps.
+
+I stedet en **tillidsfaktor** pr. medejer, der starter lavt og vokser:
+
+- **Op:** sæsoner du har siddet, opfyldte målsætninger, urørt stadionfond, ingen administration
+- **Ned:** brudte spilletidsløfter, raidet fond, administration, solgte publikumsyndlinge
+
+Og en **retningsfaktor** på klubbens værdikurve:
+
+- Værdien stiger → de ser opsiden og holder fast (dyrere)
+- Værdien falder → de vil ud (billigere)
+
+```
+pris = værdi × andel% × grundpræmie(personlighed) × tillid × retning
+```
+
+I sæson 1 er præmien ~1,9× — de har lige mødt dig og har ingen grund til at sælge. Efter fem sæsoner som betroet formand nærmer den sig ~1,25×. **Ingen mur, men en kurve** — og den fortæller en historie i stedet for at sige nej.
+
+Det åbner det rigtige dilemma: **du kan købe kontrol billigt, når klubben er i knæ — men det er præcis dér, du ikke har råd.** Går det godt, er magten dyr. Det er den ægte formandsklemme, og den forsvandt helt med en fast sæsonspærring.
+
+*Synergi med pakke 3:* et opkøb bør kunne betales i rater. Det er den mest naturlige brug af strukturen overhovedet.
+
+## UI
+
+Klub-skærmen viser klubværdien med **retningspil** og en opdeling i aktiver / indtjening / brand / gæld — meget tycoon, og det gør motoren læsbar frem for magisk. Gem `G.valHistory` pr. sæson, så kurven kan tegnes over karrieren. Medejer-rækkerne viser andelens værdi og om den er steget eller faldet siden sidst.
+
+## Harness
+
+- Invariant: `clubValuation()` er endelig og > 0 i alle tilstande.
+- Scenarietjek: værdien skal **falde** ved nedrykning og ved administration, og **stige** ved oprykning. Mål før/efter — det er hele pointen med pakken.
+- Tjek at et opkøb i sæson 1 er *muligt men dyrt*, i stedet for spærret.
+- Tilføj gennemsnitlig klubværdi pr. sæson til `--stats`.
+
+## Færdig når
+
+Værdien reagerer målbart i begge retninger, sæsonspærringen er væk uden at opkøb bliver let, og ejerandelens pris følger klubbens faktiske tilstand.
+
+---
+
 # Pakke 3 — Ratebetaling og bonusklausuler
 
 GDD linje 41: *"**Ratebetaling** (køb over 2-4 rater — køb større end kassen, bind fremtiden) og **bonusklausuler** (+£ ved oprykning / pr. mål — flyt risikoen til fremtiden). Rå pris er altid muligt; strukturer er værktøjer, ikke krav."*
