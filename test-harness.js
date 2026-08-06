@@ -177,7 +177,25 @@ function runSeed(seed) {
   const chance = p => rnd() < p;
 
   /* --- instrumentering: fang netto pr. kampdag (til økonomibalancering) --- */
-  const stats = { md: [], seasonEnd: [], bank: 0, admin: 0, startBalance: 0 };
+  const stats = { md: [], seasonEnd: [], bank: 0, admin: 0, startBalance: 0, build: 0 };
+  /* "Opsparing" målt som balanceændring undervurderer indtjeningen, fordi
+     botten bruger pengene på anlæg undervejs. Byggeforbruget spores separat,
+     så spørgsmålet "hvor længe tager en tribune at spare op?" kan besvares. */
+  for (const fn of ["startStandBuild", "facConfirm"]) {
+    const orig = ctx[fn];
+    ctx[fn] = function () {
+      const b = H.G.balance, r = orig.apply(null, arguments);
+      const spent = b - H.G.balance; if (spent > 0) stats.build += spent;
+      return r;
+    };
+  }
+  for (const fn of ["budgetConfirm", "midwayConfirm"]) {
+    const orig = ctx[fn];
+    ctx[fn] = function () {
+      stats.build += (H.modal && H.modal.fundAdd) || 0;   // indskud i stadionfonden
+      return orig.apply(null, arguments);
+    };
+  }
   for (const [fn, key] of [["openBankUltimatum", "bank"], ["administration", "admin"]]) {
     const orig = ctx[fn];
     ctx[fn] = function () { stats[key]++; return orig.apply(null, arguments); };
@@ -718,7 +736,7 @@ function runSeed(seed) {
           stands: { ...H.G.stands }, squad: H.G.squad.length,
           wages: H.G.squad.reduce((s, p) => s + p.wage, 0),
           fund: Math.round(H.G.fund), mood: Math.round(H.G.fanMood),
-          myShare: H.G.myShare
+          myShare: H.G.myShare, build: stats.build
         });
         H.modal = null;
         H.call("openBudgetMeeting");
@@ -944,10 +962,12 @@ function report(runs) {
       if (!perSeason.has(e.season)) perSeason.set(e.season, []);
       perSeason.get(e.season).push(e.net);
     }
-    let prev = r.stats.startBalance;
+    let prev = r.stats.startBalance, prevBuild = 0;
     r.stats.seasonEnd.forEach(e => {
       if (!save.has(e.season)) save.set(e.season, []);
-      save.get(e.season).push(e.balance - prev); prev = e.balance;
+      // indtjeningsevne = hvad kassen ændrede sig + hvad der blev bygget for
+      save.get(e.season).push((e.balance - prev) + (e.build - prevBuild));
+      prev = e.balance; prevBuild = e.build;
     });
     if (r.G.capacity > 1500) built++;
     bank += r.stats.bank; admin += r.stats.admin;
@@ -959,13 +979,34 @@ function report(runs) {
     const v = avg(perSeason.get(s));
     console.log("      sæson " + s + " : " + fmtGbp(v).padStart(9) + (s === 1 ? "   ← 'tidlig'  " + verdict(Math.abs(v) <= 2000) : ""));
   }
-  console.log("  opsparing pr. sæson — mål ~£70k (= én tribune):");
+  console.log("  indtjening pr. sæson (balanceændring + byggeforbrug) — mål ~£70k (= én tribune):");
   for (const s of [...save.keys()].sort((a, b) => a - b)) {
     const v = avg(save.get(s));
-    console.log("      sæson " + s + " : " + fmtGbp(v).padStart(9) + (s === 1 ? "   ← første tribune  " + verdict(v > 35000 && v < 140000) : ""));
+    console.log("      sæson " + s + " : " + fmtGbp(v).padStart(9) +
+      (s === 1 ? "   ← 1-3 tribuner værd  " + verdict(v > 60000 && v < 260000) : ""));
   }
   console.log("  tribune bygget undervejs      : " + built + " af " + runs.length + " seeds");
   console.log("  bank-ultimatum " + bank + " · administration " + admin + " (0 = ingen gik konkurs)");
+
+  /* Sportslig fremdrift: er sværhedsgraden "gennembalanceret" (GDD)?
+     Rykker alle op med det samme, er der ingen klatretur at fortælle om. */
+  const byS = new Map();
+  let promos = 0, titles = 0;
+  for (const r of runs) {
+    for (const h of r.G.history) {
+      if (!byS.has(h.season)) byS.set(h.season, []);
+      byS.get(h.season).push(h);
+      if (h.promoted) promos++;
+    }
+    titles += r.G.titles || 0;
+  }
+  console.log("\n─── SPORTSLIG FREMDRIFT ───");
+  for (const s of [...byS.keys()].sort((a, b) => a - b)) {
+    const rows = byS.get(s), up = rows.filter(h => h.promoted).length;
+    console.log("  sæson " + s + ": gns. placering " + (avg(rows.map(h => h.pos))).toFixed(1) +
+      " · oprykning " + up + "/" + rows.length);
+  }
+  console.log("  oprykninger i alt " + promos + " · mesterskaber i øverste række " + titles);
 }
 
 /* ---------------- main ---------------- */

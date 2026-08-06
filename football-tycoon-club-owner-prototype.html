@@ -299,7 +299,9 @@ const BAL={
     openingAsk:1.8, openingOffer:1.25, insultBelow:0.62, lockSeasons:2
   },
   fund:{bonusPerMD:0.015, bonusCap:0.15},
-  prize:{champions:150000, runnersUp:100000, playoffs:120000, objective:25000, missed:10000},
+  // A season's honest work should pay for roughly one stand — matchdays are
+  // near break-even by design, so the building money comes from here.
+  prize:{champions:150000, runnersUp:100000, playoffs:120000, objective:48000, missed:16000},
   bank:{crisisAt:-60000, loanCash:50000, loanPerMD:5500, loanTerm:10, adminRelief:40000, adminPoints:6},
   sponsor:{penalty:0.2}      // of a whole season's income, if the clause is missed
 };
@@ -431,13 +433,16 @@ function newGame(name,hue,mode){
     captain:null,captSuggested:false,talkCooldown:0,mentors:[],soldTo:[],
     teams:[],me:{pts:0,gd:0,pl:0},fixtures:[],
     inbox:[],news:[],msgId:1,lastResult:null,deadlineDone:{},playoff:null,
-    history:[],adCount:0
+    history:[],adCount:0,titles:0
   };
   const used=new Set([name]);
   while(G.teams.length<13){
     const n=pick(TOWN1)+" "+pick(TOWN2);
     if(used.has(n))continue;used.add(n);
-    G.teams.push({name:n,att:R(44,58),def:R(44,58),phy:R(44,62),pts:0,gd:0,pl:0});
+    // The chairman's XI carries a systematic edge (coach bonus, leader bonus,
+    // home crowd, confidence), so raw parity meant promotion at the first
+    // attempt every single time. League Three has to actually be a division.
+    G.teams.push({name:n,att:R(49,61),def:R(49,61),phy:R(44,62),pts:0,gd:0,pl:0});
   }
   G.fixtures=makeFixtures();
   refreshMarket();
@@ -951,6 +956,8 @@ function playPlayoff(){
 }
 function finishSeason(o){
   const pos=myPos();
+  const crown=(G.div===0&&pos===1);        // champions of England — nothing above this
+  if(crown)G.titles=(G.titles||0)+1;
   let prize=BAL.prize.missed,txt;
   if(o.how==="champions"){prize=BAL.prize.champions;txt="CHAMPIONS. The town has run out of bunting.";}
   else if(o.how==="runners-up"){prize=BAL.prize.runnersUp;txt="Promoted as runners-up. The champagne is mid-range but plentiful.";}
@@ -962,7 +969,7 @@ function finishSeason(o){
   G.history.push({season:G.season,div:G.divNames[G.div],pos,promoted:!!o.promoted});
   const promoted=o.promoted&&G.div>0;
   if(promoted){
-    G.div--;G.objectivePos=10;G.wageCap=Math.round(G.wageCap*1.5/100)*100;
+    G.div--;G.objectivePos={2:10,1:9,0:7}[G.div]||10;G.wageCap=Math.round(G.wageCap*BAL.wages.capOnPromotion/100)*100;
     for(const t of G.teams){t.name=pick(TOWN1)+" "+pick(TOWN2);t.att=R(50,66)+(3-G.div)*2;t.def=R(50,66)+(3-G.div)*2;}
     if(G.sponsor)G.sponsor.per=Math.round(G.sponsor.per*1.6); // may be shirtless — that used to crash the run
     // the squad renegotiates too: a higher division costs more than the cap alone
@@ -1013,7 +1020,8 @@ function finishSeason(o){
   G.scoutUsed=false;G.sponsorBoost=false;G.coachAsked=false;G.deadlineDone={};G.playoff=null;
   G.bids=[];G.callbacks=[];G.midwayDone=false;G.stuntDone=false;G.sponsorChecked=false;G.capRaiseUsed=false;G.fundRaided=false;
   G.seasonTix.sold=0;G.jerseyFactor=1;
-  modal={type:"seasonDone",txt,promoted,pos,prize};
+  modal={type:"seasonDone",txt,promoted,pos,prize,crown};
+  saveGame();
   render();
 }
 function sponsorRenewal(){
@@ -2349,10 +2357,20 @@ function renderModal(){
       <button class="abtn ghost" onclick="modal=null;render()">No thanks</button></div></div>`;
   }
   if(modal.type==="seasonDone"){
+    const promos=G.history.filter(h=>h.promoted).length;
     return `<div class="overlay"><div class="sheet">
-      <div class="biglabel">End of season ${G.season-1}</div>
-      <h2>${modal.promoted?"PROMOTED!":"Season over"}</h2>
-      <p>${modal.txt} Prize money: <b>${kfmt(modal.prize)}</b>.</p>
+      <div class="biglabel">${modal.crown?"★ CHAMPIONS OF ENGLAND ★":"End of season "+(G.season-1)}</div>
+      <h2>${modal.crown?"You did it":modal.promoted?"PROMOTED!":"Season over"}</h2>
+      ${modal.crown?`<p>Great-uncle Aldous left you a club with an empty trophy cabinet and a haunted boardroom. It is not empty now.</p>
+        <div class="card">
+          <div class="rowline"><span>League titles</span><span class="amt num">${G.titles}</span></div>
+          <div class="rowline"><span>Seasons in charge</span><span class="amt num">${G.history.length}</span></div>
+          <div class="rowline"><span>Promotions won</span><span class="amt num">${promos}</span></div>
+          <div class="rowline"><span>${G.club} Ground</span><span class="amt num">${G.capacity.toLocaleString("en-GB")} seats</span></div>
+          <div class="rowline"><span>Your stake</span><span class="amt num">${G.myShare}%</span></div>
+          <div class="rowline"><span>Club value</span><span class="amt num">${kfmt(clubValuation())}</span></div></div>
+        <p>The town has a team in the top flight and a chairman who built the stand they are standing in. Carry on as long as you like — the record book is still open.</p>`
+      :`<p>${modal.txt} Prize money: <b>${kfmt(modal.prize)}</b>.</p>`}
       ${modal.promoted?`<p>Welcome to <b>${G.divNames[G.div]}</b>. The pitches have fewer molehills. The opponents, more teeth.</p>`:""}
       <div class="kick" style="margin-top:12px">Monetisation placeholder</div>
       <p style="font-size:12px"><b>TYCOON PRO · 49 kr.</b> — no ads · 3 save slots · full career history. <span style="opacity:.7">(Vises netop her, efter en stor sæsonafslutning.)</span></p>
