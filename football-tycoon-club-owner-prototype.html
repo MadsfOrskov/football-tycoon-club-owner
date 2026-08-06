@@ -557,7 +557,8 @@ function simHalf(match,mods){
 function halfEvents(match,half,gf,ga){
   const ev=[];const scorers=xiList().filter(p=>p.pos==="FW"||p.pos==="MF");
   const lo=half===1?2:46, hi=half===1?44:90;
-  const mins=new Set();const mkMin=()=>{let m;do{m=R(lo,hi)}while(mins.has(m));mins.add(m);return m;};
+  // guard the retry loop: a busy half can otherwise exhaust the minute range
+  const mins=new Set();const mkMin=()=>{let m,tries=0;do{m=R(lo,hi)}while(mins.has(m)&&++tries<40);mins.add(m);return m;};
   for(let i=0;i<gf;i++){
     const p=pick(scorers.length?scorers:xiList());
     const pen=Math.random()<0.12;
@@ -856,12 +857,11 @@ function startPostSeason(){
   const t=table();const pos=myPos();
   const seeds=t.slice(2,6); // positions 3-6
   if(pos<=2){finishSeason({promoted:true,how:pos===1?"champions":"runners-up"});return;}
-  if(pos>=3&&pos<=6){
+  // top division: nothing to be promoted to, so no playoff either
+  if(pos>=3&&pos<=6&&G.div>0){
     G.phase="playoff_semi";
-    const others=seeds.filter(r=>r.i!==0);
-    G.playoff={oppSemi:others[pos===3?2:pos===4?1:pos===5?1:0],others:[others[0],others[others.length-1]],finalOpp:null};
-    // determine my semi opponent properly: 3v6, 4v5
     const bySeed={};t.slice(2,6).forEach((r,ix)=>bySeed[ix+3]=r);
+    G.playoff={oppSemi:null,otherSemi:null,finalOpp:null};
     const mySeed=pos;const oppSeed=mySeed===3?6:mySeed===4?5:mySeed===5?4:3;
     G.playoff.oppSemi=bySeed[oppSeed];
     const rem=[3,4,5,6].filter(s=>s!==mySeed&&s!==oppSeed);
@@ -908,12 +908,18 @@ function finishSeason(o){
   else if(pos<=G.objectivePos){prize=BAL.prize.objective;txt="You finished "+ord(pos)+". The co-owners are satisfied and have bought a new kettle.";}
   else{prize=BAL.prize.missed;txt="You finished "+ord(pos)+". The co-owners 'note the result with interest'. That's owner-speak for: do better.";}
   G.balance+=prize;
+  sponsorSettleDemand(pos);          // the top-N clause is settled before the deal rolls over
   G.history.push({season:G.season,div:G.divNames[G.div],pos,promoted:!!o.promoted});
   const promoted=o.promoted&&G.div>0;
   if(promoted){
     G.div--;G.objectivePos=10;G.wageCap=Math.round(G.wageCap*1.5/100)*100;
     for(const t of G.teams){t.name=pick(TOWN1)+" "+pick(TOWN2);t.att=R(50,66)+(3-G.div)*2;t.def=R(50,66)+(3-G.div)*2;}
-    G.sponsor.per=Math.round(G.sponsor.per*1.6);
+    if(G.sponsor)G.sponsor.per=Math.round(G.sponsor.per*1.6); // may be shirtless — that used to crash the run
+    // the squad renegotiates too: a higher division costs more than the cap alone
+    const before=G.squad.reduce((s,p)=>s+p.wage,0);
+    for(const p of G.squad)p.wage=Math.round(p.wage*BAL.wages.promotionRise/10)*10;
+    const after=G.squad.reduce((s,p)=>s+p.wage,0);
+    msg("Ledger (bookkeeper)","L","Promotion has a price tag","Every agent rang on Monday morning. The same squad now costs "+kfmt(after)+"/w instead of "+kfmt(before)+"/w — that is what "+G.divNames[G.div]+" football pays. The cap moved to "+kfmt(G.wageCap)+".",null);
   }
   // the contract clock ticks — and Bosman waits for the careless
   const leavers=[];
@@ -1404,8 +1410,9 @@ function negoSubmit(finalOffer){
       n.line="\"Let's be honest, chairman: he'd be your best player. He knows it, you know it. It's KEY PLAYER and top wages — or he stays where the football is better.\"";
       render();return;
     }
-    // wage cap check (co-owners) — does not consume a round
-    const wagesNow=G.squad.reduce((s,p)=>s+p.wage,0);
+    // wage cap check (co-owners) — does not consume a round.
+    // On a RENEWAL he is already on the payroll: count the raise, not the whole wage twice.
+    const wagesNow=G.squad.reduce((s,p)=>s+p.wage,0)-(n.renewal?n.p.wage:0);
     if(G.myShare<100&&wagesNow+n.wageOffer>G.wageCap){
       n.line="The co-owners clear their throats before the agent can speak: \"That contract busts the wage cap — "+kfmt(G.wageCap)+"/w for the whole squad. Sell, or aim lower.\"";
       render();return;
@@ -1601,13 +1608,31 @@ function bookkeeperReport(){
     "Net over the last 6 matchdays: "+(net>=0?"+":"")+kfmt(Math.abs(net))+". Biggest cost: wages ("+kfmt(G.squad.reduce((s,p)=>s+p.wage,0))+"/w). "+img,null);
   G.periodNet=0;G.periodMD=0;
 }
+function sponsorTarget(s){return parseInt((String(s.demand||"").match(/top (\d+)/)||[])[1]||8);}
+/* The clause used to be pure theatre: the text promised 20%, the code never
+   took a penny. Now it settles at season's end — which also gives you half a
+   season after the MD 9 warning to climb out of it. */
+function sponsorSettleDemand(pos){
+  if(!G.sponsor||!G.sponsor.demand)return;
+  const target=sponsorTarget(G.sponsor);
+  if(pos<=target){
+    msg(G.sponsor.n,G.sponsor.av,"Clause met — paid in full","\"Top "+target+", as written. A pleasure doing business, chairman. The invoice stands.\"",null);
+    return;
+  }
+  const fine=Math.round(G.sponsor.per*G.rounds*BAL.sponsor.penalty);
+  G.balance-=fine;
+  msg(G.sponsor.n,G.sponsor.av,"The clause bites: −"+kfmt(fine),"\"The deal said top "+target+". You finished "+ord(pos)+". We are invoicing "+(BAL.sponsor.penalty*100)+"% of the season back — "+kfmt(fine)+". Read the small print next time, chairman.\"",null);
+  addNews("CLUB",G.sponsor.n+" claw back "+kfmt(fine)+" after the top-"+target+" clause went unmet. An expensive way to learn to read.");
+}
 function sponsorLifeEvents(){
   if(!G.sponsor)return;
   // mid-season demand check
   if(G.md===9&&G.sponsor.demand&&!G.sponsorChecked){
     G.sponsorChecked=true;
-    const pos=myPos();const target=parseInt((G.sponsor.demand.match(/top (\d+)/)||[])[1]||8);
-    msg(G.sponsor.n,G.sponsor.av,"\"We're watching the table\"",pos<=target?"\"Top "+target+", as agreed. Carry on, chairman — the boys at the brewery are pleased.\"":"\"The deal says top "+target+". You are "+ord(pos)+". We are not angry. We are disappointed. And contractually entitled to 20%.\"",null);
+    const pos=myPos(),target=sponsorTarget(G.sponsor);
+    msg(G.sponsor.n,G.sponsor.av,"\"We're watching the table\"",pos<=target
+      ?"\"Top "+target+", as agreed. Carry on, chairman — the boys at the brewery are pleased.\""
+      :"\"The deal says top "+target+". You are "+ord(pos)+". We are not angry. We are disappointed. You have half a season to fix it before the clause bites.\"",null);
   }
   // NimbusCoin risk
   if(G.sponsor.n==="NimbusCoin"&&G.md===R(8,20)&&Math.random()<0.3){
@@ -1641,7 +1666,7 @@ function windowLabel(){
 /* ================= RENDERING ================= */
 const app=()=>document.getElementById("app");
 function svgShield(txt,accent,size){
-  const id="g"+Math.random().toString(36).slice(2,7);
+  const id="shield"+(accent?"A":"N"); // deterministic: identical gradients can share one id
   return `<svg width="${size}" height="${size*1.13}" viewBox="0 0 46 52" style="filter:drop-shadow(0 5px 10px rgba(0,0,0,.4))">
    <defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${accent?'var(--acc)':'#3A4450'}"/><stop offset="1" stop-color="${accent?'var(--acc2)':'#232B33'}"/></linearGradient></defs>
    <path d="M23 1 44 8v18c0 13-9 21-21 25C11 47 2 39 2 26V8z" fill="url(#${id})"/>
@@ -1845,6 +1870,7 @@ function executeSale(p,club,bid){
   G.balance+=bid;
   G.squad=G.squad.filter(x=>x!==p);
   G.soldTo.push({name:p.name,club,pos:p.pos,ovr:ovr(p),bitter:promiseBroken});
+  if(G.soldTo.length>40)G.soldTo.shift();   // old ghosts stop haunting eventually
   const t=G.teams.find(x=>x.name===club);if(t)t.att=clamp(t.att+1,40,78);
   if(p.traits.includes("localhero")){G.fanMood=clamp(G.fanMood-12,5,100);addNews("FANS","You sold a local hero. The banners are being repainted. Angrily.");}
   if(promiseBroken){
@@ -2621,7 +2647,7 @@ function showFT(){
   if(modal.usedSkip)G.skipStreak=(G.skipStreak||0)+1;else G.skipStreak=0;
   const res=finalizeMatch(M);
   G.formHist=G.formHist||[];
-  if(!M.isPlayoff)G.formHist.push(res.gf>res.ga?"w":res.gf===res.ga?"d":"l");
+  if(!M.isPlayoff){G.formHist.push(res.gf>res.ga?"w":res.gf===res.ga?"d":"l");if(G.formHist.length>10)G.formHist.shift();}
   modal.res=res;
   const el=document.getElementById("tmin");if(el)el.textContent="FT";
   const bar=document.getElementById("tbar");if(bar)bar.style.width="100%";
