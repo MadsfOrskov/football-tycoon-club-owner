@@ -144,7 +144,7 @@ const BRIDGE = `
   get obData(){return obData;},
   consts:{STANDS,STANDCOST,FACS,FAC_DETAIL,ROLES,APPROACHES,SWATCHES,TRAITS,COACHES,SPONSORS,BAL,
     // pakke 6: tekstbiblioteket skal kunne inspiceres udefra
-    LINE_TAGS,POOLS:{GOALDESC,NEARMISS,FLAVOR,PENDESC,OPPGOAL,MOMENTUM,GHOSTBITTER,GHOSTWARM},lineText,lineOk},
+    LINE_TAGS,POOLS:{GOALDESC,NEARMISS,FLAVOR,PENDESC,OPPGOAL,MOMENTUM,GHOSTBITTER,GHOSTWARM},GAFFERTALK,lineText,lineOk},
   call(name){
     const f = globalThis[name];
     if(typeof f !== "function") throw new Error("harness: ingen global funktion '"+name+"'");
@@ -585,6 +585,183 @@ function runSeed(seed, PROFILE) {
     G.div = snap.div; G.admins = snap.admins; G.trust = snap.trust; G.balance = snap.balance;
     G.fanMood = snap.mood; G.me.pts = snap.pts; G.md = snap.md; G.loan = snap.loan;
     G.squad.forEach((p, i) => { p.wage = snap.wages[i]; });
+    checkInvariants();
+    H.screen = "home"; H.call("render");
+  }
+
+  /* Pakke 11: EFTER KAMPEN. GDD linje 210 kraever tre ting, og to af dem var
+     tomme: en analyselinje der forklarer resultatet ud fra ATTRIBUTTER OG VALG
+     ("deres midtbane var 8 point bedre"), 2-3 kampnoegletal, og gafferens citat
+     tonet efter resultat OG PERSONLIGHED. Den gamle analyse havde ikke et
+     eneste tal, og alle otte traenere delte de samme otte replikker -- saa det
+     gjorde ingen forskel hvem man havde ansat.
+     Faelden her er saerlig glat: BEGGE dele "virker" i den forstand at der
+     kommer en streng ud. Testen skal derfor proeve paa INDHOLDET. */
+  function checkPostMatch() {
+    const G = H.G;
+    where = "efter kampen";
+    const C = H.consts, TALK = C.GAFFERTALK, txt = C.lineText, ok = C.lineOk;
+    const snap = { style: G.coach.style, md: G.md, w: G.mdWeather };
+
+    /* 1) Personligheden skal betyde noget: HVER stil skal have mindst en replik
+          kun den kan sige, og hver stil x resultat skal have noget at vaelge
+          imellem. Uden det foerste er 'tonet efter personlighed' en paastand. */
+    const styles = [...new Set(C.COACHES.map(c => c.style))];
+    for (const st of styles) {
+      const own = TALK.filter(e => typeof e !== "string" && e.c.includes(st));
+      if (!own.length) fail("traenerstilen '" + st + "' har ingen egne replikker -- personligheden gør ingen forskel");
+      for (const res of ["won", "drew", "lost"]) {
+        const n2 = TALK.filter(e => ok(e, [res, st])).length;
+        if (n2 < 3) fail("gafferen har kun " + n2 + " replikker ved " + res + "/" + st + " -- for lidt at variere paa");
+      }
+      // og stilen skal faktisk vaere brugt af en traener, ellers er linjerne doede
+      if (!C.COACHES.some(c => c.style === st)) fail("stilen '" + st + "' bruges af ingen traener");
+    }
+    // dubletter og ukendte tags, som de oevrige puljer
+    { const seen = new Set();
+      for (const e of TALK) {
+        const t2 = txt(e);
+        if (seen.has(t2)) fail("GAFFERTALK indeholder samme replik to gange: " + t2.slice(0, 45));
+        seen.add(t2);
+        if (typeof e !== "string") for (const tg of e.c)
+          if (C.LINE_TAGS.indexOf(tg) < 0) fail("GAFFERTALK: ukendt tag '" + tg + "' -- replikken kan aldrig vaelges");
+      } }
+
+    /* 2) To forskellige traenere skal kunne sige forskellige ting om SAMME
+          resultat. Proeves paa det faktiske kald, ikke paa puljen. */
+    const sayings = new Map();
+    for (const st of styles) {
+      G.coach.style = st;
+      const set = new Set();
+      for (let i = 0; i < 60; i++) set.add(String(H.call("gafferQuote", 3, 1, null)));
+      sayings.set(st, set);
+    }
+    G.coach.style = snap.style;
+    for (const st of styles) {
+      const mine = sayings.get(st);
+      const others = new Set();
+      for (const [k, v] of sayings) if (k !== st) for (const l of v) others.add(l);
+      if (![...mine].some(l => !others.has(l)))
+        fail("stilen '" + st + "' siger aldrig noget de andre ikke ogsaa kan sige -- citatet er ikke tonet efter personlighed");
+    }
+
+    /* 3) Analysen skal indeholde TAL naar der ER en forskel at naevne. Den gamle
+          udgave returnerede stemninger uden et eneste ciffer, og det er praecis
+          den forskel GDD linje 210 beder om. */
+    const match = H.call("buildMatch", 1, true, false, null);
+    match.weather = { n: "Mudbath", phys: 1, txt: "test" };
+    match.approach = "allout"; match.h1 = { gf: 0, ga: 2 };
+    const t = G.teams[0], tsnap = { att: t.att, def: t.def, phy: t.phy };
+    t.att = 95; t.def = 95; t.phy = 95;               // en klar, maalbar forskel
+    const an = String(H.call("makeAnalysis", match, 0, 4));
+    if (!/\d/.test(an)) fail("analyselinjen naevner intet TAL trods en forskel paa 40+ point: \"" + an + "\"");
+    if (an.length < 40) fail("analyselinjen er for tynd: \"" + an + "\"");
+    const factors = H.call("matchFactors", match, 0, 4);
+    if (!Array.isArray(factors) || factors.length < 2)
+      fail("matchFactors fandt kun " + (factors || []).length + " faktorer i en kamp der var afgjort paa alt");
+    /* Den foerende faktor skal forklare RESULTATET. Foerste udgave sorterede kun
+       paa stoerrelse, og et 1-3-nederlag blev indledt med "deres angreb var 10
+       point sloevere end vores bagkaede" -- sandt, stort, og en forklaring paa
+       det modsatte af hvad der skete. */
+    { const m2 = H.call("buildMatch", 1, true, false, null);
+      m2.weather = { n: "Mudbath", phys: 1, txt: "t" }; m2.approach = "allout"; m2.h1 = { gf: 0, ga: 2 };
+      const lost = H.call("matchFactors", m2, 0, 4);
+      if (lost.some(f2 => !f2.good) && lost[0].good)
+        fail("analysen indleder et 0-4-nederlag med noget der gik GODT: \"" + lost[0].txt + "\"");
+      /* Den afgoerende proeve: en kamp med BAADE gode og daarlige faktorer, hvor
+         den STOERSTE er den gode -- og som alligevel blev tabt. Her, og kun her,
+         adskiller vaegtningen sig fra en ren stoerrelsessortering. Mine to
+         foerste opsaetninger var maettede (alt godt eller alt skidt), saa de
+         bestod med vaegtningen fjernet. */
+      { const t4 = G.teams[0], k4 = { att: t4.att, def: t4.def, phy: t4.phy };
+        t4.def = 15;                                  // vores angreb er langt bedre = GOD faktor, stor
+        t4.att = Math.round(H.call("myStrength").def) + 12;  // deres angreb bedre = DAARLIG, mindre
+        t4.phy = 50;
+        const m4 = H.call("buildMatch", 1, true, false, null);
+        m4.weather = { n: "Clear skies", phys: 0, txt: "t" }; m4.approach = "bal"; m4.h1 = { gf: 1, ga: 2 };
+        const mixed = H.call("matchFactors", m4, 1, 3);
+        // analysen SKAL laeses foer opsaetningen rulles tilbage -- ellers maaler
+        // man faktorerne i en tilstand og saetningen i en anden
+        const an4 = String(H.call("makeAnalysis", m4, 1, 3));
+        t4.att = k4.att; t4.def = k4.def; t4.phy = k4.phy;
+        if (!mixed.some(f2 => f2.good) || !mixed.some(f2 => !f2.good))
+          fail("blandet-opsaetningen gav ikke baade gode og daarlige faktorer -- testen maaler ingenting");
+        /* Kravet er SAMMENHAENG, ikke raekkefoelge. En overlegenhed paa 47 point
+           ER historien, ogsaa naar man taber -- at sortere den vaek ville vaere
+           vaerre. Men saa maa slutsaetningen ikke vaere "det er derfor vi tabte".
+           Foerste udgave kraevede at den daarlige faktor kom foerst og fejlede
+           paa ren kode: kravet var forkert, ikke koden. */
+        if (mixed[0].good && /That is why we lost/.test(an4))
+          fail("analysen siger \"det er derfor vi tabte\" efter at have fremhaevet noget der gik GODT: \"" + an4 + "\"");
+        if (!mixed[0].good && /lost it anyway/.test(an4))
+          fail("analysen siger \"vi tabte alligevel\" efter at have fremhaevet noget der gik SKIDT: \"" + an4 + "\"");
+      }
+      /* Og vaegtningen SELV. Ovenstaaende maaler kun at saetningen er
+         sammenhaengende -- den bestaar ogsaa uden vaegtningen, fordi
+         slutsaetningen bare foelger med. Her konstrueres et tilfaelde hvor de to
+         raa forskelle er naesten lige store, saa det ER vaegtningen der afgoer
+         raekkefoelgen: uden den kommer den gode faktor foerst. */
+      { const t5 = G.teams[0], k5 = { att: t5.att, def: t5.def, phy: t5.phy };
+        const st5 = H.call("myStrength");
+        t5.def = Math.round(st5.att) - 20;    // vores angreb +20 = GOD
+        t5.att = Math.round(st5.def) + 18;    // deres angreb +18 = DAARLIG
+        t5.phy = Math.round(H.call("myPhy"));
+        const m5 = H.call("buildMatch", 1, false, false, null);   // ude: ingen publikumsfaktor
+        m5.weather = { n: "Clear skies", phys: 0, txt: "t" }; m5.approach = "bal"; m5.h1 = { gf: 0, ga: 2 };
+        const near = H.call("matchFactors", m5, 1, 3);
+        t5.att = k5.att; t5.def = k5.def; t5.phy = k5.phy;
+        const g5 = near.find(f2 => f2.good), b5 = near.find(f2 => !f2.good);
+        if (!g5 || !b5) fail("naer-lige-opsaetningen gav ikke baade en god og en daarlig faktor");
+        if (near[0].good)
+          fail("ved naesten lige store forskelle (+20 god / +18 daarlig) indledes et 1-3-nederlag stadig med den GODE: \"" +
+            near[0].txt + "\" -- vaegtningen mod resultatet er væk");
+      }
+      /* Sejrssiden skal proeves mod et SVAGT hold. Foerste udgave brugte den
+         samme 95/95/95-modstander som nederlagssiden, og saa var en 4-0-sejr et
+         frikvarter mod alle attributter -- der er analysen med rette daarlige
+         nyheder foerst. Testen var forkert, ikke koden. */
+      const t3 = G.teams[0], keep = { att: t3.att, def: t3.def, phy: t3.phy };
+      t3.att = 20; t3.def = 20; t3.phy = 20;
+      m2.h1 = { gf: 3, ga: 0 };
+      const won = H.call("matchFactors", m2, 4, 0);
+      t3.att = keep.att; t3.def = keep.def; t3.phy = keep.phy;
+      if (won.some(f2 => f2.good) && !won[0].good)
+        fail("analysen indleder en 4-0-sejr over et langt svagere hold med noget der gik SKIDT: \"" + won[0].txt + "\"");
+    }
+    // og den maa ikke opfinde en forskel der ikke er der
+    t.att = Math.round(H.call("myStrength").def); t.def = Math.round(H.call("myStrength").att); t.phy = Math.round(H.call("myPhy"));
+    match.weather = { n: "Clear skies", phys: 0, txt: "test" };
+    match.approach = "bal"; match.h1 = { gf: 1, ga: 1 };
+    const even = H.call("matchFactors", match, 1, 1);
+    const invented = even.filter(f => f.w >= 12);
+    if (invented.length) fail("analysen finder en forskel paa " + invented[0].w + " point i en kamp mellem to ens hold: " + invented[0].txt);
+    t.att = tsnap.att; t.def = tsnap.def; t.phy = tsnap.phy;
+
+    /* 4) noegletallene: 2-3 stykker, alle med en vaerdi der kan laeses */
+    const ks = H.call("keyStats", match, 1, 1);
+    if (!Array.isArray(ks) || ks.length < 3) fail("faerre end 3 kampnoegletal (GDD linje 210 kraever 2-3)");
+    for (const k of ks) {
+      if (!k.k || k.v === undefined || k.v === null) fail("kampnoegletal uden vaerdi: " + JSON.stringify(k));
+      if (/NaN|undefined/.test(String(k.v))) fail("kampnoegletal '" + k.k + "' er " + k.v);
+    }
+
+    if (process.env.DUMPPM) {
+      console.log("\n--- gafferens replikker pr. stil ---");
+      for (const st of styles) {
+        G.coach.style = st;
+        console.log("  " + st.padEnd(16) +
+          [[3,1],[1,1],[0,3]].map(([a2,b2]) => H.call("gafferQuote", a2, b2, null)).join("\n" + " ".repeat(18)));
+      }
+      G.coach.style = snap.style;
+      console.log("\n--- analyselinjer ---");
+      for (const [wn, wp, ap, sc] of [["Mudbath",1,"allout",[1,3]],["Clear skies",0,"caut",[0,0]],["Frost",0.5,"bal",[2,1]]]) {
+        const m2 = H.call("buildMatch", 1, true, false, null);
+        m2.weather = { n: wn, phys: wp, txt: "t" }; m2.approach = ap; m2.h1 = { gf: 0, ga: 1 };
+        console.log("  [" + wn + "/" + ap + " " + sc[0] + "-" + sc[1] + "] " + H.call("makeAnalysis", m2, sc[0], sc[1]));
+        console.log("     noegletal: " + H.call("keyStats", m2, sc[0], sc[1]).map(k => k.k + " = " + k.v + (k.hint ? " (" + k.hint + ")" : "")).join(" | "));
+      }
+    }
+    G.md = snap.md; G.mdWeather = snap.w;
     checkInvariants();
     H.screen = "home"; H.call("render");
   }
@@ -1863,6 +2040,7 @@ function runSeed(seed, PROFILE) {
   checkBigSources();
   checkTextLibrary();
   checkPromisesMatchCode();
+  checkPostMatch();
   checkOwnerBuyout();
   checkBankCascade();
   checkPromotionWithoutSponsor();   // sidst: den rykker sæsonen frem

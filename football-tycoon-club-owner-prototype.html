@@ -434,7 +434,12 @@ const BAL={
     routBy:3,           // goal difference that makes it a hiding
     happyAt:70,         // fan mood above which the town is in a good mood
     bigGroundAt:4000,   // capacity at which empty rows are conspicuous
-    flavourMemory:26    // club news remembered: one season of matchdays
+    flavourMemory:26,   // club news remembered: one season of matchdays
+    /* Pakke 11: hvor stor en forskel skal der til, før den er værd at NÆVNE i
+       analysen? GDD linje 210 vil have "deres midtbane var 8 point bedre" —
+       altså tal, ikke stemninger. Under dette er forskellen støj. */
+    analysisMin:3,      // points of attribute gap worth naming
+    analysisMax:2       // how many factors the gaffer bothers to mention
   }
 };
 
@@ -545,7 +550,11 @@ const lineOk=(e,ctx)=>typeof e==="string"||e.c.every(t=>ctx.indexOf(t)>=0);
    fejlklasse som pakke 5 rettede — kode der er skrevet men aldrig kaldt. */
 const LINE_TAGS=["mud","rain","frost","wind","clear","big","home","away","low","high",
   "late","lead","level","behind","rout","silent","won","lost","drew","happy","angry",
-  "toptwo","bigground","window"];
+  "toptwo","bigground","window",
+  // pakke 11: gafferens stil. Citatet skal tones efter resultat OG personlighed
+  // (GDD linje 210), og det er billigst at genbruge pakke 6's egen maskine.
+  "attacking","defensive","youth","man-management","technical","direct","balanced","academy",
+  "allout","caut","bal"];
 /* Vælg en linje: filtrér på kontekst, undgå det der allerede er brugt, og
    returnér ALDRIG undefined. `used` er en liste af rå strenge — den ligger på
    match-objektet (som ikke gemmes) eller i G som en kappet liste af primitiver,
@@ -1435,7 +1444,8 @@ function finalizeMatch(match){
   res.dom=clamp(Math.round(50+(myStrength().att-(G.teams[match.oppIdx-1].att))*1.2+(gf-ga)*4),20,80);
   // analysis
   res.analysis=makeAnalysis(match,gf,ga);
-  res.quote=gafferQuote(gf,ga);
+  res.quote=gafferQuote(gf,ga,match);
+  res.keyStats=keyStats(match,gf,ga);
   if(!match.isPlayoff){
     updateFormMood(res);
     G.lastResult=res;
@@ -1445,22 +1455,171 @@ function finalizeMatch(match){
   for(const p of G.squad){if(p.susp)p.susp--;if(p.inj)p.inj--;}
   return res;
 }
-function makeAnalysis(match,gf,ga){
-  const t=G.teams[match.oppIdx-1];const s=myStrength();
-  if(match.approach==="allout"&&ga>=2)return "All-out football left the back door swinging — their pace punished every gap.";
-  if(match.approach==="caut"&&gf===0&&ga===0)return "The cautious plan worked exactly as designed. Nobody said it would be fun.";
-  if(match.weather.phys>=0.5&&myPhy()>(t.phy||50)&&gf>ga)return "The "+match.weather.n.toLowerCase()+" was our friend — we out-muscled them in every duel.";
-  if(match.weather.phys>=0.5&&myPhy()<(t.phy||50)&&gf<ga)return "The conditions beat us as much as they did — our technicians drowned in that pitch.";
-  if(t.att>s.def+4&&ga>=2)return "Their attack against our backline was a mismatch, and it showed. That's a squad-building problem, chairman.";
-  if(s.att>t.def+4&&gf>=2)return "Our firepower against that defence was men against boys. Recruitment working.";
-  if(gf>ga&&match.home)return "The crowd dragged us over the line — "+G.club.split(" ")[0]+" under the lights is becoming a hard place to visit.";
-  if(gf<ga)return "Fine margins. A tired midfield lost the second balls, and second balls lose matches.";
-  return "An even contest decided by moments. The gaffer will take it.";
+/* ---------- pakke 11: EFTER KAMPEN ----------
+   GDD linje 210: "Analyse-linjen (forklarer resultatet ud fra attributter og
+   valg — man lærer noget hver kamp), Man of the Match med ratings, 2-3
+   kamp-nøgletal, og gafferens citat tonet efter resultat OG personlighed."
+
+   Den gamle makeAnalysis var en kæde af ni if-sætninger der returnerede ÉN
+   generisk sætning uden et eneste tal. GDD'ens eget eksempel er kvantitativt:
+   "deres midtbane var 8 point bedre, og mudderet tog jeres teknikere". Uden
+   tallene lærer man ingenting, og så er tilgangsvalget før kampen en gætteleg —
+   hvilket er præcis den begrundelse GDD'en selv giver.
+
+   Nu MÅLES faktorerne, sorteres efter styrke, og de to største bliver til
+   sætningen. Hver faktor er noget spilleren kan gøre noget ved: købe en
+   forsvarsspiller, skaffe dybde, vælge en anden tilgang, bygge Shed End. */
+function matchFactors(match,gf,ga){
+  const t=G.teams[match.oppIdx-1],s=myStrength(),T=BAL.text;
+  const a=APPROACHES[match.approach]||{own:0,opp:0,n:"Balanced"};
+  const xi=xiList(),f=[];
+  const push=(w,txt)=>{if(Math.abs(w)>=T.analysisMin)f.push({w:Math.abs(w),good:w>0,txt});};
+
+  // 1. de rene attributforskelle, i point, som GDD'en formulerer dem
+  push(Math.round(s.att-(t.def||50)),
+    "our attack was "+Math.abs(Math.round(s.att-(t.def||50)))+" points "+
+    (s.att>(t.def||50)?"better than their defence":"short of their defence"));
+  push(-Math.round((t.att||50)-s.def),
+    "their attack was "+Math.abs(Math.round((t.att||50)-s.def))+" points "+
+    ((t.att||50)>s.def?"better than our back line":"blunter than our back line"));
+
+  // 2. vejret, men kun når det faktisk vippede noget: fysik gange forholdene
+  const phyGap=Math.round((myPhy()-(t.phy||50))*match.weather.phys);
+  push(phyGap,(phyGap>0?"the ":"that ")+match.weather.n.toLowerCase()+" "+
+    (phyGap>0?"suited us — we were "+Math.abs(phyGap)+" points stronger in the legs on that pitch"
+             :"took our technicians; they were "+Math.abs(phyGap)+" points stronger in it"));
+
+  // 3. tilgangen. Den ER et valg, så den skal kunne læses som et valg.
+  if(a.own||a.opp){
+    const helped=(gf>=2&&a.own>0)||(ga===0&&a.opp<0);
+    const hurt=(ga>=2&&a.opp>0)||(gf===0&&a.own<0);
+    if(helped)f.push({w:6,good:true,txt:"“"+a.n+"” did what it says on the tin"});
+    else if(hurt)f.push({w:6,good:false,txt:"“"+a.n+"” cost us — that is the trade you took"});
+  }
+
+  // 4. friske ben. Den enkeltstående vigtigste ting en formand KAN gøre noget ved.
+  const flat=xi.filter(p=>freshBand(p)==="flat").length;
+  if(flat>=2)f.push({w:4+flat,good:false,txt:flat+" of the eleven were running on empty"});
+
+  // 5. den tolvte mand — eller fraværet af ham
+  if(match.home){
+    if(protestLevel()>=2)f.push({w:7,good:false,txt:"the ground was silent, and the players could hear it"});
+    else if(G.stands.shed>=1&&attendance()/G.capacity>0.75)
+      f.push({w:5,good:true,txt:"the Shed End was full and loud, and it showed"});
+  }
+  // 6. han vil bevise noget mod sin gamle klub
+  if(G.squad.some(p=>p.from===t.name))f.push({w:4,good:gf>ga,txt:"there was a man out there with a point to prove against them"});
+
+  /* Vægt ALENE er ikke nok. En kamp tabt 1-3 blev ellers indledt med "deres
+     angreb var 10 point sløvere end vores bagkæde" — sandt, stort, og en
+     forklaring på det MODSATTE af hvad der skete. GDD linje 210 vil have
+     resultatet forklaret, så en faktor der peger samme vej som scoren vejer
+     tungere end en der peger imod. Den modsatrettede faktor er ikke løgn og
+     bliver ikke skjult — den kommer bare ikke først. */
+  const res=gf>ga?1:gf<ga?-1:0;
+  for(const x of f)x.w*= res===0 ? 1 : ((x.good?1:-1)===res ? 1.6 : 0.5);
+  f.sort((x,y)=>y.w-x.w);
+  return f;
 }
-function gafferQuote(gf,ga){
-  if(gf>ga)return pick(["\"I'm not smiling. This is my impressed face.\"","\"Good day at the office. Don't get used to it.\"","\"They did what I asked. Suspicious, but pleasing.\""]);
-  if(gf===ga)return pick(["\"A point is a foundation. I say that every week and I mean it every week.\"","\"We move on. Ideally forwards.\""]);
-  return pick(["\"I've seen worse. I can't currently remember when.\"","\"We go again. After I've had a long sit-down.\"","\"The lads know. The bus will be quiet.\""]);
+function makeAnalysis(match,gf,ga){
+  const f=matchFactors(match,gf,ga).slice(0,BAL.text.analysisMax);
+  if(!f.length)return "Nothing separated these two. Some afternoons are decided by a bobble and nothing else.";
+  /* Slutsætningen skal passe til det den lige har sagt. Vejer den ledende
+     faktor MOD resultatet — "vores angreb var 47 point bedre end deres forsvar"
+     efter et 1-3 — så er "det er derfor vi tabte" noget vrøvl. At sortere
+     faktoren væk ville være værre: 47 point ER historien, også når man taber.
+     Så sætningen erkender det i stedet. */
+  const res=gf>ga?1:gf<ga?-1:0,agrees=res===0||((f[0].good?1:-1)===res);
+  const verdict=res===0?"That is why it finished level."
+    :agrees?(res>0?"That is why we won.":"That is why we lost.")
+    :(res>0?"And we won it anyway — some afternoons you get away with one."
+           :"And we lost it anyway. Football does that.");
+  const body=f.length===1?f[0].txt:f[0].txt+", and "+f[1].txt;
+  return body.charAt(0).toUpperCase()+body.slice(1)+". "+verdict;
+}
+/* 2-3 kamp-nøgletal (GDD linje 210). De gamle to var Shots og "Dominance" —
+   begge opfundet ud af scoren. Disse er MÅLT på tilstand spilleren selv har
+   bygget, så de peger på noget han kan gøre ved det. */
+function keyStats(match,gf,ga){
+  const t=G.teams[match.oppIdx-1],s=myStrength(),xi=xiList();
+  const fresh=xi.filter(p=>freshBand(p)!=="flat").length;
+  const out=[
+    {k:"Legs still going",v:fresh+" of "+xi.length,
+     hint:fresh<8?"Depth is the fix, chairman.":""},
+    {k:"Attack v their defence",v:(s.att>=(t.def||50)?"+":"")+Math.round(s.att-(t.def||50)),hint:""},
+    {k:"Defence v their attack",v:(s.def>=(t.att||50)?"+":"")+Math.round(s.def-(t.att||50)),hint:""}
+  ];
+  if(match.home)out.push({k:"Crowd",v:Math.round(100*attendance()/G.capacity)+"% full",
+    hint:protestLevel()>=2?"Silent. That is worth a goal to them.":""});
+  return out;
+}
+/* Gafferens citat, tonet efter resultat OG personlighed. Den gamle udgave
+   kendte kun resultatet: otte trænere delte de samme otte replikker, så det
+   gjorde ingen forskel hvem man havde ansat. Kører gennem pakke 6's egen
+   pickLine, så tonen kan tagges på præcis samme måde som alt andet. */
+const GAFFERTALK=[
+ T("won","“I'm not smiling. This is my impressed face.”"),
+ T("won","“Good day at the office. Don't get used to it.”"),
+ T("won","“They did what I asked. Suspicious, but pleasing.”"),
+ T("won","“Three points. I'll enjoy it until roughly the car park.”"),
+ T("drew","“A point is a foundation. I say that every week and I mean it every week.”"),
+ T("drew","“We move on. Ideally forwards.”"),
+ T("drew","“A point away from home is a point. A point at home is a conversation.”"),
+ T("lost","“I've seen worse. I can't currently remember when.”"),
+ T("lost","“We go again. After I've had a long sit-down.”"),
+ T("lost","“The lads know. The bus will be quiet.”"),
+ T("lost","“That one's mine. Don't go blaming them in the paper.”"),
+ // attacking — Don Mallory: goals are the argument
+ T("won attacking","“Four goals. THAT is the game. Write that down.”"),
+ T("drew attacking","“We scored. They scored more often than I'd like. We'll score more next week.”"),
+ T("lost attacking","“I'll not apologise for going for it. I'll apologise for the second goal.”"),
+ // defensive — Vera Stanhope: the clean sheet is the point
+ T("won defensive","“Clean sheet. You can keep your entertainment.”"),
+ T("drew defensive","“Nil-nil is not a failure. It is a foundation with a roof on.”"),
+ T("lost defensive","“We conceded from a set piece. We have worked on set pieces. Draw your own conclusions.”"),
+ // youth / academy — the kids are the argument
+ T("won youth","“Did you see the boy? Nineteen. That's what this is for.”"),
+ T("drew youth","“The young lads held their own. That's the win, whatever the scoreboard says.”"),
+ T("lost youth","“They're learning. It costs points now and saves money later.”"),
+ T("won academy","“Three of that eleven came through our own back door. Put THAT in the programme.”"),
+ T("drew academy","“Steady. The kids didn't freeze. That is the whole report.”"),
+ T("lost academy","“We were out-manned by men. They'll be men in two years.”"),
+ // man-management — Ray Corrigan: it's about people
+ T("won man-management","“They ran for each other. That's all I've ever asked for.”"),
+ T("drew man-management","“Nobody hid. I can work with a dressing room that doesn't hide.”"),
+ T("lost man-management","“Heads down in there. I'll have them up by Tuesday. That's my job.”"),
+ // technical — Aggie Sowerby: the right way, non-negotiable
+ T("won technical","“That is what it looks like when they trust the pattern. Finally.”"),
+ T("drew technical","“We played well and won nothing. Both of those things are true.”"),
+ T("lost technical","“I'm not changing it. You'll hate March. Ask me again in May.”"),
+ // direct — Mickey Vasey: it's not art
+ T("won direct","“Front man, big lad, second ball. Works in 1974, works now.”"),
+ T("drew direct","“We put it in the mixer. Nobody in there fancied it. That's on them.”"),
+ T("lost direct","“We need a target man who wins his headers. I've said it since August.”"),
+ // balanced — Halim Osei: no promises, no excuses
+ T("won balanced","“One game. Ask me again in twenty.”"),
+ T("drew balanced","“About right. I'd have taken it before kick-off and I'll take it after.”"),
+ T("lost balanced","“No excuses. We were second to too much.”"),
+ // og situationen, uanset hvem der står der
+ T("won big","“On a day like today, in front of that. Aye. That'll do.”"),
+ T("lost big","“Of all the afternoons. They'll not forget this one, and neither will I.”"),
+ T("won mud","“That wasn't football. That was a rescue operation. We won it.”"),
+ T("lost mud","“Reg will get the blame. Reg does not deserve the blame.”"),
+ T("won behind","“They came back. I've had teams that wouldn't have.”"),
+ T("lost rout","“I'll watch it again tonight. I won't enjoy it.”"),
+ T("won silent","“We won it in silence. I'd rather win it in noise.”")
+];
+function gafferQuote(gf,ga,match){
+  const ctx=[gf>ga?"won":gf<ga?"lost":"drew",G.coach.style];
+  if(match){
+    if(match.big)ctx.push("big");
+    if(match.home&&protestLevel()>=2)ctx.push("silent");
+    const w=match.weather?match.weather.n:"";
+    if(w==="Mudbath"||w==="Heavy rain")ctx.push("mud");
+    if(gf>ga&&match.h1&&match.h1.gf<match.h1.ga)ctx.push("behind");
+    if(Math.abs(gf-ga)>=BAL.text.routBy)ctx.push("rout");
+  }
+  return pickLine(GAFFERTALK,ctx,null);
 }
 function applyPts(h,gh,a,ga){
   const rec=i=>i===0?G.me:G.teams[i-1];
@@ -2778,7 +2937,8 @@ function viewHome(){
     const r=G.lastResult;
     h+=`<div class="card"><div class="kick">Last time out ${r.label?("· "+r.label):""}</div>
       <div class="rowline"><span>${r.home?G.club:r.opp} <b class="num">${r.home?r.gf:r.ga}–${r.home?r.ga:r.gf}</b> ${r.home?r.opp:G.club}</span>
-      <small>${r.home?("Gate "+kfmt(r.gate)):"Away"}</small></div></div>`;
+      <small>${r.home?("Gate "+kfmt(r.gate)):"Away"}</small></div>
+      ${r.analysis?`<div class="newsline" style="border:0;padding-top:2px">${r.analysis}</div>`:""}</div>`;
   }
   h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Club news</div>${G.news.slice(0,5).map(n=>`<div class="newsline"><span class="tag">${n.tag}</span>${n.txt}</div>`).join("")||'<div class="newsline">Quiet. Suspiciously quiet.</div>'}</div>`;
   return h;
@@ -3836,6 +3996,7 @@ function showFT(){
       <div class="card"><div class="rowline"><span>★ Man of the Match</span><span class="amt">${res.motm?res.motm.name+" · "+res.motm.rating:"—"}</span></div>
         <div class="rowline"><span>Shots</span><span class="num">${res.shots[0]} – ${res.shots[1]}</span></div>
         <div class="rowline"><span>Dominance</span><span class="num">${res.dom}%</span></div>
+        ${(res.keyStats||[]).map(k=>`<div class="rowline"><span>${k.k}${k.hint?` <small>· ${k.hint}</small>`:""}</span><span class="num">${k.v}</span></div>`).join("")}
         ${res.home?`<div class="rowline"><span>Gate</span><span class="amt num">${kfmt(res.gate||0)}</span></div>`:""}</div>`;
   }
   const dn=document.getElementById("tdone");if(dn)dn.style.display="block";
