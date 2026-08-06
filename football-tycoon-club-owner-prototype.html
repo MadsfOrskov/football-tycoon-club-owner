@@ -907,6 +907,15 @@ const COACHES=[
  {n:"Halim Osei",tac:61,man:60,dev:58,style:"balanced",line:"No promises and no excuses. Give me a squad, not an eleven, and ask me again in twenty games."},
  {n:"Bren Cudlipp",tac:55,man:38,dev:70,style:"academy",line:"The first team is the shop window. The academy is the shop. Spend on the shop."}
 ];
+/* En sponsor i G skal vaere FLAD. `stunt` er et nested objekt paa SPONSORS-
+   konstanten, og en shallow spread ville laegge SAMME objekt to steder i G:
+   den underskrevne aftale OG det tilbud der stadig ligger i indbakken.
+   assertSerialisable kraever et TRAE, og JSON ville goere dem til to kopier, saa
+   identitetstjek holder op med at virke. Fanget af en 20-saesoners koersel i
+   pakke 10 -- ved fem saesoner naaede botten sjaeldent at have begge dele i G
+   samtidig. Stuntets ordlyd slaas alligevel op i SPONSORS paa navn. */
+const sponsorDef=n=>SPONSORS.find(x=>x.n===n);
+const sponsorCopy=o=>{const c={...o};delete c.stunt;return c;};
 const coachOvr=c=>Math.round((c.tac+c.man+c.dev)/3);
 
 /* ---------- state ---------- */
@@ -1552,7 +1561,7 @@ function settleFinances(res){
   sponsorLifeEvents();
   // first sponsor offers arrive after MD 1 — as a decision you cannot walk past
   if(!G.sponsor&&!G.sponsorOffered){G.sponsorOffered=true;
-    const a={...SPONSORS[0]},b={...SPONSORS[2]};
+    const a=sponsorCopy(SPONSORS[0]),b=sponsorCopy(SPONSORS[2]);
     a.per=2800;a.seasonsLeft=2;a.demand=null;
     b.per=4200;b.seasonsLeft=1;b.demand="top 8 finish or "+pct(BAL.sponsor.penalty)+" penalty";
     G.sponsorDue={offers:[a,b],renewal:false};}
@@ -1787,7 +1796,7 @@ function finishSeason(o){
 function sponsorRenewal(){
   const first=pick(SPONSORS);
   const rest=SPONSORS.filter(s=>s.n!==first.n);          // never two identical cards
-  const offers=[{...first},{...pick(rest.length?rest:SPONSORS)}];
+  const offers=[sponsorCopy(first),sponsorCopy(pick(rest.length?rest:SPONSORS))];
   offers[0].per=Math.round(offers[0].per*(1+(3-G.div)*0.6));offers[0].seasonsLeft=2;offers[0].demand=null;
   offers[1].per=Math.round(offers[1].per*(1+(3-G.div)*0.6)*1.35);offers[1].seasonsLeft=1;offers[1].demand="top "+Math.max(4,G.objectivePos-2)+" finish or "+pct(BAL.sponsor.penalty)+" penalty";
   // shown after the budget meeting, not buried in the inbox
@@ -1803,7 +1812,7 @@ function sponsorInbox(d){
 function sponsorPick(i){
   const d=G.sponsorDue;if(!d)return;
   const o=d.offers[i],cont=modal?modal.after:null;
-  G.sponsor={...o};G.sponsorDue=null;
+  G.sponsor=sponsorCopy(o);G.sponsorDue=null;
   addNews("CLUB","New sponsorship: "+o.n+" at "+kfmt(o.per)+"/w."+(o.demand?" Demand: "+o.demand+".":""));
   msg("Commercial dept.","£","Signed: "+o.n,"\""+(o.demand?"They want "+o.demand+" — read it twice, chairman.":"No strings, no small print, no surprises. Rare, that.")+"\" "+kfmt(o.per)+" lands every matchday.",null);
   modal=null;
@@ -2479,7 +2488,7 @@ function handleAction(m,choice){
        sponsor with a stunt. The message carries the sponsor's NAME and the
        wording is looked up in SPONSORS (a constant, never in G), so the second
        showman in the pool does not get the first one's props. */
-    const sp=SPONSORS.find(x=>x.n===a.who),st=sp&&sp.stunt,fee=BAL.sponsor.stuntFee;
+    const sp=sponsorDef(a.who),st=sp&&sp.stunt,fee=BAL.sponsor.stuntFee;
     if(choice==="yes"){
       G.balance+=fee;m.done=true;
       if(Math.random()<0.35){G.fanMood=clamp(G.fanMood-4,5,100);
@@ -2490,7 +2499,7 @@ function handleAction(m,choice){
   }
   if(a.kind==="sponsorChoice"){
     const o=choice==="A"?a.offers[0]:a.offers[1];
-    G.sponsor={...o};m.done=true;
+    G.sponsor=sponsorCopy(o);m.done=true;
     addNews("CLUB","New sponsorship: "+o.n+" at "+kfmt(o.per)+"/w."+(o.demand?" Demand: "+o.demand+".":""));
   }
   render();
@@ -2646,10 +2655,11 @@ function sponsorLifeEvents(){
     G.sponsor=null;G.sponsorOffered=false;
     return;
   }
-  if(G.sponsor.stunt&&G.md===11&&!G.stuntDone){
-    G.stuntDone=true;
-    msg(G.sponsor.n,G.sponsor.av,G.sponsor.stunt.title,G.sponsor.stunt.txt+" "+kfmt(BAL.sponsor.stuntFee)+".",{kind:"stunt",who:G.sponsor.n});
-  }
+  {const def=sponsorDef(G.sponsor.n);
+   if(def&&def.stunt&&G.md===11&&!G.stuntDone){
+     G.stuntDone=true;
+     msg(G.sponsor.n,G.sponsor.av,def.stunt.title,def.stunt.txt+" "+kfmt(BAL.sponsor.stuntFee)+".",{kind:"stunt",who:G.sponsor.n});
+   }}
 }
 
 /* ---------- table ---------- */

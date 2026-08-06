@@ -565,7 +565,12 @@ function runSeed(seed, PROFILE) {
     G.netEwma = -8000; const losing = v();
     G.netEwma = 8000; const earning = v();
     G.netEwma = ewma;
-    if (losing >= earning) fail("indtjeningsleddet virker ikke: taber " + losing + " vs tjener " + earning);
+    /* Gulvet spiser BEGGE veje. Nat 1 noterede faren og satte `loose`-vagten paa
+       de andre assertions, men ikke paa denne -- over 20 saesoner naar mange
+       flere klubber gulvet, og saa fejlede den paa en klub der bare var fattig.
+       Sammenlign kun naar mindst den ene side er fri af klemmen. */
+    if (earning > FLOOR && losing >= earning)
+      fail("indtjeningsleddet virker ikke: taber " + losing + " vs tjener " + earning);
     if (neutral > FLOOR * 1.5 && losing >= neutral) fail("et vedvarende underskud saenker ikke vaerdien: " + neutral + " -> " + losing);
 
     // og administration skal efterlade et ar
@@ -1601,7 +1606,14 @@ function runSeed(seed, PROFILE) {
           wages: H.G.squad.reduce((s, p) => s + p.wage, 0),
           fund: Math.round(H.G.fund), mood: Math.round(H.G.fanMood),
           myShare: H.G.myShare, build: stats.build,
-          value: H.call("clubValuation"), trust: Math.round(H.G.trust)   // pakke 4
+          value: H.call("clubValuation"), trust: Math.round(H.G.trust),  // pakke 4
+          /* pakke 10: er der noget tilbage at LAVE? Alt hvad en formand kan
+             bruge penge paa, taelt op, saa "endgame er tomt" bliver et tal og
+             ikke en fornemmelse. */
+          standsLeft: Object.keys(H.consts.STANDS).filter(k => H.G.stands[k] < 2).length,
+          facsLeft: Object.keys(H.consts.FACS).filter(k => !H.G.fac[k]).length,
+          ownersLeft: H.G.owners.length, admins: H.G.admins || 0,
+          loan: H.G.loan ? 1 : 0, titles: H.G.titles || 0
         });
         H.modal = null;
         H.call("openBudgetMeeting");
@@ -2128,6 +2140,53 @@ function report(runs) {
         }
       console.log("  kilder: " + ["sidste spilledag", "nr. 1 mod nr. 2", "sekser (naboen)", "returopgoer"]
         .map(k => k + " " + (why.get(k) || 0)).join(" · "));
+    }
+  }
+
+  /* ── Pakke 10: endgame, saeson 10-20 ── */
+  {
+    const rows = runs.flatMap(r => r.stats.seasonEnd.filter(e => e.standsLeft !== undefined));
+    const maxS = Math.max(0, ...rows.map(e => e.season));
+    if (maxS >= 8) {
+      const per = s2 => rows.filter(e => e.season === s2);
+      console.log("\n─── ENDGAME (pakke 10) ───");
+      console.log("  saeson   division   kasse        loensum/kd   trup   kapacitet  tribuner  faciliteter  medejere  admin");
+      for (let s2 = 1; s2 <= maxS; s2++) {
+        const a = per(s2); if (!a.length) continue;
+        if (s2 > 6 && s2 < maxS - 12 && s2 % 2) continue;      // hold tabellen laesbar
+        const divName = ["Prem", "L1", "L2", "L3"][Math.round(avg(a.map(e => e.div)))] || "?";
+        console.log("    " + String(s2).padEnd(7) + divName.padEnd(11) +
+          fmtGbp(avg(a.map(e => e.balance))).padEnd(13) +
+          fmtGbp(avg(a.map(e => e.wages))).padEnd(13) +
+          avg(a.map(e => e.squad)).toFixed(1).padEnd(7) +
+          Math.round(avg(a.map(e => e.capacity))).toLocaleString("en-GB").padEnd(11) +
+          avg(a.map(e => e.standsLeft)).toFixed(1).padEnd(10) +
+          avg(a.map(e => e.facsLeft)).toFixed(1).padEnd(13) +
+          avg(a.map(e => e.ownersLeft)).toFixed(1).padEnd(10) +
+          avg(a.map(e => e.admins)).toFixed(1));
+      }
+      /* Bliver klubben uovervindelig? Der er ingen NEDRYKNING i spillet, saa
+         divisionen kan kun gaa en vej -- spoergsmaalet er om PENGENE stadig
+         betyder noget naar man er naaet op. */
+      const late = rows.filter(e => e.season >= 10), early = rows.filter(e => e.season <= 5);
+      if (late.length) {
+        const negLate = late.filter(e => e.balance < 0).length / late.length;
+        const negEarly = early.filter(e => e.balance < 0).length / early.length;
+        const loanLate = late.filter(e => e.loan).length / late.length;
+        console.log("\n  saesoner der slutter i MINUS: tidligt (1-5) " + Math.round(100 * negEarly) +
+          "% · sent (10+) " + Math.round(100 * negLate) + "%");
+        console.log("  saesoner der slutter MED LAAN, sent: " + Math.round(100 * loanLate) + "%");
+        const doneAll = late.filter(e => e.standsLeft === 0 && e.facsLeft === 0).length / late.length;
+        const soleOwner = late.filter(e => e.ownersLeft === 0).length / late.length;
+        console.log("  sent i karrieren: alt bygget " + Math.round(100 * doneAll) +
+          "% af saesonerne · eneejer " + Math.round(100 * soleOwner) + "%");
+        console.log("  mesterskaber i alt: " + runs.reduce((a, r) => a + (r.G.titles || 0), 0) +
+          " · administrationer i alt: " + runs.reduce((a, r) => a + (r.stats.final.admins || 0), 0));
+        const promoLate = runs.reduce((a, r) => a + r.G.history.filter(h => h.promoted && h.season >= 6).length, 0);
+        const atTop = late.filter(e => e.div === 0).length / late.length;
+        console.log("  i oeverste raekke sent i karrieren: " + Math.round(100 * atTop) +
+          "% af saesonerne · oprykninger fra saeson 6 og frem: " + promoLate);
+      }
     }
   }
 
