@@ -307,7 +307,7 @@ function runSeed(seed, PROFILE) {
       };
     }
   }
-  for (const fn of ["matchCtx", "flavourCtx", "eventCtx"]) {
+  for (const fn of ["matchCtx", "flavourCtx", "eventCtx", "gafferCtx"]) {
     const orig = ctx[fn];
     ctx[fn] = function () {
       const out = orig.apply(null, arguments);
@@ -2437,7 +2437,8 @@ function report(runs) {
         const tagged = C.POOLS[k].filter(e => typeof e !== "string").length;
         return k + " " + n + " (" + tagged + " taggede)";
       }).join(" · "));
-      console.log("  ticker- og nyhedslinjer i alt: " + tot +
+      console.log("  GAFFERTALK " + C.GAFFERTALK.length + " (tonet efter resultat og traenerstil, pakke 11)");
+      console.log("  ticker-, nyheds- og gafferlinjer i alt: " + (tot + C.GAFFERTALK.length) +
         " · sponsorer " + C.SPONSORS.length + " · traenere " + C.COACHES.length);
       /* Et tag som ingen situation nogensinde producerer goer hver linje med
          det tag til doed tekst. Rapport, ikke fejl: en karriere paa 10 seeds

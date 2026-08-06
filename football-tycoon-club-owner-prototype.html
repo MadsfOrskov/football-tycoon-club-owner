@@ -553,8 +553,7 @@ const LINE_TAGS=["mud","rain","frost","wind","clear","big","home","away","low","
   "toptwo","bigground","window",
   // pakke 11: gafferens stil. Citatet skal tones efter resultat OG personlighed
   // (GDD linje 210), og det er billigst at genbruge pakke 6's egen maskine.
-  "attacking","defensive","youth","man-management","technical","direct","balanced","academy",
-  "allout","caut","bal"];
+  "attacking","defensive","youth","man-management","technical","direct","balanced","academy"];
 /* Vælg en linje: filtrér på kontekst, undgå det der allerede er brugt, og
    returnér ALDRIG undefined. `used` er en liste af rå strenge — den ligger på
    match-objektet (som ikke gemmes) eller i G som en kappet liste af primitiver,
@@ -1609,7 +1608,7 @@ const GAFFERTALK=[
  T("lost rout","“I'll watch it again tonight. I won't enjoy it.”"),
  T("won silent","“We won it in silence. I'd rather win it in noise.”")
 ];
-function gafferQuote(gf,ga,match){
+function gafferCtx(gf,ga,match){
   const ctx=[gf>ga?"won":gf<ga?"lost":"drew",G.coach.style];
   if(match){
     if(match.big)ctx.push("big");
@@ -1619,8 +1618,9 @@ function gafferQuote(gf,ga,match){
     if(gf>ga&&match.h1&&match.h1.gf<match.h1.ga)ctx.push("behind");
     if(Math.abs(gf-ga)>=BAL.text.routBy)ctx.push("rout");
   }
-  return pickLine(GAFFERTALK,ctx,null);
+  return ctx;
 }
+function gafferQuote(gf,ga,match){return pickLine(GAFFERTALK,gafferCtx(gf,ga,match),null);}
 function applyPts(h,gh,a,ga){
   const rec=i=>i===0?G.me:G.teams[i-1];
   const H=rec(h),A=rec(a);
