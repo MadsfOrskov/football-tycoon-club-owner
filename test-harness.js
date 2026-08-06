@@ -39,6 +39,24 @@ const EXTRACT_TO = path.join(path.dirname(HTML_FILE), "proto-extract.js");
    den optræder, så man kan inspicere den uden en browser. */
 const ECHO = new Set(arg("echo", "").split(",").filter(Boolean));
 const ECHO_DIR = arg("echodir", require("os").tmpdir());
+/* Pakke 9: BOTPOLITIK ADSKILT FRA SPILMEKANIK.
+   Nat 1 gjorde botten klogere fire steder samtidig med at spillet blev bedre,
+   og trupstoerrelsen er foelsom over for begge. En bot der stadig solgte ned til
+   13 ville vise et lavere tal med NOEJAGTIG samme spilkode -- saa uden denne
+   adskillelse kan ingen balancemaaling stole paa sit eget resultat.
+     lazy — nat 0's politik: saelger overskud ned til gulvet, forlaenger ikke,
+            betaler altid kontant, koeber medejere for driftskapitalen
+     sane — nat 1's politik: forlaenger, saelger foerst over 16 mand, bruger
+            rater naar kassen er straekket, roerer ikke driftskapitalen
+   Standard er 'sane', saa eksisterende kald ikke skifter betydning.
+   --bot=both koerer hver seed med begge og stiller dem op mod hinanden:
+   FORSKELLEN er botpolitikkens bidrag, det de har TIL FAELLES er spillets. */
+const BOT = arg("bot", "sane");
+if (!["sane", "lazy", "both"].includes(BOT)) {
+  console.error("FEJL: --bot skal vaere sane, lazy eller both (fik '" + BOT + "')");
+  process.exit(1);
+}
+const PROFILES = BOT === "both" ? ["sane", "lazy"] : [BOT];
 
 /* ---------------- extract + syntax check ---------------- */
 if (!fs.existsSync(HTML_FILE)) {
@@ -217,7 +235,8 @@ function makeSandbox() {
 }
 
 /* ---------------- én kørsel ---------------- */
-function runSeed(seed) {
+function runSeed(seed, PROFILE) {
+  const LAZY = PROFILE === "lazy";
   const { sandbox, timers, lastHtml } = makeSandbox();
   const ctx = vm.createContext(sandbox);
   sandbox.__rnd = mulberry32(seed);
@@ -257,6 +276,15 @@ function runSeed(seed) {
      gaar gennem globalThis, og negoFinish kalder recordDeal leksikalsk. Det er
      samme faelde som den der gjorde administrationstallet forkert. */
   stats.deals = { cash: 0, inst: 0, promo: 0, goals: 0 };
+  /* Pakke 9: to af de fire politikker kan ikke laeses ud af maaltallene -- en
+     fornyelse og et medejerkoeb efterlader ikke et tal med sit eget navn. De
+     taelles hvor de sker, saa hver gate kan proeves for sig. */
+  stats.policy = { renewals: 0, buyouts: 0, thinSells: 0 };
+  for (const [fn, key] of [["startRenewal", "renewals"], ["buyOutOwner", "buyouts"]]) {
+    const orig = ctx[fn];
+    if (typeof orig !== "function") continue;
+    ctx[fn] = function () { stats.policy[key]++; return orig.apply(null, arguments); };
+  }
   /* Pakke 6: opsaml de tags spillet faktisk producerer over en hel karriere.
      Et tag der aldrig opstaar goer hver linje med det tag til doed tekst --
      samme fejlklasse som pakke 5 rettede, bare i teksten. */
@@ -1354,8 +1382,19 @@ function runSeed(seed) {
       H.call("squadFreshness") < H.consts.BAL.fresh.gafferMoans ||
       H.call("freshCount") < 13;
   }
-  // saelg kun ægte overskud: elleve paa banen + reel rotationsdaekning
-  function hasSurplus() { return H.G.squad.length > 16; }
+  /* Politik 1 af 4. sane: saelg kun aegte overskud -- elleve paa banen plus
+     reel rotationsdaekning. lazy: alt over gulvet paa 13 er til salg, som nat 0
+     spillede det. Det er den enkeltstaaende mest foelsomme knap i hele
+     maalingen af trupdybde. */
+  function hasSurplus() {
+    const n = H.G.squad.length, yes = n > (LAZY ? 13 : 16);
+    // Direkte proeve paa gate 1: vil botten saelge fra en trup paa 14-16? Kun
+    // lazy maa. Trupstoerrelsen ved saesonslut er IKKE en proeve paa den her --
+    // de tre andre politikker tynder truppen alligevel, saa gaten kunne staa
+    // helt aaben uden at tallet flyttede sig. Fundet ved at sabotere den.
+    if (yes && n <= 16) stats.policy.thinSells++;
+    return yes;
+  }
 
   function doTransfer() {
     const G = H.G;
@@ -1407,7 +1446,10 @@ function runSeed(seed) {
     if (p.age >= 28) opts.push(() => H.call("setMentor", id));
     if (!G.captSuggested && p.id !== G.captain) opts.push(() => H.call("suggestCaptain", id));
     // en trup der skal rotere holder paa sine kontrakter og saelger kun overskud
-    if (p.years <= 1) { opts.push(() => H.call("startRenewal", id)); opts.push(() => H.call("startRenewal", id)); }
+    // politik 2 ligger paa ALLE veje til en fornyelse, ikke kun paa doRenewals():
+    // den foerste udgave gatede kun den ene, og lazy forlaengede saa 87 gange
+    // fra spillerarket. Fanget af pakke 9's egen gate-proeve.
+    if (!LAZY && p.years <= 1) { opts.push(() => H.call("startRenewal", id)); opts.push(() => H.call("startRenewal", id)); }
     if (H.call("windowOpen") && hasSurplus()) opts.push(() => H.call("openSellSheet", id));
     if (p.age < 28) opts.push(() => H.call("setFocus", id, pick(["att", "def", "phy"])));
     if (opts.length) pick(opts)();
@@ -1418,6 +1460,7 @@ function runSeed(seed) {
      spillet allerede -- forlaengelser -- men botten brugte det kun tilfaeldigt. */
   function doRenewals() {
     const G = H.G;
+    if (LAZY) return;              // politik 2 af 4: nat 0's bot forlaengede aldrig
     const due = G.squad.filter(p => p.years <= 1 && G.md >= p.renewLockMD);
     if (!due.length) return;
     const wagesNow = G.squad.reduce((s, p) => s + p.wage, 0);
@@ -1432,6 +1475,9 @@ function runSeed(seed) {
      tilbage, praecis som budgetmoedet formulerer raaderummet. */
   function workingCapital() {
     const G = H.G;
+    // politik 4 af 4: lazy ser kun paa om kontoen bliver tom, ikke paa om der er
+    // loen til resten af saesonen. Det var derfor nat 0 gik i administration.
+    if (LAZY) return 0;
     const wages = G.squad.reduce((s, p) => s + p.wage, 0);
     return wages * Math.max(6, G.rounds - G.md);
   }
@@ -1633,9 +1679,10 @@ function runSeed(seed) {
             // GDD: "strukturer er vaerktoejer, ikke krav". En formand der HAR
             // pengene betaler kontant -- rater koster et tillaeg han saa slipper
             // for. Strukturen er den straekkede klubs redskab, ikke standarden.
-            const stretched = H.G.balance < n.agreedFee * 1.6;
-            n.payPlan = stretched ? pick([2, 3, 4]) : pick([1, 1, 1, 1, 2]);
-            n.clause = stretched ? pick([null, "promo", "goals"]) : pick([null, null, null, "promo"]);
+            // politik 3 af 4: lazy kender ikke strukturerne og betaler altid kontant
+            const stretched = !LAZY && H.G.balance < n.agreedFee * 1.6;
+            n.payPlan = LAZY ? 1 : (stretched ? pick([2, 3, 4]) : pick([1, 1, 1, 1, 2]));
+            n.clause = LAZY ? null : (stretched ? pick([null, "promo", "goals"]) : pick([null, null, null, "promo"]));
           }
           const o = Math.round((n.p.att + n.p.def + n.p.phy) / 3);
           n.years = pick([1, 2, 3, 4]);
@@ -1694,7 +1741,7 @@ function runSeed(seed) {
         if (hasFn("setFocus")) acts.push(() => H.call("setFocus", md.pid, pick(["att", "def", "phy"])));
         if (hasFn("openChat")) acts.push(() => H.call("openChat", md.pid));
         if (hasFn("openSellSheet")) acts.push(() => H.call("openSellSheet", md.pid));
-        if (hasFn("startRenewal")) acts.push(() => H.call("startRenewal", md.pid));
+        if (!LAZY && hasFn("startRenewal")) acts.push(() => H.call("startRenewal", md.pid));
         if (hasFn("setMentor")) acts.push(() => H.call("setMentor", md.pid));
         if (hasFn("suggestCaptain") && !H.G.captSuggested) acts.push(() => H.call("suggestCaptain", md.pid));
         if (acts.length && chance(0.7)) pick(acts)();
@@ -1779,10 +1826,13 @@ function runSeed(seed) {
     stats.clickTargets = seenClicks.size;
     if (process.env.DUMPCLICKS) console.log("CLICKS: " + [...seenClicks].sort().join(","));
     /* Ankre frem for en andel: en gennemspilning naar ikke hvert ark, saa et
-       forholdstal ville svinge med hvor heldig botten var. Disse fem tegnes i
-       ENHVER karriere -- navbaren, indbakken, spillerarket, steppere, kampen.
-       Holder de op med at optraede, er det regexen der er gaaet i staa. */
-    const ANCHORS = ["go", "actMsg", "render", "choosePrematch", "openPlayer"];
+       forholdstal ville svinge med hvor heldig botten var. Kun de tre der er
+       STRUKTURELT sikre: navbaren og stepperne tegnes ved hver render, og
+       prematch-arket ved hver kampdag. `actMsg` og `openPlayer` stod her
+       oprindeligt og faldt paa en lazy-profil, hvor indbakken tilfaeldigvis
+       aldrig havde en ubesvaret besked paa et tidspunkt hvor den blev tegnet --
+       et anker der afhaenger af bottens terningkast er ikke et anker. */
+    const ANCHORS = ["go", "render", "choosePrematch"];
     const lost = ANCHORS.filter(a => !seenClicks.has(a));
     if (lost.length || seenClicks.size < 15)
       fail("onclick-auditten fandt " + seenClicks.size + " knapmaal og mangler ankrene [" +
@@ -1805,7 +1855,84 @@ function runSeed(seed) {
   checkBankCascade();
   checkPromotionWithoutSponsor();   // sidst: den rykker sæsonen frem
 
-  return { seed, stats, G: H.G, steps, consts: H.consts };
+  return { seed, stats, G: H.G, steps, consts: H.consts, profile: PROFILE };
+}
+
+/* Pakke 9: sammenligningen ER pakkens produkt. Forskellen mellem de to soejler
+   er botpolitikkens bidrag; det de har til faelles er spillets. Uden den
+   adskillelse kan et maaltal flyttes ved et uheld ved at gøre botten klogere. */
+function compareProfiles(runs) {
+  const by = p => runs.filter(r => r.profile === p);
+  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+  const metrics = [
+    ["trup pr. kampdag", r => avg(r.flatMap(x => x.stats.md.map(e => e.squad))), v => v.toFixed(2)],
+    ["trup ved saesonslut", r => avg(r.flatMap(x => x.stats.seasonEnd.map(e => e.squad).filter(v => v !== undefined))), v => v.toFixed(2)],
+    ["netto pr. kampdag", r => avg(r.flatMap(x => x.stats.md.map(e => e.net))), v => fmtGbp(v)],
+    ["slutkasse", r => avg(r.map(x => x.stats.final.balance)), v => fmtGbp(v)],
+    ["slutkapacitet", r => avg(r.map(x => x.stats.final.capacity)), v => Math.round(v).toLocaleString("en-GB")],
+    ["administrationer i alt", r => r.reduce((s, x) => s + (x.stats.final.admins || 0), 0), v => String(v)],
+    ["bank-ultimatummer", r => r.reduce((s, x) => s + x.stats.bank, 0), v => String(v)],
+    ["oprykninger i alt", r => r.reduce((s, x) => s + x.G.history.filter(h => h.promoted).length, 0), v => String(v)],
+    ["koeb paa rater", r => r.reduce((s, x) => s + (x.stats.deals ? x.stats.deals.inst : 0), 0), v => String(v)],
+    ["kampdage under 11 friske", r => 100 * avg(r.flatMap(x => x.stats.md.map(e => e.fresh < 11 ? 1 : 0))), v => v.toFixed(0) + "%"],
+    ["store kampe pr. saeson", r => {
+      const m = new Map();
+      for (const x of r) for (const e of x.stats.md) {
+        const k = x.seed + "/" + e.season; m.set(k, (m.get(k) || 0) + (e.big ? 1 : 0));
+      }
+      return avg([...m.values()]);
+    }, v => v.toFixed(1)]
+  ];
+  console.log("\n\n═══════════ BOTPOLITIK MOD SPILMEKANIK (pakke 9) ═══════════");
+  console.log("  Samme seeds, samme spilkode. Kun politikken adskiller soejlerne.\n");
+  console.log("  " + "maaltal".padEnd(26) + "sane".padStart(13) + "lazy".padStart(13) + "   forskel");
+  for (const [name, f, fmt] of metrics) {
+    const a = f(by("sane")), b = f(by("lazy"));
+    const d = a === 0 ? (b === 0 ? "—" : "n/a")
+      : (b > a ? "+" : "") + Math.round(100 * (b - a) / Math.abs(a)) + "% (lazy)";
+    console.log("  " + name.padEnd(26) + fmt(a).padStart(13) + fmt(b).padStart(13) + "   " + d);
+  }
+  console.log("\n  Laes den saadan: hvor soejlerne er TAETTE, maaler tallet spillet.");
+  console.log("  Hvor de er langt fra hinanden, maaler det lige saa meget botten -");
+  console.log("  og et saadant tal kan flyttes ved et uheld ved at gøre botten klogere.");
+
+  /* Og her er pakke 9's egen invariant: et flag der ikke aendrer noget er doed
+     kode -- praecis den fejlklasse pakke 8 gjorde permanent. Hver af de fire
+     politikker proeves for SIG, saa en enkelt gate der falder ud ikke kan skjule
+     sig bag de tre andre. */
+  const S = by("sane"), L = by("lazy");
+  const sum = (r, f) => r.reduce((a, x) => a + f(x), 0);
+  const problems = [];
+  // 1) salgsgulvet: lazy skal ende med en tyndere trup ved saesonslut
+  const endS = avg(S.flatMap(x => x.stats.seasonEnd.map(e => e.squad).filter(v => v !== undefined)));
+  const endL = avg(L.flatMap(x => x.stats.seasonEnd.map(e => e.squad).filter(v => v !== undefined)));
+  const thinS = sum(S, x => x.stats.policy.thinSells), thinL = sum(L, x => x.stats.policy.thinSells);
+  if (thinS !== 0) problems.push("salgsgulvet (politik 1): sane ville saelge fra en trup paa 14-16 " + thinS + " gange -- gaten virker ikke");
+  if (thinL === 0) problems.push("salgsgulvet (politik 1): lazy ville ALDRIG saelge fra en tynd trup -- der er intet at sammenligne");
+  if (!(endL < endS)) problems.push("salgsgulvet (politik 1): lazy ender paa " + endL.toFixed(2) + " mod sane " + endS.toFixed(2) + " -- politikken flytter ikke truppen");
+  // 2) fornyelser: lazy forlaenger aldrig
+  const renS = sum(S, x => x.stats.policy.renewals), renL = sum(L, x => x.stats.policy.renewals);
+  if (renL !== 0) problems.push("fornyelser (politik 2): lazy forlaengede " + renL + " gange -- gaten virker ikke");
+  if (renS === 0) problems.push("fornyelser (politik 2): sane forlaengede ALDRIG -- der er intet at sammenligne");
+  // 3) handelsstrukturer: lazy betaler altid kontant
+  const insS = sum(S, x => x.stats.deals.inst), insL = sum(L, x => x.stats.deals.inst);
+  if (insL !== 0) problems.push("rater (politik 3): lazy koebte " + insL + " paa rater -- gaten virker ikke");
+  if (insS === 0) problems.push("rater (politik 3): sane brugte ALDRIG rater -- der er intet at sammenligne");
+  // 4) driftskapitalen: lazy skal have en anden risikoprofil (kasse eller kriser)
+  const balS = avg(S.map(x => x.stats.final.balance)), balL = avg(L.map(x => x.stats.final.balance));
+  const crisS = sum(S, x => x.stats.bank), crisL = sum(L, x => x.stats.bank);
+  if (Math.round(balS) === Math.round(balL) && crisS === crisL)
+    problems.push("driftskapitalen (politik 4): identisk kasse OG identisk kriseantal -- gaten virker formentlig ikke");
+  if (problems.length) {
+    console.error("\n  FEJL i botprofil-adskillelsen:");
+    for (const p of problems) console.error("    · " + p);
+    return false;
+  }
+  console.log("\n  Alle fire politik-gates maalt aktive: tynde salg " + thinS + "/" + thinL +
+    " · trup ved saesonslut " + endS.toFixed(2) + "/" + endL.toFixed(2) +
+    " · fornyelser " + renS + "/" + renL + " · rater " + insS + "/" + insL +
+    " · kriser " + crisS + "/" + crisL + ".");
+  return true;
 }
 
 /* ---------------- rapport ---------------- */
@@ -2126,33 +2253,48 @@ function report(runs) {
 }
 
 /* ---------------- main ---------------- */
-console.log("test-harness · " + path.basename(HTML_FILE) + " · " + SEEDS + " seed(s) × " + SEASONS + " sæson(er)");
+console.log("test-harness · " + path.basename(HTML_FILE) + " · " + SEEDS + " seed(s) × " + SEASONS + " sæson(er) · botprofil: " + BOT);
 console.log("syntaks: OK (udtrukket til " + path.basename(EXTRACT_TO) + ")");
 
 const runs = [];
 let failed = 0;
-for (let i = 0; i < SEEDS; i++) {
-  const seed = 1000 + i * 7919;
-  const t0 = Date.now();
-  try {
-    const r = runSeed(seed);
-    runs.push(r);
-    console.log("  seed " + String(seed).padEnd(6) + " OK   S" + r.stats.final.season + " · " + r.stats.final.divName +
-      " · kasse " + fmtGbp(r.stats.final.balance) + " · " + r.steps + " steps · " + (Date.now() - t0) + "ms");
-  } catch (e) {
-    failed++;
-    console.error("  seed " + String(seed).padEnd(6) + " FEJL");
-    console.error("    " + e.message);
-    if (e.stack && !/^\[seed/.test(e.message)) {
-      console.error(e.stack.split("\n").slice(1, 6).join("\n"));
+for (const profile of PROFILES) {
+  if (PROFILES.length > 1) console.log("\n  ── botprofil: " + profile + " ──");
+  for (let i = 0; i < SEEDS; i++) {
+    /* SAMME seed til begge profiler. Det er hele pointen: samme spilkode, samme
+       terningkast, kun politikken adskiller dem. */
+    const seed = 1000 + i * 7919;
+    const t0 = Date.now();
+    try {
+      const r = runSeed(seed, profile);
+      runs.push(r);
+      console.log("  seed " + String(seed).padEnd(6) + " OK   S" + r.stats.final.season + " · " + r.stats.final.divName +
+        " · kasse " + fmtGbp(r.stats.final.balance) + " · " + r.steps + " steps · " + (Date.now() - t0) + "ms");
+    } catch (e) {
+      failed++;
+      console.error("  seed " + String(seed).padEnd(6) + (PROFILES.length > 1 ? " [" + profile + "]" : "") + " FEJL");
+      console.error("    " + e.message);
+      if (e.stack && !/^\[seed/.test(e.message)) {
+        console.error(e.stack.split("\n").slice(1, 6).join("\n"));
+      }
     }
   }
 }
 
-if (SHOW_STATS && runs.length) report(runs);
+if (SHOW_STATS && runs.length) {
+  if (PROFILES.length > 1) {
+    for (const p of PROFILES) {
+      const sub = runs.filter(r => r.profile === p);
+      if (!sub.length) continue;
+      console.log("\n\n═══════════ BOTPROFIL: " + p.toUpperCase() + " ═══════════");
+      report(sub);
+    }
+    if (!compareProfiles(runs)) failed++;
+  } else report(runs);
+}
 
 if (failed) {
-  console.error("\nREGRESSION_FAILED — " + failed + " af " + SEEDS + " seeds fejlede");
+  console.error("\nREGRESSION_FAILED — " + failed + " af " + (SEEDS * PROFILES.length) + " koersler fejlede");
   process.exit(1);
 }
 console.log("\nREGRESSION_OK");
