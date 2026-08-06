@@ -366,6 +366,16 @@ const coachOvr=c=>Math.round((c.tac+c.man+c.dev)/3);
 /* ---------- state ---------- */
 let G=null, screen="home", modal=null, obStep=0, obData={name:"Ashford Rovers",hue:85,mode:"dark"};
 
+/* Players are identified by ID, never by name. There are only 28×26 = 728
+   possible names, so with 15+ players on the books duplicates are near
+   certain over a career — and captain, mentors and inbox offers all used to
+   be keyed on the name string, which meant the wrong man got the armband. */
+let PID=1;
+function byId(id){return (G&&G.squad.find(p=>p.id===id))||null;}
+function nameOf(id){const p=byId(id);return p?p.name:"";}
+function surnameOf(id){const n=nameOf(id);return n?n.split(" ")[1]:"";}
+function marketById(id){return G.market.findIndex(x=>x.id===id);}
+
 function newGame(name,hue,mode){
   const posPlan=["GK","GK","DF","DF","DF","DF","DF","MF","MF","MF","MF","MF","FW","FW","FW"];
   G={
@@ -438,7 +448,7 @@ function genPlayer(pos,base,wmult){
   const traits=[];
   if(Math.random()<0.35)traits.push(pick(Object.keys(TRAITS)));
   if(Math.random()<0.08)traits.push(pick(Object.keys(TRAITS)));
-  return {name:pick(FIRST)+" "+pick(LAST),pos,att,def,phy,form:0,age:R(18,33),
+  return {id:PID++,name:pick(FIRST)+" "+pick(LAST),pos,att,def,phy,form:0,age:R(18,33),
     wage:Math.round((ov*BAL.wages.scale*wmult+R(-70,110))/10)*10,
     value:Math.round((ov*ov*14+R(-4000,9000))/1000)*1000,
     traits:[...new Set(traits)],gem:false,inj:0,susp:0,sg:0,sapps:0,smotm:0,
@@ -518,7 +528,7 @@ function myStrength(){
   const xi=bestXI();
   const avg=(arr,f)=>arr.length?arr.reduce((s,p)=>s+f(p),0)/arr.length:35;
   let leader=G.squad.some(p=>p.traits.includes("leader"))?1.5:0;
-  const cap=G.squad.find(p=>p.name===G.captain);
+  const cap=byId(G.captain);
   if(cap&&cap.traits.includes("leader"))leader+=1; // the right armband amplifies
   const all=[...xi.df,...xi.mf,...xi.fw];
   const confAvg=(avg(all,p=>p.conf)-50)/22; // confidence: the slow layer
@@ -812,14 +822,14 @@ function postMatchMessages(){
     if(Math.random()<0.4&&G.squad.length>13){
       const bid=Math.round(p.value*(0.85+Math.random()*0.35)/1000)*1000;
       const club=pick(G.teams).name;
-      msg(pick(AGENTS).n,"A","Offer for listed "+p.name.split(" ")[1],club+" bid "+kfmt(bid)+" for "+p.name+" ("+ovr(p)+" ovr). He knows he's on the list — best decide soon.",{kind:"sellOffer",player:p.name,bid,club});
+      msg(pick(AGENTS).n,"A","Offer for listed "+p.name.split(" ")[1],club+" bid "+kfmt(bid)+" for "+p.name+" ("+ovr(p)+" ovr). He knows he's on the list — best decide soon.",{kind:"sellOffer",pid:p.id,bid,club});
     }
   }
   // the unhappy demand a way out (once per season each)
   if(Math.random()<0.1){
     const unhappy=G.squad.find(p=>p.conf<30&&!p.reqDone&&G.squad.length>13);
     if(unhappy){unhappy.reqDone=true;
-      msg(pick(AGENTS).n,"A","TRANSFER REQUEST: "+unhappy.name.split(" ")[1],"\"My client is miserable, chairman. Confidence shot, future elsewhere. List him — or watch him wilt.\"",{kind:"transferReq",player:unhappy.name});}
+      msg(pick(AGENTS).n,"A","TRANSFER REQUEST: "+unhappy.name.split(" ")[1],"\"My client is miserable, chairman. Confidence shot, future elsewhere. List him — or watch him wilt.\"",{kind:"transferReq",pid:unhappy.id});}
   }
   // contract expiry warning early in the season
   if(G.md===2){
@@ -832,7 +842,7 @@ function postMatchMessages(){
     const p=pick(targets);
     const bid=Math.round(p.value*(0.8+Math.random()*0.5)/1000)*1000;
     const club=pick(G.teams).name;
-    msg(pick(AGENTS).n,"A","Bid for "+p.name.split(" ")[1],club+" offer "+kfmt(bid)+" for "+p.name+" ("+p.pos+", "+ovr(p)+"). Value "+kfmt(p.value)+".",{kind:"sellOffer",player:p.name,bid,club});
+    msg(pick(AGENTS).n,"A","Bid for "+p.name.split(" ")[1],club+" offer "+kfmt(bid)+" for "+p.name+" ("+p.pos+", "+ovr(p)+"). Value "+kfmt(p.value)+".",{kind:"sellOffer",pid:p.id,bid,club});
   }
   if(Math.random()<0.45)addNews("CLUB",pick(FLAVOR));
   // scout report delivery
@@ -936,8 +946,8 @@ function finishSeason(o){
       const club=pick(G.teams).name;
       G.soldTo.push({name:p.name,club,pos:p.pos,ovr:ovr(p),bitter:true}); // leaving free always stings a little
       leavers.push(p.name.split(" ")[1]+" → "+club);
-      if(p.name===G.captain)G.captain=null;
-      G.mentors=G.mentors.filter(m=>m.vet!==p.name&&m.kid!==p.name);
+      if(p.id===G.captain)G.captain=null;
+      G.mentors=G.mentors.filter(m=>m.vet!==p.id&&m.kid!==p.id);
     }
   }
   if(leavers.length)msg("Ledger (bookkeeper)","L","GONE FOR NOTHING","Contracts expired, no renewals signed: "+leavers.join(" · ")+". Value walked out the door with its boots under its arm.",null);
@@ -959,8 +969,8 @@ function finishSeason(o){
   }
   applyRetirements();
   G.captSuggested=false;G.talkCooldown=0;
-  G.mentors=G.mentors.filter(m=>G.squad.find(p=>p.name===m.vet)&&G.squad.find(p=>p.name===m.kid));
-  if(!G.captain||!G.squad.find(p=>p.name===G.captain))pickCaptain();
+  G.mentors=G.mentors.filter(m=>byId(m.vet)&&byId(m.kid));
+  if(!G.captain||!byId(G.captain))pickCaptain();
   // sponsor expiry
   if(G.sponsor){G.sponsor.seasonsLeft--;if(G.sponsor.seasonsLeft<=0){G.sponsor=null;sponsorRenewal();}}
   G.season++;G.md=0;G.phase="season";
@@ -1008,29 +1018,30 @@ function sponsorLater(){
 /* ---------- captain, office chats, mentors, retirement ---------- */
 function pickCaptain(){
   const cands=[...G.squad].sort((a,b)=>((b.traits.includes("leader")?30:0)+b.age+ovr(b)/4)-((a.traits.includes("leader")?30:0)+a.age+ovr(a)/4));
-  G.captain=cands[0]?cands[0].name:null;
-  if(G.captain)addNews("CLUB",G.coach.n.split(" ")[0]+" hands the armband to "+G.captain+". \"My call. Always my call,\" he adds, looking at you.");
+  G.captain=cands[0]?cands[0].id:null;
+  if(G.captain)addNews("CLUB",G.coach.n.split(" ")[0]+" hands the armband to "+nameOf(G.captain)+". \"My call. Always my call,\" he adds, looking at you.");
 }
-function suggestCaptain(ix){
+function suggestCaptain(id){
   if(G.captSuggested){modal={type:"info",title:"Once per season",body:"You've had your say on the armband this season. The gaffer's door is closed on the subject."};render();return;}
+  const p=byId(id);if(!p)return;
   G.captSuggested=true;
-  const p=G.squad[ix];
   const accepts=p.traits.includes("leader")||ovr(p)>=Math.max(...G.squad.map(ovr))-2||Math.random()<0.3;
   if(accepts){
-    const old=G.captain;G.captain=p.name;
-    const oldP=G.squad.find(x=>x.name===old);if(oldP)oldP.conf=clamp(oldP.conf-8,10,95);
-    msg(G.coach.n.split(" ")[0]+" (gaffer)","GM","\"Fine. Your man gets the armband.\"","\""+p.name.split(" ")[1]+" it is. If this goes wrong, we both know whose idea it was.\""+(old?" "+old.split(" ")[1]+" took it about as well as expected.":""),null);
+    const old=G.captain;G.captain=p.id;
+    const oldP=byId(old);if(oldP)oldP.conf=clamp(oldP.conf-8,10,95);
+    msg(G.coach.n.split(" ")[0]+" (gaffer)","GM","\"Fine. Your man gets the armband.\"","\""+p.name.split(" ")[1]+" it is. If this goes wrong, we both know whose idea it was.\""+(oldP?" "+oldP.name.split(" ")[1]+" took it about as well as expected.":""),null);
   }else{
-    msg(G.coach.n.split(" ")[0]+" (gaffer)","GM","\"No.\"","\"I hear you on "+p.name.split(" ")[1]+". The answer is no. "+(G.captain?G.captain.split(" ")[1]+" keeps the armband — he's earned the dressing room, not the highlight reel.":"I'll pick my own captain.")+"\"",null);
+    msg(G.coach.n.split(" ")[0]+" (gaffer)","GM","\"No.\"","\"I hear you on "+p.name.split(" ")[1]+". The answer is no. "+(G.captain?surnameOf(G.captain)+" keeps the armband — he's earned the dressing room, not the highlight reel.":"I'll pick my own captain.")+"\"",null);
   }
   render();
 }
-function openChat(ix){
+function openChat(id){
+  if(!byId(id))return;
   if(G.talkCooldown>0){modal={type:"info",title:"The office is busy",body:"One conversation per few matchdays — these things need weight. Next chat available in "+G.talkCooldown+" MD."};render();return;}
-  modal={type:"chat",ix};render();
+  modal={type:"chat",pid:id};render();
 }
 function doChat(kind){
-  const p=G.squad[modal.ix];
+  const p=byId(modal.pid);if(!p){modal=null;render();return;}
   G.talkCooldown=4;
   let out="";
   if(kind==="praise"){
@@ -1049,20 +1060,20 @@ function doChat(kind){
   }
   modal={type:"info",title:"The office door closes",body:out};render();
 }
-function setMentor(ix){
-  const vet=G.squad[ix];
-  const kids=G.squad.filter(p=>p.age<22&&p.pos===vet.pos&&p.name!==vet.name);
+function setMentor(id){
+  const vet=byId(id);if(!vet)return;
+  const kids=G.squad.filter(p=>p.age<22&&p.pos===vet.pos&&p.id!==vet.id);
   if(!kids.length){modal={type:"info",title:"No apprentice",body:"No under-22 "+vet.pos+" in the squad for "+vet.name.split(" ")[1]+" to take under his wing."};render();return;}
-  if(G.mentors.length>=2&&!G.mentors.find(m=>m.vet===vet.name)){modal={type:"info",title:"Two pairs max",body:"The gaffer allows two mentor pairs. More and it becomes a crèche."};render();return;}
+  if(G.mentors.length>=2&&!G.mentors.find(m=>m.vet===vet.id)){modal={type:"info",title:"Two pairs max",body:"The gaffer allows two mentor pairs. More and it becomes a crèche."};render();return;}
   const kid=kids.sort((a,b)=>ovr(b)-ovr(a))[0];
-  G.mentors=G.mentors.filter(m=>m.vet!==vet.name);
-  G.mentors.push({vet:vet.name,kid:kid.name});
+  G.mentors=G.mentors.filter(m=>m.vet!==vet.id);
+  G.mentors.push({vet:vet.id,kid:kid.id});
   addNews("CLUB",vet.name.split(" ")[1]+" takes "+kid.name.split(" ")[1]+" under his wing. They stay out an hour after training. The kid carries the cones. It's tradition.");
   render();
 }
 function applyMentors(){
   for(const m of G.mentors){
-    const vet=G.squad.find(p=>p.name===m.vet),kid=G.squad.find(p=>p.name===m.kid);
+    const vet=byId(m.vet),kid=byId(m.kid);
     if(!vet||!kid)continue;
     kid.att=clamp(kid.att+1,25,95);kid.def=clamp(kid.def+1,25,95);
     if(vet.traits.length&&Math.random()<0.25&&!kid.traits.includes(vet.traits[0])){
@@ -1084,7 +1095,7 @@ function applyRetirements(){
     }else{
       addNews("CLUB",p.name+" retires at "+p.age+". A quiet testimonial, a decent watch, and a season ticket for life.");
     }
-    if(p.name===G.captain)G.captain=null;
+    if(p.id===G.captain)G.captain=null;
   }
 }
 /* ---------- budget & midway meetings, owners ---------- */
@@ -1335,13 +1346,13 @@ function resolveBids(){
     if(b.amount>=fmin){
       if(Math.random()<0.35){
         const club=pick(G.teams).name;const rbid=Math.round(b.amount*1.15/1000)*1000;
-        msg(pick(AGENTS).n,"A","BIDDING WAR: "+p.name.split(" ")[1],club+" have matched you and bid "+kfmt(rbid)+". Beat it at "+kfmt(Math.round(rbid*1.05/1000)*1000)+" — or walk away and watch him go.",{kind:"bidWar",pName:p.name,raise:Math.round(rbid*1.05/1000)*1000,club});
+        msg(pick(AGENTS).n,"A","BIDDING WAR: "+p.name.split(" ")[1],club+" have matched you and bid "+kfmt(rbid)+". Beat it at "+kfmt(Math.round(rbid*1.05/1000)*1000)+" — or walk away and watch him go.",{kind:"bidWar",pid:p.id,raise:Math.round(rbid*1.05/1000)*1000,club});
       }else{
-        msg("Club secretary","CS","Bid ACCEPTED: "+p.name.split(" ")[1],"They've accepted "+kfmt(b.amount)+". All that remains: personal terms with the player.",{kind:"bidAccepted",pName:p.name,fee:b.amount});
+        msg("Club secretary","CS","Bid ACCEPTED: "+p.name.split(" ")[1],"They've accepted "+kfmt(b.amount)+". All that remains: personal terms with the player.",{kind:"bidAccepted",pid:p.id,fee:b.amount});
       }
     }else if(b.amount>=fmin*0.85){
       const ask=Math.round(fmin*1.06/1000)*1000;
-      msg("Club secretary","CS","Counter-offer: "+p.name.split(" ")[1],"They rejected "+kfmt(b.amount)+" but will do "+kfmt(ask)+". Take it, or let it die.",{kind:"bidCounter",pName:p.name,ask});
+      msg("Club secretary","CS","Counter-offer: "+p.name.split(" ")[1],"They rejected "+kfmt(b.amount)+" but will do "+kfmt(ask)+". Take it, or let it die.",{kind:"bidCounter",pid:p.id,ask});
     }else{
       p.pendingBid=false;
       msg("Club secretary","CS","Bid rejected: "+p.name.split(" ")[1],"\"Not even close,\" they said. There was laughter in the background.",null);
@@ -1354,11 +1365,10 @@ function resolveBids(){
     if(Math.random()<0.6&&windowOpen()){
       c.p.pendingBid=false;
       if(!G.market.includes(c.p))G.market.unshift(c.p);
-      msg(c.agentName,"A","He's back on the table: "+c.p.name.split(" ")[1],"\"Chairman. That deal that died? It can un-die. The club needs the money now — the price has dropped.\"",{kind:"callback",pName:c.p.name});
+      msg(c.agentName,"A","He's back on the table: "+c.p.name.split(" ")[1],"\"Chairman. That deal that died? It can un-die. The club needs the money now — the price has dropped.\"",{kind:"callback",pid:c.p.id});
     }
   }
 }
-function marketIndexByName(n){return G.market.findIndex(x=>x.name===n);}
 /* Prices a hypothetical set of terms — lets the sheet show what each contract
    length and each promised role would cost, without a second formula to drift. */
 function wageDemandFor(years,role){
@@ -1377,8 +1387,8 @@ function wageDemand(){return wageDemandFor(nego.years,nego.role);}
    once he has countered — or immediately on a renewal, where he already knows
    exactly what he is worth to you. */
 function demandVisible(){return !!nego.renewal||nego.cround>=1;}
-function startRenewal(ix){
-  const p=G.squad[ix];
+function startRenewal(id){
+  const p=byId(id);if(!p)return;
   if(G.md<p.renewLockMD){modal={type:"info",title:"\"Not yet.\"",body:"Talks with "+p.name.split(" ")[1]+" collapsed recently. Both sides agreed to revisit later — in "+(p.renewLockMD-G.md)+" matchdays."};render();return;}
   nego={p,agent:pick(AGENTS),ix:-1,freeAgent:true,renewal:true,round:0,cround:0,years:2,role:p.role||"rot",finalUsed:false,
         wageOffer:Math.round(p.wage/100)*100,stage:"contract",
@@ -1483,7 +1493,7 @@ function negoFinish(){
 function handleAction(m,choice){
   const a=m.action;
   if(a.kind==="sellOffer"){
-    const p=G.squad.find(x=>x.name===a.player);
+    const p=byId(a.pid);
     if(!p){m.done=true;render();return;}
     if(choice==="accept"){
       if(G.squad.length<=13){m.done=true;m.body="The gaffer blocks the sale: \"I can't field eleven men and a cat. We asked the cat.\"";render();return;}
@@ -1496,18 +1506,18 @@ function handleAction(m,choice){
     }else{m.done=true;m.body="Bid rejected. "+p.name.split(" ")[1]+" stays. The gaffer nods approvingly.";}
   }
   if(a.kind==="bidAccepted"){
-    const p=G.market[marketIndexByName(a.pName)];
+    const p=G.market[marketById(a.pid)];
     if(!p){m.done=true;m.body="Too late — he's no longer available.";render();return;}
     m.done=true;startContractTalks(p,a.fee);return;
   }
   if(a.kind==="bidCounter"){
-    const p=G.market[marketIndexByName(a.pName)];
+    const p=G.market[marketById(a.pid)];
     if(!p){m.done=true;m.body="Too late — he's no longer available.";render();return;}
     if(choice==="accept"){m.done=true;startContractTalks(p,a.ask);return;}
     p.pendingBid=false;m.done=true;m.body="You let it die. The secretary files the fax under 'almost'.";
   }
   if(a.kind==="bidWar"){
-    const p=G.market[marketIndexByName(a.pName)];
+    const p=G.market[marketById(a.pid)];
     if(!p){m.done=true;m.body="Too late — he's no longer available.";render();return;}
     if(choice==="raise"){m.done=true;startContractTalks(p,a.raise);return;}
     const mi=G.market.indexOf(p);if(mi>=0)G.market.splice(mi,1);
@@ -1515,12 +1525,12 @@ function handleAction(m,choice){
     addNews("TRANSFER",p.name+" joins "+a.club+" after a bidding war you left. Probably wise. Probably.");
   }
   if(a.kind==="callback"){
-    const ix=marketIndexByName(a.pName);
+    const ix=marketById(a.pid);
     if(ix<0){m.done=true;m.body="Gone again. He moves fast for a man his age.";render();return;}
     m.done=true;startBuyNego(ix,false,{discount:0.85});return;
   }
   if(a.kind==="transferReq"){
-    const p=G.squad.find(x=>x.name===a.player);
+    const p=byId(a.pid);
     if(!p){m.done=true;render();return;}
     if(choice==="list"){p.listed=true;m.done=true;m.body="He's on the list. He trained beautifully today — funny, that.";}
     else{p.conf=clamp(p.conf-5,10,95);m.done=true;m.body="Request refused. He'll stay. His body will, anyway — the rest is negotiable.";}
@@ -1813,45 +1823,46 @@ function viewSquad(){
     const out=list.filter(x=>x.p.inj||x.p.susp).length;
     h+=`<div class="sqhead"><span class="kick">${label}</span><span class="ln"></span>
       <span class="kick">${list.length}${out?" · "+out+" out":""} · avg <b>${avg}</b></span></div>`;
-    h+=list.map((x,i)=>squadRow(x.p,x.ix,i===list.length-1)).join("");
+    h+=list.map((x,i)=>squadRow(x.p,i===list.length-1)).join("");
   }
   h+=`<div class="kick" style="margin-top:12px;font-size:9.5px;text-transform:none;letter-spacing:.2px">
     Tap a player for contract, chat, focus, mentoring and sale.${wo?"":" The window is shut — selling reopens when it does."}</div></div>`;
   return h;
 }
-function squadRow(p,ix,last){
-  const mentor=G.mentors.find(m=>m.vet===p.name||m.kid===p.name);
+function squadRow(p,last){
+  const mentor=G.mentors.find(m=>m.vet===p.id||m.kid===p.id);
   const chips=[];
-  if(p.name===G.captain)chips.push('<span class="mini a">©</span>');
+  if(p.id===G.captain)chips.push('<span class="mini a">©</span>');
   if(p.inj)chips.push(`<span class="mini r">Inj ${p.inj}md</span>`);
   if(p.susp)chips.push('<span class="mini r">Susp</span>');
   if(p.listed)chips.push('<span class="mini c">Listed</span>');
   if(p.gem)chips.push('<span class="mini c">Gem</span>');
-  if(mentor)chips.push(`<span class="mini a">${mentor.vet===p.name?"Mentor":"Apprentice"}</span>`);
+  if(mentor)chips.push(`<span class="mini a">${mentor.vet===p.id?"Mentor":"Apprentice"}</span>`);
   if(p.focus)chips.push(`<span class="mini a">${p.focus} ↑</span>`);
   chips.push(`<span class="mini ${p.years<=1?"c":"m"}">${p.years}yr</span>`);
-  return `<div class="srow${last?" last":""}" onclick="openPlayer(${ix})">
+  return `<div class="srow${last?" last":""}" role="button" tabindex="0" aria-label="${p.name}, ${p.pos}, ${ovr(p)} overall" onclick="openPlayer(${p.id})">
     <span class="posb">${p.pos}</span>
     <span class="who"><span class="n">${p.name} <small>${p.age}</small></span>
       <span class="meta"><span class="tri">A<b>${p.att}</b> D<b>${p.def}</b> P<b>${p.phy}</b></span>${chips.join("")}</span></span>
     <span class="ov">${ovr(p)}</span><span class="chev">›</span></div>`;
 }
-function openPlayer(ix){
-  if(!G.squad[ix])return;
-  modal={type:"player",ix};render();
+function openPlayer(id){
+  if(!byId(id))return;
+  modal={type:"player",pid:id};render();
 }
-function setFocus(ix,f){
-  const p=G.squad[ix];if(!p)return;
+function setFocus(id,f){
+  const p=byId(id);if(!p)return;
   p.focus=p.focus===f?null:f;render();
 }
-function openSellSheet(ix){
+function openSellSheet(id){
   // the gate lives here, not in the markup — every caller gets the same rule
   if(!windowOpen()){modal={type:"info",title:"The window is shut",body:"No club can register him now. Selling reopens when the window does."};render();return;}
   if(G.squad.length<=13){modal={type:"info",title:"\"Not a chance.\"",body:"The gaffer blocks the door: thirteen men is already a squad held together with tape and optimism."};render();return;}
-  modal={type:"sellChoice",ix};render();
+  if(!byId(id))return;
+  modal={type:"sellChoice",pid:id};render();
 }
-function quickRing(ix){
-  const p=G.squad[ix];
+function quickRing(id){
+  const p=byId(id);if(!p)return;
   const appeal=clamp((ovr(p)-42)/20+(p.age<27?0.3:p.age>31?-0.4:0)+(p.traits.includes("dreamer")?0.3:0),0,1.4);
   const n=Math.random()<appeal?(Math.random()<appeal*0.5?R(2,3):1):0;
   const buyers=[];const used=new Set();
@@ -1859,11 +1870,11 @@ function quickRing(ix){
     let club;do{club=pick(G.teams).name}while(used.has(club));used.add(club);
     buyers.push({club,bid:Math.round(p.value*0.9*(0.75+Math.random()*0.4)/1000)*1000,pushed:false,gone:false}); // haste smells: ~10% lower
   }
-  modal={type:"sell",ix,buyers,line:n===0?"Reg rings around. Silence. \""+(p.age>31?"The age puts them off":"No takers right now")+", chairman. Patience — or goals.\"":"Reg rings around. "+(n===1?"One club":n+" clubs")+" call back before tea. They can smell the hurry — bids are on the low side."};
+  modal={type:"sell",pid:id,buyers,line:n===0?"Reg rings around. Silence. \""+(p.age>31?"The age puts them off":"No takers right now")+", chairman. Patience — or goals.\"":"Reg rings around. "+(n===1?"One club":n+" clubs")+" call back before tea. They can smell the hurry — bids are on the low side."};
   render();
 }
-function listPlayer(ix){
-  const p=G.squad[ix];
+function listPlayer(id){
+  const p=byId(id);if(!p)return;
   p.listed=true;p.conf=clamp(p.conf-4,10,95);
   addNews("TRANSFER",p.name+" placed on the transfer list. He found out from the noticeboard. Not ideal.");
   modal=null;render();
@@ -1891,13 +1902,14 @@ function executeSale(p,club,bid){
     msg(pick(AGENTS).n,"A","\"You PROMISED him football.\"","\"You promised "+p.name.split(" ")[1]+" playing time, then sold him. The dressing room noticed. Maureen noticed. Everyone noticed, chairman.\"",null);
     addNews("CLUB","Maureen's column: 'A promise at "+G.club.split(" ")[0]+" is apparently a currency that devalues fast.'");
   }
-  if(p.name===G.captain){G.captain=null;pickCaptain();addNews("CLUB","The armband needs a new arm. "+(G.captain?G.captain+" gets it.":""));}
-  G.mentors=G.mentors.filter(m=>m.vet!==p.name&&m.kid!==p.name);
+  if(p.id===G.captain){G.captain=null;pickCaptain();addNews("CLUB","The armband needs a new arm. "+(G.captain?nameOf(G.captain)+" gets it.":""));}
+  G.mentors=G.mentors.filter(m=>m.vet!==p.id&&m.kid!==p.id);
   addNews("TRANSFER",p.name+" sold to "+club+" for "+kfmt(bid)+". You'll meet again — the fixture list guarantees it.");
   return true;
 }
 function sellAccept2(bi){
-  const p=G.squad[modal.ix];const b=modal.buyers[bi];
+  const p=byId(modal.pid);const b=modal.buyers[bi];
+  if(!p){modal=null;render();return;}
   if(executeSale(p,b.club,b.bid))modal=null;
   render();
 }
@@ -2412,18 +2424,20 @@ function renderModal(){
     </div></div>`;
   }
   if(modal.type==="sellChoice"){
-    const p=G.squad[modal.ix];
+    const p=byId(modal.pid);
+    if(!p)return `<div class="overlay"><div class="sheet"><h2>He's gone</h2><p>That player has left the club.</p><button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
     return `<div class="overlay"><div class="sheet">
       <div class="kick">Selling ${p.name.split(" ")[1]} — how?</div>
       <h2>${p.name}</h2>
       <p>${p.pos} · ${ovr(p)} ovr · age ${p.age} · valued ~${kfmt(p.value)} · contract ${p.years}yr${p.traits.includes("localhero")?" · <b style='color:var(--comm)'>LOCAL HERO — he may refuse to leave, and the fans may never forgive</b>":""}</p>
-      <button class="abtn comm" onclick="quickRing(${modal.ix})" style="text-align:left"><b>Quick ring-around</b> — Reg finds bids NOW, but haste smells: ~10% lower offers</button>
-      <button class="abtn" onclick="listPlayer(${modal.ix})" style="text-align:left"><b>Put him on the list</b> — offers arrive by inbox over coming matchdays. Better prices, no guarantees — and he'll know (confidence −4)</button>
+      <button class="abtn comm" onclick="quickRing(${modal.pid})" style="text-align:left"><b>Quick ring-around</b> — Reg finds bids NOW, but haste smells: ~10% lower offers</button>
+      <button class="abtn" onclick="listPlayer(${modal.pid})" style="text-align:left"><b>Put him on the list</b> — offers arrive by inbox over coming matchdays. Better prices, no guarantees — and he'll know (confidence −4)</button>
       <button class="abtn ghost" onclick="modal=null;render()">Never mind</button>
     </div></div>`;
   }
   if(modal.type==="sell"){
-    const p=G.squad[modal.ix];
+    const p=byId(modal.pid);
+    if(!p)return `<div class="overlay"><div class="sheet"><h2>He's gone</h2><p>That player has left the club.</p><button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
     return `<div class="overlay"><div class="sheet">
       <div class="kick">The market for ${p.name.split(" ")[1]}</div>
       <h2>${p.name}</h2>
@@ -2487,12 +2501,12 @@ function renderModal(){
     </div></div>`;
   }
   if(modal.type==="player"){
-    const ix=modal.ix,p=G.squad[ix];
+    const ix=modal.pid,p=byId(ix);
     if(!p)return `<div class="overlay"><div class="sheet"><h2>He's gone</h2>
       <p>That player has left the club. The noticeboard is out of date again.</p>
       <button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
-    const isCap=p.name===G.captain;
-    const mentor=G.mentors.find(m=>m.vet===p.name||m.kid===p.name);
+    const isCap=p.id===G.captain;
+    const mentor=G.mentors.find(m=>m.vet===p.id||m.kid===p.id);
     const wo=windowOpen();
     const thin=G.squad.length<=13;
     const bar=(label,v)=>`<div class="rowline" style="border-bottom:none;padding-bottom:2px"><span>${label}</span><span class="amt num">${v}</span></div>
@@ -2513,7 +2527,7 @@ function renderModal(){
     }
     if(p.age>=28){
       acts+=act("",false,`setMentor(${ix})`,
-        `<b>Make him a mentor</b> — ${mentor&&mentor.vet===p.name?"currently guiding "+mentor.kid.split(" ")[1]:"he takes a young "+p.pos+" under his wing"}`);
+        `<b>Make him a mentor</b> — ${mentor&&mentor.vet===p.id?"currently guiding "+surnameOf(mentor.kid):"he takes a young "+p.pos+" under his wing"}`);
     }
     if(!isCap){
       acts+=act("",G.captSuggested,`suggestCaptain(${ix})`,
@@ -2538,12 +2552,13 @@ function renderModal(){
         <div class="rowline"><span>Contract</span><span class="amt num" style="${p.years<=1?"color:var(--comm)":""}">${p.years} year${p.years===1?"":"s"}${p.years<=1?" · final":""}</span></div>
         <div class="rowline"><span>This season</span><span class="num">${p.sapps} apps · ${p.sg} goals · ${p.smotm} motm</span></div>
         <div class="rowline"><span>For the club</span><span class="num">${p.capps} apps</span></div>
-        ${mentor?`<div class="rowline"><span>${mentor.vet===p.name?"Mentoring":"Learning from"}</span><span class="amt">${(mentor.vet===p.name?mentor.kid:mentor.vet)}</span></div>`:""}</div>
+        ${mentor?`<div class="rowline"><span>${mentor.vet===p.id?"Mentoring":"Learning from"}</span><span class="amt">${nameOf(mentor.vet===p.id?mentor.kid:mentor.vet)}</span></div>`:""}</div>
       ${acts}
     </div></div>`;
   }
   if(modal.type==="chat"){
-    const p=G.squad[modal.ix];
+    const p=byId(modal.pid);
+    if(!p)return `<div class="overlay"><div class="sheet"><h2>He's gone</h2><p>That player has left the club.</p><button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
     return `<div class="overlay"><div class="sheet">
       <div class="kick">The office · door closed</div>
       <h2>${p.name}</h2>

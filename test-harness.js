@@ -412,6 +412,21 @@ function runSeed(seed) {
     for (const k of Object.keys(H.consts.STANDS)) {
       if (G.stands[k] < 0 || G.stands[k] > 2) fail("stand " + k + " niveau " + G.stands[k]);
     }
+    // spiller-id'er: unikke på tværs af trup/marked/frie agenter, og alle
+    // referencer (anfører, mentorer) skal pege på nogen der findes
+    const seen = new Set(), squadIds = new Set();
+    for (const [list, label] of [[G.squad, "trup"], [G.market, "marked"], [G.freeAgents, "frie agenter"]]) {
+      for (const p of list) {
+        if (!Number.isFinite(p.id)) fail(label + ": spiller uden id (" + p.name + ")");
+        if (seen.has(p.id)) fail("dublet spiller-id " + p.id + " (" + p.name + ") i " + label);
+        seen.add(p.id);
+        if (label === "trup") squadIds.add(p.id);
+      }
+    }
+    if (G.captain !== null && !squadIds.has(G.captain)) fail("anfører-id " + G.captain + " findes ikke i truppen");
+    for (const m of G.mentors) {
+      if (!squadIds.has(m.vet) || !squadIds.has(m.kid)) fail("mentor-par peger på ukendt id (" + m.vet + "/" + m.kid + ")");
+    }
   }
 
   /* Ligaens integritet: hver kampdag = 7 kampe = 14 hold-optrædener.
@@ -545,16 +560,16 @@ function runSeed(seed) {
     H.screen = "squad";
     H.call("render");
     checkHtml();
-    const ix = Math.floor(rnd() * G.squad.length);
-    const p = G.squad[ix];
+    const p = G.squad[Math.floor(rnd() * G.squad.length)];
+    const id = p.id;
     const opts = [];
-    if (hasFn("openPlayer")) opts.push(() => H.call("openPlayer", ix));
-    if (G.talkCooldown <= 0) opts.push(() => H.call("openChat", ix));
-    if (p.age >= 28) opts.push(() => H.call("setMentor", ix));
-    if (!G.captSuggested && p.name !== G.captain) opts.push(() => H.call("suggestCaptain", ix));
-    if (p.years <= 1) opts.push(() => H.call("startRenewal", ix));
-    if (H.call("windowOpen") && G.squad.length > 13) opts.push(() => H.call("openSellSheet", ix));
-    if (p.age < 28) opts.push(() => { p.focus = pick(["att", "def", "phy", null]); H.call("render"); });
+    if (hasFn("openPlayer")) opts.push(() => H.call("openPlayer", id));
+    if (G.talkCooldown <= 0) opts.push(() => H.call("openChat", id));
+    if (p.age >= 28) opts.push(() => H.call("setMentor", id));
+    if (!G.captSuggested && p.id !== G.captain) opts.push(() => H.call("suggestCaptain", id));
+    if (p.years <= 1) opts.push(() => H.call("startRenewal", id));
+    if (H.call("windowOpen") && G.squad.length > 13) opts.push(() => H.call("openSellSheet", id));
+    if (p.age < 28) opts.push(() => H.call("setFocus", id, pick(["att", "def", "phy"])));
     if (opts.length) pick(opts)();
   }
 
@@ -725,8 +740,8 @@ function runSeed(seed) {
         break;
 
       case "sellChoice":
-        if (chance(0.6)) H.call("quickRing", md.ix);
-        else H.call("listPlayer", md.ix);
+        if (chance(0.6)) H.call("quickRing", md.pid);
+        else H.call("listPlayer", md.pid);
         break;
 
       case "sell": {
@@ -758,12 +773,12 @@ function runSeed(seed) {
 
       case "player": {
         const acts = [];
-        if (hasFn("setFocus")) acts.push(() => H.call("setFocus", md.ix, pick(["att", "def", "phy"])));
-        if (hasFn("openChat")) acts.push(() => H.call("openChat", md.ix));
-        if (hasFn("openSellSheet")) acts.push(() => H.call("openSellSheet", md.ix));
-        if (hasFn("startRenewal")) acts.push(() => H.call("startRenewal", md.ix));
-        if (hasFn("setMentor")) acts.push(() => H.call("setMentor", md.ix));
-        if (hasFn("suggestCaptain") && !H.G.captSuggested) acts.push(() => H.call("suggestCaptain", md.ix));
+        if (hasFn("setFocus")) acts.push(() => H.call("setFocus", md.pid, pick(["att", "def", "phy"])));
+        if (hasFn("openChat")) acts.push(() => H.call("openChat", md.pid));
+        if (hasFn("openSellSheet")) acts.push(() => H.call("openSellSheet", md.pid));
+        if (hasFn("startRenewal")) acts.push(() => H.call("startRenewal", md.pid));
+        if (hasFn("setMentor")) acts.push(() => H.call("setMentor", md.pid));
+        if (hasFn("suggestCaptain") && !H.G.captSuggested) acts.push(() => H.call("suggestCaptain", md.pid));
         if (acts.length && chance(0.7)) pick(acts)();
         else { H.modal = null; H.call("render"); }
         break;
