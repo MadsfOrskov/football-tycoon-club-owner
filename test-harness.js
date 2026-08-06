@@ -583,7 +583,8 @@ function runSeed(seed) {
 
   /* --curve: dump prisernes kurver, så man kan se at de har et reelt knæk og
      ikke bare vokser i det uendelige. */
-  if (flag("curve")) {
+  if (flag("curve") && !runSeed.curveShown) {
+    runSeed.curveShown = true;   // kurverne er de samme hver gang — vis dem én gang
     console.log("\n  sæsonkort (fair ~" + fmtGbp(H.call("seasonTixFair")) + ") — pris → solgte → kontant nu → afgivet drejekors/kamp");
     let best = { cash: -1 };
     for (let p = 20; p <= 400; p += 20) {
@@ -711,7 +712,11 @@ function runSeed(seed) {
     // billetprisen var utestet: hele elasticitetskurven og stemningsstraffen
     // over £16 blev aldrig ramt, fordi botten lod prisen stå på £10
     if (chance(0.10)) {
-      H.G.ticket = Math.max(5, Math.min(30, H.G.ticket + (chance(0.5) ? -1 : 1) * (1 + Math.floor(rnd() * 3))));
+      // hold dig inden for det interval en spiller ville overveje (£8-18, dvs.
+      // hen over både toppunktet ~£14 og stemningsstraffen ved £16). De
+      // absurde priser dækkes analytisk af checkPriceCurves, ikke ved at lade
+      // botten ødelægge sin egen økonomi undervejs.
+      H.G.ticket = Math.max(8, Math.min(18, H.G.ticket + (chance(0.5) ? -1 : 1) * (1 + Math.floor(rnd() * 3))));
       if (chance(0.3)) H.G.bigExtra = Math.max(0, Math.min(8, H.G.bigExtra + (chance(0.5) ? -1 : 1)));
       H.call("render");
     }
@@ -954,6 +959,13 @@ function runSeed(seed) {
   }
 
   where = "slut";
+  /* Øjebliksbillede FØR de tvungne scenarier. checkPromotionWithoutSponsor()
+     spiller en ekstra sæson færdig og ville ellers snige et falsk mesterskab
+     ind i fremdriftstallene og forvride slutkassen. */
+  stats.final = {
+    balance: H.G.balance, capacity: H.G.capacity, div: H.G.div,
+    season: H.G.season, divName: H.G.divNames[H.G.div], seasons: H.G.history.length
+  };
   renderAllScreens();
   checkInvariants();
   checkSaveLoad();
@@ -1005,8 +1017,8 @@ function report(runs) {
     console.log("  seed " + String(r.seed).padEnd(4) + " " + (line || "(ingen sæsonskift)"));
   }
 
-  const finals = runs.map(r => r.G.balance);
-  const caps = runs.map(r => r.G.capacity);
+  const finals = runs.map(r => r.stats.final.balance);
+  const caps = runs.map(r => r.stats.final.capacity);
   const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
   console.log("\n  Slutkasse: min " + fmtGbp(Math.min(...finals)) +
     " · snit " + fmtGbp(avg(finals)) + " · max " + fmtGbp(Math.max(...finals)));
@@ -1028,7 +1040,7 @@ function report(runs) {
       save.get(e.season).push((e.balance - prev) + (e.build - prevBuild));
       prev = e.balance; prevBuild = e.build;
     });
-    if (r.G.capacity > 1500) built++;
+    if (r.stats.final.capacity > 1500) built++;
     bank += r.stats.bank; admin += r.stats.admin;
   }
   const verdict = ok => ok ? "OK" : "UDENFOR";
@@ -1052,7 +1064,7 @@ function report(runs) {
   const byS = new Map();
   let promos = 0, titles = 0;
   for (const r of runs) {
-    for (const h of r.G.history) {
+    for (const h of r.G.history.slice(0, r.stats.final.seasons)) {
       if (!byS.has(h.season)) byS.set(h.season, []);
       byS.get(h.season).push(h);
       if (h.promoted) promos++;
@@ -1080,8 +1092,8 @@ for (let i = 0; i < SEEDS; i++) {
   try {
     const r = runSeed(seed);
     runs.push(r);
-    console.log("  seed " + String(seed).padEnd(6) + " OK   S" + r.G.season + " · " + r.G.divNames[r.G.div] +
-      " · kasse " + fmtGbp(r.G.balance) + " · " + r.steps + " steps · " + (Date.now() - t0) + "ms");
+    console.log("  seed " + String(seed).padEnd(6) + " OK   S" + r.stats.final.season + " · " + r.stats.final.divName +
+      " · kasse " + fmtGbp(r.stats.final.balance) + " · " + r.steps + " steps · " + (Date.now() - t0) + "ms");
   } catch (e) {
     failed++;
     console.error("  seed " + String(seed).padEnd(6) + " FEJL");
