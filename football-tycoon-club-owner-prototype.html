@@ -808,7 +808,7 @@ function settleFinances(res){
   if(G.loan){loanPay=G.loan.perMD;G.loan.left--;if(G.loan.left<=0)G.loan=null;}
   res.gate=gate+extras;res.wages=wages;
   const net=(G.sponsor?G.sponsor.per:0)+tvMoney()+gate+extras-wages-loanPay;
-  G.balance+=net;
+  G.balance+=net;G.lastNet=net;      // "kassen + ugentligt netto altid synligt" (GDD)
   G.periodNet+=net;G.periodMD++;
   if(G.periodMD>=6)bookkeeperReport();
   sponsorLifeEvents();
@@ -1729,6 +1729,7 @@ function windowLabel(){
 
 /* ================= RENDERING ================= */
 const app=()=>document.getElementById("app");
+let keepScroll=true;
 function svgShield(txt,accent,size){
   const id="shield"+(accent?"A":"N"); // deterministic: identical gradients can share one id
   return `<svg width="${size}" height="${size*1.13}" viewBox="0 0 46 52" style="filter:drop-shadow(0 5px 10px rgba(0,0,0,.4))">
@@ -1748,13 +1749,18 @@ function render(){
   if(screen==="table")html+=viewTable();
   html+='<div class="protonote">PROTOTYPE · AD-mærkede elementer er placeholders · karrieren gemmes automatisk på denne enhed</div></div>'+navbar();
   if(modal)html+=renderModal();
+  // the whole app is one innerHTML swap, which throws the page back to the top.
+  // Keep the reading position unless we deliberately changed screen.
+  const y=document.documentElement.scrollTop||0;
   app().innerHTML=html;
+  document.documentElement.scrollTop=keepScroll?y:0;
+  keepScroll=true;
   if(modal&&modal.type==="ticker")runTicker();
 }
 function header(){
   return `<div class="top">${svgShield(G.badge,true,40)}
     <div><h1>${G.club}</h1><div class="sub">${G.divNames[G.div]} · ${ord(myPos())} · S${G.season}</div></div>
-    <div class="right"><small>Bank</small><b class="num">${kfmt(G.balance)}</b></div>
+    <div class="right"><small>Bank${typeof G.lastNet==="number"?` · <span style="color:${G.lastNet>=0?"var(--acc)":"#E07A6A"}">${G.lastNet>=0?"+":"−"}${kfmt(Math.abs(G.lastNet))}/MD</span>`:""}</small><b class="num">${kfmt(G.balance)}</b></div>
     <button class="modebtn" onclick="toggleMode()">${G.mode==="dark"?"☀":"◗"}</button></div>`;
 }
 function toggleMode(){G.mode=G.mode==="dark"?"light":"dark";applyTheme(G.hue,G.mode);render();}
@@ -1763,7 +1769,7 @@ function navbar(){
   const t=[["home","Home"],["inbox","Inbox"],["squad","Squad"],["market","Market"],["club","Club"],["table","Table"]];
   return '<nav>'+t.map(([k,l])=>`<button class="${screen===k?'on':''}" onclick="go('${k}')">${l}${k==='inbox'&&u?`<span class="badge num">${u}</span>`:''}</button>`).join("")+'</nav>';
 }
-function go(s){screen=s;if(s==="inbox")G.inbox.forEach(m=>m.unread=false);saveGame();render();}
+function go(s){screen=s;if(s==="inbox")G.inbox.forEach(m=>m.unread=false);keepScroll=false;saveGame();render();}
 
 /* ---------- views ---------- */
 function viewHome(){
@@ -2050,10 +2056,19 @@ function fanQuote(){
    interpolating along it. Change the trapezoid and the whole ground follows. */
 const STAD={fy:100,ny:205,fl:134,fr:256,nl:52,nr:338};
 function stadHash(n){const x=Math.sin(n*127.1+0.7)*43758.5453;return x-Math.floor(x);}
+/* A fully built ground is ~32 KB of markup and ~380 circles, rebuilt on every
+   single tap because render() swaps the whole app. Cache it against everything
+   that can change the drawing. */
+let stadCache={key:null,svg:""};
 function stadiumSvg(){
   const dark=G.mode==="dark",P=STAD;
   const cap=Math.max(1,G.capacity);
   const full=clamp(attendance()/cap,0,1);          // crowd density = how full we are
+  const key=[G.mode,G.hue,G.capacity,G.club,G.badge,Math.round(full*100),
+    JSON.stringify(G.stands),JSON.stringify(G.fac),
+    G.standBuild?G.standBuild.key+":"+G.standBuild.remain:"-",
+    G.fanMood>55?2:G.fanMood>30?1:0].join("|");
+  if(stadCache.key===key)return stadCache.svg;
   const C=dark
    ?{grass1:"#1C5533",grass2:"#22643C",line:"rgba(238,255,232,.52)",stand:"#101A12",tier:"#16241A",
      roof:"#090F0A",edge:"#26351F",crowd:"#8E9C92",hut:"#141F16",mast:"#1B241C",lamp:"#F7FBDF",scr:"#070B08",ghost:"#3A4A3C"}
@@ -2154,7 +2169,7 @@ function stadiumSvg(){
   const shedM=shedMap(G.stands.shed),awayM=awayMap(G.stands.away);
   const bnr=G.stands.shed>=1?(([bx,by])=>`<text x="${bx.toFixed(1)}" y="${by.toFixed(1)}" text-anchor="middle" font-family="BarlowC" font-style="italic" font-weight="900" font-size="10" fill="var(--acc)" letter-spacing="2.6">${fanBanner()}</text>`)(shedM(G.stands.shed>=2?0.82:0.78,0.5)):"";
 
-  return `<div class="stadwrap"><svg viewBox="0 0 390 250" style="display:block;background:${dark?`linear-gradient(180deg,hsl(${G.hue},24%,11%),hsl(${G.hue},26%,5%))`:"linear-gradient(180deg,#DCE6F1,#EFF2EA)"}">
+  const out=`<div class="stadwrap"><svg viewBox="0 0 390 250" style="display:block;background:${dark?`linear-gradient(180deg,hsl(${G.hue},24%,11%),hsl(${G.hue},26%,5%))`:"linear-gradient(180deg,#DCE6F1,#EFF2EA)"}">
     <defs>
       <linearGradient id="stCone" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stop-color="rgba(247,251,223,.26)"/><stop offset="1" stop-color="rgba(247,251,223,0)"/></linearGradient>
@@ -2177,6 +2192,8 @@ function stadiumSvg(){
   </svg>
   <div class="plaque"><div class="pn">${G.club.split(" ")[0]} Ground</div>
   <div class="pc"><small>${Math.round(full*100)}% FULL · CAPACITY</small><b class="num">${G.capacity.toLocaleString("en-GB")}</b></div></div></div>`;
+  stadCache={key,svg:out};
+  return out;
 }
 function fanBanner(){
   if(G.fanMood>55)return "WE ARE "+G.club.split(" ")[0].toUpperCase();
@@ -2203,6 +2220,12 @@ function renderModal(){
       ${M.label?`<div class="biglabel">${M.label}</div>`:`<div class="kick">Matchday ${G.md+1} · ${M.home?"Home":"Away"}</div>`}
       <h2>${M.home?G.club:M.opp} <span style="opacity:.4">v</span> ${M.home?M.opp:G.club}</h2>
       <p><b>${M.weather.n}</b> — ${M.weather.txt}.</p>
+      ${(()=>{ // a thin squad plays short without ever saying so
+        const xi=xiList(),out=G.squad.filter(p=>p.inj||p.susp);
+        if(xi.length>=11)return out.length?`<div class="why"><b>Unavailable:</b> ${out.map(p=>p.name.split(" ")[1]+(p.inj?" (injured)":" (suspended)")).join(", ")}. The gaffer has eleven, just about.</div>`:"";
+        return `<div class="why" style="border-left-color:rgba(224,90,74,.6);background:rgba(224,90,74,.09)">
+          <b>You cannot field a full eleven.</b> Only ${xi.length} fit players in the best shape available${out.length?" — "+out.map(p=>p.name.split(" ")[1]).join(", ")+" are out":""}. The team plays short today, and it will show.</div>`;
+      })()}
       <div class="dlg"><div class="iav g">GM</div><div class="bubble">${gafferRead(M)}</div></div>
       <div class="kick" style="margin-top:14px">The gaffer awaits your word</div>
       ${Object.entries(APPROACHES).map(([k,a])=>`<button class="abtn ${k==='allout'?'comm':''}" onclick="choosePrematch('${k}')" style="text-align:left"><b>${a.n}</b> — ${a.txt}</button>`).join("")}
@@ -2400,7 +2423,7 @@ function renderModal(){
         ${est.sold===0?`<div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.08)"><b>Nobody is buying at that price.</b> Not one soul in this town. You will take every penny at the turnstile instead — if they turn up at all.</div>`
           :pastPeak?`<div class="why" style="border-left-color:rgba(243,179,60,.6);background:rgba(243,179,60,.08)"><b>You are past the top of the curve.</b> Another tenner loses more holders than it gains in cash — you would take <b>${kfmt(dearer.cash)}</b> instead of ${kfmt(est.cash)}, and hand back the crowd as well.</div>`
           :""}
-        <div class="why"><b>Konsekvens:</b> a holder pays once, then walks in free all season. Cheap seats mean money today and a guaranteed crowd for the atmosphere — but every holder is a turnstile that has stopped paying, and price it too high and they simply stop buying.</div>`;
+        <div class="why"><b>What this means:</b> a holder pays once, then walks in free all season. Cheap seats mean money today and a guaranteed crowd for the atmosphere — but every holder is a turnstile that has stopped paying, and price it too high and they simply stop buying.</div>`;
     }
     if(st===1){
       const j=m.jersey;
@@ -2410,7 +2433,7 @@ function renderModal(){
       body=`<div class="kick" style="margin-top:10px">This season's kit · sets merch income all season</div>
         <div class="modes" style="margin-top:8px;flex-direction:column">
           ${["classic","modern","wild"].map(x=>`<button class="${j===x?'on':''}" onclick="modal.jersey='${x}';render()">${x[0].toUpperCase()+x.slice(1)}</button>`).join("")}</div>
-        <div class="why"><b>Konsekvens:</b> ${why||"Pick one — the kit multiplies every shirt sold on a matchday, for better or worse, until next summer."}</div>`;
+        <div class="why"><b>What this means:</b> ${why||"Pick one — the kit multiplies every shirt sold on a matchday, for better or worse, until next summer."}</div>`;
     }
     if(st===2){
       const opts=Object.entries(STANDS).filter(([k])=>G.stands[k]<2);
@@ -2429,7 +2452,7 @@ function renderModal(){
         ${tgt?`<div class="card" style="margin-top:10px"><div class="rowline"><span>${STANDS[tgt.key].n} lvl ${tgt.lvl}</span><span class="amt num">${kfmt(STANDCOST[tgt.lvl])}</span></div>
           <div class="rowline"><span>In the fund after tonight</span><span class="num">${kfmt(G.fund+m.fundAdd)}</span></div>
           <div class="bar"><i style="width:${clamp(Math.round(100*(G.fund+m.fundAdd)/STANDCOST[tgt.lvl]),2,100)}%"></i></div></div>`:""}
-        <div class="why"><b>Konsekvens:</b> money in the fund earns 1.5% a matchday, up to +15%, and building starts by itself when it's full. But it is money you cannot spend on players — and if the bank ever comes calling, the fund is the first thing they take.</div>`;
+        <div class="why"><b>What this means:</b> money in the fund earns 1.5% a matchday, up to +15%, and building starts by itself when it's full. But it is money you cannot spend on players — and if the bank ever comes calling, the fund is the first thing they take.</div>`;
     }
     if(st===3){
       const est=seasonTixEstimate(m.tixPrice);
@@ -2442,7 +2465,7 @@ function renderModal(){
           <div class="rowline"><span><b>Working capital after tonight</b></span><span class="amt num" style="color:${after<0?"#E07A6A":"var(--acc)"}">${kfmt(after)}</span></div>
           <div class="rowline"><span>Wage bill <small>· of ${kfmt(G.wageCap)} cap</small></span><span class="num">${kfmt(wages)}/w</span></div></div>
         ${G.myShare<100?(m.capMsg?`<p style="margin-top:10px"><b>${m.capMsg}</b></p>`:`<button class="abtn comm" onclick="askCapRaise()" ${G.capRaiseUsed?"disabled style='opacity:.4'":""}>Ask the co-owners to raise the wage cap <small>(once per season)</small></button>`):""}
-        <div class="why"><b>Konsekvens:</b> this is your whole season's room for manoeuvre. Wages leave the bank <b>every matchday</b>, home or away — ${kfmt(wages*G.rounds)} across the ${G.rounds} of them. Objective: top ${G.objectivePos}.</div>`;
+        <div class="why"><b>What this means:</b> this is your whole season's room for manoeuvre. Wages leave the bank <b>every matchday</b>, home or away — ${kfmt(wages*G.rounds)} across the ${G.rounds} of them. Objective: top ${G.objectivePos}.</div>`;
     }
     return `<div class="overlay"><div class="sheet">
       <div class="biglabel">The Budget Meeting</div>
