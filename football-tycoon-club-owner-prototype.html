@@ -373,6 +373,29 @@ const BAL={
   prize:{champions:150000, runnersUp:100000, playoffs:120000, objective:48000, missed:16000},
   bank:{crisisAt:-60000, loanCash:50000, loanPerMD:5500, loanTerm:10, adminRelief:40000, adminPoints:6},
   sponsor:{penalty:0.2},     // of a whole season's income, if the clause is missed
+  /* The protest ladder (GDD): "først bannere, så tavshed (uhyggeligst), så
+     boykot med økonomisk konsekvens. Vrede har trin, ikke bare et tal."
+     `hysteresis` is what makes the way back possible but slow: you slip down a
+     rung the moment mood crosses it, and have to climb well clear to get off. */
+  protest:{
+    banners:38, silence:26, boycott:12, hysteresis:5,
+    /* Anger cools. Without this the bottom rung is an absorbing state: a
+       boycott caps the gate, a capped gate means no players, no players means
+       more defeats, and −4 a defeat outruns +3 a win forever. Measured: 17% of
+       all matchdays sat in boycott against 1.6% in silence — a cliff, not a
+       ladder. The town drifts back toward `baseline` when you are below it, at
+       `easing` of the gap per matchday: ~+1,4 at the very bottom, ~+0,2 near
+       the top of the band. Slow enough to hurt, fast enough to be a way out. */
+    easing:0.08, baseline:37,
+    /* Home advantage is 0.13 for simply being at home — the pitch, the beds, no
+       coach trip — plus a crowd term worth up to ~0.3. It is the CROWD term the
+       silence takes away, not the ground itself, so this is the base and not
+       zero. At 0.04 the silent rung cost so many home defeats that clubs went
+       into administration from the knock-on, which is a different mechanic
+       than the one being built. */
+    silentHome:0.13,
+    boycottCap:0.68          // hard ceiling on townDemand() — empty seats you can see
+  },
   /* Deal structures (GDD): "Ratebetaling (køb over 2-4 rater — køb større end
      kassen, bind fremtiden) og bonusklausuler (+£ ved oprykning / pr. mål —
      flyt risikoen til fremtiden). Rå pris er altid muligt; strukturer er
@@ -416,6 +439,7 @@ function loadGame(){
   if(!Number.isFinite(G.netEwma))G.netEwma=0;
   if(!Number.isFinite(G.trust))G.trust=BAL.owners.trustStart;
   if(!Number.isFinite(G.admins))G.admins=0;
+  if(!Number.isFinite(G.protest))G.protest=protestFor(G.fanMood,0);
   for(const p of [...G.squad,...G.market,...G.freeAgents])if(!Number.isFinite(p.load))p.load=0;
   // the id counter lives outside G — restore it above every id in play
   PID=1+[...G.squad,...G.market,...G.freeAgents].reduce((m,p)=>Math.max(m,p.id||0),0);
@@ -515,7 +539,7 @@ function newGame(name,hue,mode){
     fund:0,fundBonus:0,fundTarget:null,fundRaided:false,seasonTix:{price:150,sold:0},bigExtra:2,jerseyFactor:1,jerseyName:null,
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
     myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,
-    netEwma:0,trust:BAL.owners.trustStart,admins:0,valHistory:[],commitments:[],
+    netEwma:0,trust:BAL.owners.trustStart,admins:0,valHistory:[],commitments:[],protest:0,
     build:null,buildCost:80000,loan:null,warnedNeg:false,bankForced:false,
     sponsor:null,sponsorOffered:false,sponsorDue:null,
     coach:{...pick(COACHES)},
@@ -757,6 +781,8 @@ function bigGameBonus(){return G.squad.some(p=>p.traits.includes("biggame"))?2.5
 
 /* ---------- match sim: two halves, weather, approach, atmosphere ---------- */
 function homeBonus(){ // dynamic 12th man: crowd × mood × Shed End
+  // Rung two is the quiet one, and the quiet one is where the twelfth man goes.
+  if(protestLevel()>=2)return BAL.protest.silentHome;
   return 0.13+0.27*(attendance()/G.capacity)*(G.fanMood/100)+G.stands.shed*0.05;
 }
 function myLambdas(t,home,big,appr,weather){
@@ -969,9 +995,42 @@ function ticketPriceFactor(price){
   const T=BAL.ticket,d=price-T.sweetSpot;
   return clamp(1+(d<0?-d*T.bargainLift:-d*T.elasticity),0,1.18);
 }
+/* ---------- the protest ladder (pakke 2) ----------
+   Three rungs, and the level is STORED rather than derived on the fly, so the
+   stadium cache can key on it and so climbing back out can be made slower than
+   falling in. Anger has steps, not just a number. */
+const PROTEST_NAMES=["calm","banners","silence","boycott"];
+function protestFor(mood,cur){
+  const P=BAL.protest;
+  let lvl=mood<P.boycott?3:mood<P.silence?2:mood<P.banners?1:0;
+  if(lvl<cur){
+    // to leave a rung you must climb clear of it, not merely touch the line
+    const line=[0,P.banners,P.silence,P.boycott][cur];
+    if(mood<line+P.hysteresis)lvl=cur;
+  }
+  return lvl;
+}
+function protestLevel(){return G.protest||0;}
+function updateProtest(){
+  const was=protestLevel(),now=protestFor(G.fanMood,was);
+  if(now===was)return;
+  G.protest=now;
+  if(now>was){
+    if(now===1)addNews("FANS","Protest banners in the Shed End. Hand-painted, badly spelled, entirely sincere.");
+    if(now===2){addNews("FANS","The ground has gone quiet. Not angry-quiet. Just quiet.");
+      msg(G.coach.n.split(" ")[0]+" (gaffer)","GM","\"You can hear the ball\"","\"Forty years I've been in grounds, chairman. Booing I can work with. This lot have stopped singing. My players can hear their own boots. That's the one that gets into their heads.\"",null);}
+    if(now===3){addNews("FANS","BOYCOTT. The supporters' club has asked the town to stay away until things change.");
+      msg("The co-owners","CO","\"About the empty seats\"","\"We have watched the terraces empty for weeks now. This is no longer a mood, chairman — it is a number in the accounts, and it is our number too. Fix it.\"",null);}
+  }else{
+    if(now===0)addNews("FANS","The singing is back. Somebody has repainted the banner. Properly, this time.");
+    else addNews("FANS","The mood has lifted a rung. Nobody says so out loud, but the ground sounds different.");
+  }
+}
 function townDemand(){
   const D=BAL.demand;
-  return D.base*(1+(3-G.div)*D.perDivision)*(1+G.stands.family*D.familyStand)*(1+(G.fac.basics?D.basics:0));
+  const d=D.base*(1+(3-G.div)*D.perDivision)*(1+G.stands.family*D.familyStand)*(1+(G.fac.basics?D.basics:0));
+  // a boycott is a hard ceiling on the town, not a nudge to the mood factor
+  return protestLevel()>=3?d*BAL.protest.boycottCap:d;
 }
 function attendance(){
   const pos=myPos();
@@ -1049,6 +1108,10 @@ function updateFormMood(res){
     else{p.form=clamp(p.form-BAL.fresh.benchForm,-6,6);p.conf=clamp(p.conf-BAL.fresh.benchConf,10,95);}
   }
   G.fanMood=clamp(G.fanMood+(w?3:d?0:-4)+(G.ticket>BAL.ticket.moodPenaltyAbove?-1:0)+G.stands.family*0.5+(G.fac.pub?0.2:0),5,100);
+  // the way back: anger cools toward a baseline, never inflates a happy ground
+  {const P=BAL.protest;
+   if(G.fanMood<P.baseline)G.fanMood=clamp(G.fanMood+(P.baseline-G.fanMood)*P.easing,5,100);}
+  updateProtest();
   if(G.talkCooldown>0)G.talkCooldown--;
   for(const t of G.teams){t.att=clamp(t.att+R(-1,1)*0.5,40,75);t.def=clamp(t.def+R(-1,1)*0.5,40,75);}
 }
@@ -2458,12 +2521,14 @@ function stadHash(n){const x=Math.sin(n*127.1+0.7)*43758.5453;return x-Math.floo
 let stadCache={key:null,svg:""};
 function stadiumSvg(){
   const dark=G.mode==="dark",P=STAD;
+  const protest=protestLevel();
   const cap=Math.max(1,G.capacity);
   const full=clamp(attendance()/cap,0,1);          // crowd density = how full we are
   const key=[G.mode,G.hue,G.capacity,G.club,G.badge,Math.round(full*100),
     JSON.stringify(G.stands),JSON.stringify(G.fac),
     G.standBuild?G.standBuild.key+":"+G.standBuild.remain:"-",
-    G.fanMood>55?2:G.fanMood>30?1:0].join("|");
+    G.fanMood>55?2:G.fanMood>30?1:0,
+    "pr"+protestLevel()].join("|");     // the rung MUST be in the key, or the ground never changes
   if(stadCache.key===key)return stadCache.svg;
   const C=dark
    ?{grass1:"#1C5533",grass2:"#22643C",line:"rgba(238,255,232,.52)",stand:"#101A12",tier:"#16241A",
@@ -2492,10 +2557,13 @@ function stadiumSvg(){
     for(let c=0;c<cols;c++)for(let w=0;w<rows;w++){
       const i=base+c*37+w*11;
       if(stadHash(i*3.13)>full)continue;            // empty seat
+      if(protest>=3&&stadHash(i*7.9)<0.30)continue;  // boycott: sections nobody has filled
       const v=clamp((c+0.5+(stadHash(i*1.7)-0.5)*0.8)/cols,0.01,0.99);
       const u=clamp(u0+(u1-u0)*((w+0.5+(stadHash(i*2.9)-0.5)*0.5)/rows),0,1);
       const [x,y]=m(u,v);
-      const acc=stadHash(i*5.7)<0.13;               // a scarf in the club colour
+      // rung two: the scarves come down with the singing. Rung three: whole
+      // blocks simply are not there.
+      const acc=protest<2&&stadHash(i*5.7)<0.13;    // a scarf in the club colour
       s+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${acc?"var(--acc)":C.crowd}" opacity="${acc?".95":".68"}"/>`;
     }
     return s;
@@ -2563,7 +2631,17 @@ function stadiumSvg(){
     +quad(mapP,0.435,0.565,1,1.022,`stroke="${C.line}" stroke-width="1.8" fill="none"`);
 
   const shedM=shedMap(G.stands.shed),awayM=awayMap(G.stands.away);
-  const bnr=G.stands.shed>=1?(([bx,by])=>`<text x="${bx.toFixed(1)}" y="${by.toFixed(1)}" text-anchor="middle" font-family="BarlowC" font-style="italic" font-weight="900" font-size="10" fill="var(--acc)" letter-spacing="2.6">${fanBanner()}</text>`)(shedM(G.stands.shed>=2?0.82:0.78,0.5)):"";
+  const bnrCol=protest>=1?"#E07A6A":"var(--acc)";
+  const bnr=G.stands.shed>=1?(([bx,by])=>`<text x="${bx.toFixed(1)}" y="${by.toFixed(1)}" text-anchor="middle" font-family="BarlowC" font-style="italic" font-weight="900" font-size="10" fill="${bnrCol}" letter-spacing="2.6">${fanBanner()}</text>`)(shedM(G.stands.shed>=2?0.82:0.78,0.5)):"";
+  /* Rung one: hand-painted sheets go up along the side stands. They are drawn
+     as bedsheets, because that is what they are. */
+  const protestSheets=protest>=1?[[-1,"main"],[1,"family"]].map(([side,k])=>{
+    if(G.stands[k]<1)return "";
+    const m=sideMap(side,G.stands[k]);
+    return [0.30,0.58].slice(0,protest>=2?2:1).map((v,ix)=>
+      quad(m,0.10,0.30,v,v+0.14,`fill="#E07A6A" opacity=".${protest>=3?"85":"7"}" stroke="${C.edge}" stroke-width=".5"`)
+    ).join("");
+  }).join(""):"";
 
   const out=`<div class="stadwrap"><svg viewBox="0 0 390 250" style="display:block;background:${dark?`linear-gradient(180deg,hsl(${G.hue},24%,11%),hsl(${G.hue},26%,5%))`:"linear-gradient(180deg,#DCE6F1,#EFF2EA)"}">
     <defs>
@@ -2580,6 +2658,7 @@ function stadiumSvg(){
     ${stand("main",sideMap(-1,G.stands.main),17,3,1.5,2200)}
     ${stand("family",sideMap(1,G.stands.family),17,3,1.5,4400)}
     ${stand("away",awayM,20,2,1.4,6600)}
+    ${protestSheets}
     ${G.fac.vip&&G.stands.main>=1?[0.28,0.4,0.52,0.64].map(v=>quad(sideMap(-1,G.stands.main),0.66,0.86,v,v+0.085,`fill="var(--acc)" opacity=".5" stroke="${C.edge}" stroke-width=".6"`)).join(""):""}
     ${cone(86,P.fy,34,54)}${cone(304,P.fy,34,54)}${cone(24,P.ny,48,74)}${cone(366,P.ny,48,74)}
     ${pylon(24,P.ny,48,26)}${pylon(366,P.ny,48,26)}
@@ -2592,9 +2671,12 @@ function stadiumSvg(){
   return out;
 }
 function fanBanner(){
-  if(G.fanMood>55)return "WE ARE "+G.club.split(" ")[0].toUpperCase();
-  if(G.fanMood>30)return "IN IT TOGETHER. MOSTLY.";
-  return "SACK THE BOARD (THAT'S YOU)";
+  // one ladder, one source of truth — the banner says what rung we are on
+  const lvl=protestLevel();
+  if(lvl>=3)return "STAY AWAY UNTIL THEY GO";
+  if(lvl>=2)return "NOT A WORD. NOT A PENNY.";
+  if(lvl>=1)return "SACK THE BOARD (THAT'S YOU)";
+  return G.fanMood>55?"WE ARE "+G.club.split(" ")[0].toUpperCase():"IN IT TOGETHER. MOSTLY.";
 }
 function viewTable(){
   const rows=table();
@@ -2632,6 +2714,14 @@ function renderModal(){
         }
         return `<div class="why" style="border-left-color:rgba(224,90,74,.6);background:rgba(224,90,74,.09)">
           <b>You cannot field a full eleven.</b> Only ${xi.length} fit players in the best shape available${out.length?" — "+out.map(p=>p.name.split(" ")[1]).join(", ")+" are out":""}. The team plays short today, and it will show.</div>`;
+      })()}
+      ${(()=>{ // the protest ladder is loudest — or quietest — at home
+        if(!M.home||protestLevel()<1)return "";
+        const txt=[null,
+          "<b>There are banners up in the Shed End.</b> Hand-painted, one of them about you personally. They still came, though. They always come.",
+          "<b>The ground has gone silent.</b> No singing, no whistling, nothing — and the gaffer says that is worse than being booed. The twelfth man has stopped turning up for work.",
+          "<b>The boycott is holding.</b> Whole blocks of empty seats where the noise used to be. Every one of them is money that did not come through the turnstile."][protestLevel()];
+        return `<div class="why" style="border-left-color:rgba(224,90,74,.6);background:rgba(224,90,74,.09)">${txt}</div>`;
       })()}
       <div class="dlg"><div class="iav g">GM</div><div class="bubble">${gafferRead(M)}</div></div>
       <div class="kick" style="margin-top:14px">The gaffer awaits your word</div>

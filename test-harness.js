@@ -232,7 +232,8 @@ function runSeed(seed) {
       att: res.att || 0, cap: H.G.capacity,
       // pakke 1: dybde og friskhed maales pr. kampdag, ikke kun ved saesonslut
       squad: H.G.squad.length, fresh: H.call("freshCount"),
-      avail: H.call("available").length
+      avail: H.call("available").length,
+      protest: H.G.protest || 0, mood: Math.round(H.G.fanMood)   // pakke 2
     });
     return out;
   };
@@ -411,14 +412,15 @@ function runSeed(seed) {
       mood: G.fanMood, pts: G.me.pts, wages: G.squad.map(p => p.wage), md: G.md, loan: G.loan };
     const FLOOR = H.consts.BAL.val.floor;
     const base = v();
-    /* En klub der allerede ligger paa gulvet kan ikke falde laengere -- saa
-       maaler vi ingenting. Sammenlign derfor kun naar der er luft nedad. */
-    const canFall = base > FLOOR * 1.5;
+    /* En klub hvis raa vaerdi ligger under gulvet er KLEMT FAST paa gulvet:
+       den kan hverken falde eller stige, for max() spiser begge veje. Saa
+       maaler vi ingenting, og sammenligner kun naar klemmen ikke er aktiv. */
+    const loose = base > FLOOR * 1.5;
 
     if (G.div < 3) { G.div++; const down = v(); G.div = snap.div;
-      if (canFall && down >= base) fail("nedrykning saenkede ikke klubvaerdien: " + base + " -> " + down); }
+      if (loose && down >= base) fail("nedrykning saenkede ikke klubvaerdien: " + base + " -> " + down); }
     if (G.div > 0) { G.div--; const up = v(); G.div = snap.div;
-      if (up <= base) fail("oprykning haevede ikke klubvaerdien: " + base + " -> " + up); }
+      if (loose && up <= base) fail("oprykning haevede ikke klubvaerdien: " + base + " -> " + up); }
 
     /* Indtjeningsleddet maales mod et NEUTRALT nulpunkt, ikke mod klubbens
        egen netEwma -- den kan i forvejen vaere vaerre end proevevaerdien. */
@@ -435,7 +437,7 @@ function runSeed(seed) {
     H.call("administration");
     H.modal = null;
     const after = v();
-    if (canFall && after >= base) fail("administration saenkede ikke klubvaerdien: " + base + " -> " + after);
+    if (loose && after >= base) fail("administration saenkede ikke klubvaerdien: " + base + " -> " + after);
     if (!(G.admins > snap.admins)) fail("administration blev ikke talt med (G.admins)");
     if (!(G.trust < snap.trust)) fail("administration kostede ikke tillid i bestyrelsen");
 
@@ -492,11 +494,16 @@ function runSeed(seed) {
      efterspørgselsformel får indtægten til at stige igen ved absurde priser —
      dvs. gratis penge ved bare at skrue prisen op. Både sæsonkort og
      billetpris har haft præcis den fejl. */
-  function assertUnimodal(a, label) {
+  /* `tol` er stoejgulvet. Antal solgte saesonkort er et HELTAL, saa kontanten
+     kan tikke op med under én kortpris hen over et pristrin uden at der er
+     nogen exploit -- det er gitteret, ikke kurven. En stigning paa mere end ét
+     kort er derimod aegte gratis penge. tol kan vaere et tal eller en liste. */
+  function assertUnimodal(a, label, tol) {
+    const t = i => (Array.isArray(tol) ? tol[i] : tol) || 1;
     let peak = 0;
     for (let i = 1; i < a.length; i++) if (a[i] > a[peak]) peak = i;
     for (let i = peak + 1; i < a.length; i++) {
-      if (a[i] > a[i - 1] + 1) fail(label + ": stiger igen efter toppunktet (" + a[i - 1] + " → " + a[i] + ") — prisen kan skrues op i det uendelige");
+      if (a[i] > a[i - 1] + t(i)) fail(label + ": stiger igen efter toppunktet (" + a[i - 1] + " → " + a[i] + ") — prisen kan skrues op i det uendelige");
     }
     return peak;
   }
@@ -510,15 +517,15 @@ function runSeed(seed) {
     const fair = H.call("seasonTixFair");
     const lo = Math.max(10, Math.round(fair * 0.15)), hi = Math.round(fair * 3);
     const step = Math.max(5, Math.round((hi - lo) / 40));
-    const cash = [], sold = [];
-    for (let p = lo; p <= hi; p += step) { const e = H.call("seasonTixEstimate", p); cash.push(e.cash); sold.push(e.sold); }
-    assertUnimodal(cash, "sæsonkort: kontant");
+    const cash = [], sold = [], prices = [];
+    for (let p = lo; p <= hi; p += step) { const e = H.call("seasonTixEstimate", p); cash.push(e.cash); sold.push(e.sold); prices.push(p); }
+    assertUnimodal(cash, "sæsonkort: kontant", prices);
     assertNonIncreasing(sold, "sæsonkort: solgte");
     if (sold[sold.length - 1] !== 0) fail("sæsonkort: der sælges stadig ved 3x fair pris (£" + hi + " → " + sold[sold.length - 1] + " solgte)");
     // og inden for det interval UI'et faktisk tillader, skal toppunktet være nåeligt
-    const uiCash = [];
-    for (let p = 20; p <= 400; p += 10) uiCash.push(H.call("seasonTixEstimate", p).cash);
-    assertUnimodal(uiCash, "sæsonkort: kontant i UI-intervallet £20-400");
+    const uiCash = [], uiPrices = [];
+    for (let p = 20; p <= 400; p += 10) { uiCash.push(H.call("seasonTixEstimate", p).cash); uiPrices.push(p); }
+    assertUnimodal(uiCash, "sæsonkort: kontant i UI-intervallet £20-400", uiPrices);
 
     const keep = H.G.ticket, rev = [], att = [];
     for (let t = 5; t <= 30; t++) { H.G.ticket = t; const a = H.call("attendance"); att.push(a); rev.push(Math.max(0, a - H.G.seasonTix.sold) * t); }
@@ -702,11 +709,55 @@ function runSeed(seed) {
     if (H.call("commitmentsOwed") !== 75000) fail("commitmentsOwed() = " + H.call("commitmentsOwed") + ", forventet 75000");
     const withDebt = H.call("clubValuation");
     G.commitments = [];
-    if (H.call("clubValuation") <= withDebt) fail("forpligtelser saenker ikke klubvaerdien");
+    const without = H.call("clubValuation");
+    if (without > H.consts.BAL.val.floor && without <= withDebt) fail("forpligtelser saenker ikke klubvaerdien: " + withDebt + " vs " + without);
 
     G.commitments = keep.commitments; G.balance = keep.balance; G.div = keep.div; G.inbox = keep.inbox;
     checkInvariants();
     H.screen = "home"; H.call("render");
+  }
+
+  /* Pakke 2: protest-trappen. Botten vinder for meget til at naa bunden af egen
+     kraft, saa alle tre trin tvinges igennem -- inkl. den faelde WORKPLAN'en
+     selv advarer om: stadCache-noeglen skal indeholde trinnet. */
+  function checkProtestLadder() {
+    const G = H.G;
+    where = "protest-trappen";
+    const P = H.consts.BAL.protest;
+    const keep = { mood: G.fanMood, protest: G.protest, inbox: G.inbox.slice(), news: G.news.slice(), screen: H.screen };
+
+    const at = mood => { G.fanMood = mood; H.call("updateProtest"); return H.call("protestLevel"); };
+
+    /* Traersklerne: hvert trin skal faktisk udloeses. */
+    G.protest = 0;
+    if (at(80) !== 0) fail("glade fans giver alligevel protest");
+    if (at(P.banners - 1) !== 1) fail("bannere (trin 1) udloeses ikke ved stemning " + (P.banners - 1));
+    if (at(P.silence - 1) !== 2) fail("tavshed (trin 2) udloeses ikke");
+    if (at(P.boycott - 1) !== 3) fail("boykot (trin 3) udloeses ikke");
+
+    /* Virkningerne maales med fanMood HOLDT FAST og kun trinnet skiftet.
+       Ellers maaler man stemningens egen effekt paa fremmoedet og tror at
+       trappen virker -- begge de foerste forsoeg paa denne test gjorde netop
+       det og lod baade en doed 12.-mand-regel og en stadCache uden trinnet
+       slippe igennem. */
+    G.fanMood = P.silence - 1;
+    const eff = lvl => { G.protest = lvl; H.screen = "club"; H.call("render"); checkSvg(lastHtml.v);
+      return { home: H.call("homeBonus"), town: H.call("townDemand"), svg: H.call("stadiumSvg") }; };
+    const e1 = eff(1), e2 = eff(2), e3 = eff(3);
+    if (e2.home >= e1.home) fail("12. mand falder ikke bort ved tavshed: " + e2.home + " vs " + e1.home + " (samme stemning)");
+    if (e2.svg === e1.svg) fail("stadion tegnes uaendret fra trin 1 til 2 — staar trinnet i stadCache-noeglen?");
+    if (e3.town >= e1.town) fail("boykot saenker ikke townDemand(): " + e3.town + " vs " + e1.town + " (samme stemning)");
+    if (e3.svg === e2.svg) fail("stadion tegnes uaendret fra trin 2 til 3 — staar trinnet i stadCache-noeglen?");
+    checkHtml();
+
+    // vejen tilbage: mulig, men langsom. At roere linjen er ikke nok.
+    if (at(P.boycott + 1) !== 3) fail("trinnet forlades allerede ved at roere linjen — hysteresen virker ikke");
+    if (at(P.boycott + P.hysteresis + 1) !== 2) fail("man kan ikke komme OP ad trappen igen");
+    if (at(95) !== 0) fail("fuld opbakning fjerner ikke protesten");
+
+    G.fanMood = keep.mood; G.protest = keep.protest; G.inbox = keep.inbox; G.news = keep.news;
+    H.screen = keep.screen; H.call("render");
+    checkInvariants();
   }
 
   function checkInvariants() {
@@ -734,6 +785,7 @@ function runSeed(seed) {
     if (!Number.isFinite(val) || val <= 0) fail("clubValuation() = " + val + " (skal vaere endelig og > 0)");
     if (!Number.isFinite(G.netEwma)) fail("G.netEwma er ikke et tal: " + G.netEwma);
     if (!Number.isFinite(G.trust) || G.trust < 0 || G.trust > 100) fail("G.trust = " + G.trust);
+    if (!Number.isFinite(G.protest) || G.protest < 0 || G.protest > 3) fail("G.protest = " + G.protest);
     // pakke 3: forpligtelser er kun id'er og primitive vaerdier, og de doer ud
     if (!Array.isArray(G.commitments)) fail("G.commitments er ikke en liste");
     for (const c of G.commitments) {
@@ -1303,6 +1355,7 @@ function runSeed(seed) {
   checkInvariants();
   checkAllMessageKinds();
   checkDealStructures();
+  checkProtestLadder();
   checkSaveLoad();
   checkPriceCurves();
   checkGroundStates();
@@ -1466,6 +1519,24 @@ function report(runs) {
       console.log("  køb med fee: " + bought + " · kontant " + d.cash +
         " · rater " + d.inst + " (" + Math.round(100 * d.inst / bought) + "%)");
       console.log("  klausuler: oprykning " + d.promo + " · pr. mål " + d.goals);
+    }
+  }
+
+  /* ── Pakke 2: protest-trappen ── */
+  {
+    const rung = [0, 0, 0, 0]; let tot = 0, moodSum = 0;
+    for (const r of runs) for (const e of r.stats.md) {
+      if (e.protest === undefined) continue;
+      rung[e.protest]++; tot++; moodSum += e.mood;
+    }
+    if (tot) {
+      const names = ["ro", "bannere", "tavshed", "boykot"];
+      console.log("\n─── PROTEST-TRAPPEN (pakke 2) ───");
+      console.log("  gns. stemning " + Math.round(moodSum / tot) + " · kampdage pr. trin:");
+      for (let i = 0; i < 4; i++) {
+        console.log("    " + String(i + " " + names[i]).padEnd(12) +
+          String(rung[i]).padStart(5) + "  " + (100 * rung[i] / tot).toFixed(1) + "%");
+      }
     }
   }
 
