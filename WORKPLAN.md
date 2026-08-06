@@ -11,6 +11,56 @@ Gafferen vælger elleveren; spilleren skaffer truppen og betingelserne. Enhver m
 
 ---
 
+# Pakke 0 — Indbakken er en blindgyde (LAV DENNE FØRST)
+
+**Fundet ved rigtig spiltest 6/8.** Mads gav et formelt bud, fik dagen efter besked om en budkrig — og der var **ingen knap at trykke på**. Han kunne heller ikke gå på Market og matche buddet, fordi spilleren stod låst på "BID PENDING".
+
+## Omfanget
+
+`handleAction()` håndterer **otte** beskedtyper. `viewInbox()` (~linje 1853) tegner kun knapper for **to**:
+
+| Type | Handler | Knap i UI |
+|---|---|---|
+| `sellOffer` | ✅ | ✅ |
+| `sponsorChoice` | ✅ | ✅ |
+| `bidAccepted` | ✅ | ❌ |
+| `bidCounter` | ✅ | ❌ |
+| `bidWar` | ✅ | ❌ |
+| `callback` | ✅ | ❌ |
+| `transferReq` | ✅ | ❌ |
+| `stunt` | ✅ | ❌ |
+
+**Hele det formelle bud-spor er dermed dødt** — også når klubben *accepterer* dit bud (`bidAccepted`). GDD linje 59 beskriver ellers to ligeværdige købsspor: *"Quick (live forhandlingsrunder) eller Formelt bud (fax → svar efter næste kampdag: accept / modbud / budkrig / afvist)"*. Kun det ene virker.
+
+Følgefejl: fordi beskeden aldrig kan besvares, ryddes `p.pendingBid` aldrig, og `marketRow()` tegner permanent `BID PENDING` i stedet for knapper. Spilleren er dermed **låst for evigt** — hverken indbakken eller markedet giver en vej videre.
+
+## Implementering
+
+**a) Tegn knapper for alle otte.** Valgene findes allerede i `handleAction` — de skal bare eksponeres:
+
+| Type | Knapper |
+|---|---|
+| `bidAccepted` | *"Åbn kontraktforhandling"* (ét valg) |
+| `bidCounter` | *"Accepter £X"* · *"Lad den dø"* |
+| `bidWar` | *"Match £X"* · *"Træk dig"* |
+| `callback` | *"Hør ham ad"* (ét valg) |
+| `transferReq` | *"Sæt ham på listen"* · *"Afvis"* |
+| `stunt` | *"Kør det · +£6.000"* · *"Nej tak"* |
+
+Beløb skal stå **på** knappen, som ved `sellOffer`. Er beløbet uden for kassen, dæmp knappen og skriv hvorfor — samme mønster som spiller-arket i ændring 2.
+
+**b) Bud må ikke hænge i det uendelige.** Giv bud-relaterede beskeder en frist (fx 2 kampdage). Når den passerer: marker beskeden `done`, forklar i teksten at de gik videre til en anden, og **ryd `pendingBid`** så spilleren bliver tilgængelig igen. Det løser låsningen og giver samtidig budkrigen den hastværksfølelse, den skal have.
+
+**c) Ryd op ved sletning.** `delMsg()` fjerner en besked uden at rydde `pendingBid`. Slet man en ubesvaret budbesked, låses spilleren på samme måde. Ryd tilstanden med.
+
+**d) Harness — invarianten der ville have fanget det.** Botten kalder `actMsg()` **direkte** og opdager derfor aldrig manglende knapper. Tilføj: render indbakke-skærmen, og for hver besked med `action && !done` skal den renderede HTML indeholde mindst ét `actMsg(<id>,`. Fejl ellers med beskedtypen. Det er samme fejlklasse som uregistrerede modaltyper, og den skal fanges automatisk på samme måde.
+
+## Færdig når
+
+Alle otte typer kan besvares fra indbakken, ingen spiller kan låses permanent på `BID PENDING`, og den nye harness-invariant er grøn. **Denne pakke går forud for de øvrige** — pakke 1 handler om at gøre dig sulten efter spillere, og det er meningsløst, hvis halvdelen af købsvejene er blindgyder.
+
+---
+
 # Pakke 1 — Trupdybde og friskhed
 
 ## Problemet, målt
