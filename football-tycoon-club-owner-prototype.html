@@ -372,7 +372,7 @@ const BAL={
   // near break-even by design, so the building money comes from here.
   prize:{champions:150000, runnersUp:100000, playoffs:120000, objective:48000, missed:16000},
   bank:{crisisAt:-60000, loanCash:50000, loanPerMD:5500, loanTerm:10, adminRelief:40000, adminPoints:6},
-  sponsor:{penalty:0.2},     // of a whole season's income, if the clause is missed
+  sponsor:{penalty:0.2, stuntFee:6000},  // penalty: of a season's income if the clause is missed
   /* The protest ladder (GDD): "først bannere, så tavshed (uhyggeligst), så
      boykot med økonomisk konsekvens. Vrede har trin, ikke bare et tal."
      `hysteresis` is what makes the way back possible but slow: you slip down a
@@ -421,6 +421,15 @@ const BAL={
     rivalGap:3,         // places between you: "the club just above or below"
     rivalPts:6,         // and points between you: two wins is still catchable
     revengeMargin:2     // beaten by this many = a debt the return leg collects
+  },
+  /* The text library's own thresholds (pakke 6). They decide which CONTEXT a
+     line is written for, so they belong here and not inside matchCtx(). */
+  text:{
+    lateFrom:75,        // a ticker line counts as late from this minute
+    routBy:3,           // goal difference that makes it a hiding
+    happyAt:70,         // fan mood above which the town is in a good mood
+    bigGroundAt:4000,   // capacity at which empty rows are conspicuous
+    flavourMemory:26    // club news remembered: one season of matchdays
   }
 };
 
@@ -509,19 +518,389 @@ const AGENTS=[
  {n:"Trevor Weep",av:"T",style:"weepy",open:["Trevor here. My client is being treated TERRIBLY where he is. Save him.","It's Trevor. *sniff* Have you ever seen a winger cry? I have."],counter:["'That offer made him cry. Again. A bit more?'","'He has a family, you know. And a boat payment.'"],accept:["'Oh THANK you. He'll be so happy. I'm welling up.'","'Deal! This is the happiest day of my week. It's been a bad week.'"],walk:["'I can't take this to him. He's fragile. Goodbye.'","Trevor hangs up mid-sniffle."]},
  {n:"Dex Mangle",av:"D",style:"chaotic",open:["DEX. Talk fast, I've got three windows open and one of them is a car deal.","Dex Mangle. Wait — which player is this about? Doesn't matter. Numbers."],counter:["'Hmm no. Counter. Also do you want a hot tub? Separate deal.'","'Higher. My gut says higher. My gut is never wrong. Often wrong.'"],accept:["'DONE. Wait, which club are you again? Doesn't matter. DONE.'","'Deal! Papers tomorrow. Or Thursday. One of those.'"],walk:["'This bores me now. Bye.' *click*","Dex hangs up. You suspect he already forgot the whole thing."]}
 ];
-const GOALDESC=["taps in from close range","curls one into the top corner","bundles it over the line — they all count","heads home from a corner","slots it coolly past the keeper","scores a scruffy one after a goalmouth scramble","lashes it in from 25 yards — an absolute screamer","chips the keeper, the cheeky sod"];
-const NEARMISS=["Chance! {P} drags it wide. The Shed End groans in unison.","{P} hits the bar! The woodwork is still shaking.","Their keeper pulls off a save he'll tell his grandkids about.","Corner comes to nothing. The pigeons on the roof remain unimpressed.","{P} goes on a mazy run and then remembers he's in League Three."];
-const FLAVOR=["The club cat was accidentally included in the team photo. Nobody regrets it.","Groundskeeper Reg has declared the pitch 'the best in the county'. Reg cuts it with a household mower.","The pie stand sold out by half time. The chairman (you) is quietly proud.","Local paper misspelled the club's name again. Third time this month.","A fan brought a homemade banner. It's slightly too big for the stand. Morale is up anyway.","Your left-back has started a podcast. It has four listeners. Three are his mum.","The away dressing room radiator is 'being looked at'. It is not being looked at."];
-const SPONSORS=[
- {n:"Harlow Brewery",av:"HB",per:4200,character:"Proud, local, loyal — they'll follow you up the leagues."},
- {n:"Duncroft Mattress Co.",av:"DM",per:3800,character:"The Mattress King wants his name on everything."},
- {n:"NimbusCoin",av:"NC",per:6500,character:"Pays wildly. Read the small print. There is a lot of small print."},
- {n:"Pemberton's Pies",av:"PP",per:3500,character:"Payment partly in pies. The good ones."}
+/* ================= pakke 6: TEKSTBIBLIOTEKET =================
+   GDD linje 214: "Stort tekstbibliotek (300-500 event-linjer), tonet efter
+   kontekst — derby, bundkamp, regn, rival — så selv 0-0 har karakter."
+   Der var otte målbeskrivelser. En sæson giver 35-40 mål, så hver linje blev
+   læst fem gange pr. sæson og hundredvis af gange over en karriere.
+
+   En pulje-post er ENTEN en bar streng (altid mulig) ELLER T("tag tag","tekst"),
+   hvor ALLE tags skal være til stede i situationen. De bare strenge er
+   sikkerhedsnettet: fælden ved kontekst-filtrering er en TOM pulje efter
+   filtrering, og der er altid utaggede linjer tilbage at falde tilbage på.
+
+   Tonegrænsen er GDD linje 180: "kunne det stå i en ægte lokalavis?" Jordnær
+   skævhed, aldrig magi, aldrig fjerde væg. */
+const T=(c,s)=>({c:c.split(" "),s});
+const lineText=e=>typeof e==="string"?e:e.s;
+const lineOk=(e,ctx)=>typeof e==="string"||e.c.every(t=>ctx.indexOf(t)>=0);
+/* Hele tag-ordforrådet, samlet ét sted. Harness'en krydstjekker begge veje: en
+   stavefejl i et tag på en linje gør linjen uopnåelig (død tekst), og et tag
+   som INGEN situation nogensinde producerer gør det samme. Begge er den samme
+   fejlklasse som pakke 5 rettede — kode der er skrevet men aldrig kaldt. */
+const LINE_TAGS=["mud","rain","frost","wind","clear","big","home","away","low","high",
+  "late","lead","level","behind","rout","silent","won","lost","drew","happy","angry",
+  "toptwo","bigground","window"];
+/* Vælg en linje: filtrér på kontekst, undgå det der allerede er brugt, og
+   returnér ALDRIG undefined. `used` er en liste af rå strenge — den ligger på
+   match-objektet (som ikke gemmes) eller i G som en kappet liste af primitiver,
+   så G bliver ved med at være et træ. */
+function pickLine(pool,ctx,used){
+  const ok=pool.filter(e=>lineOk(e,ctx));
+  const from=ok.length?ok:pool;                 // kan ikke ske, men aldrig undefined
+  const fresh=used?from.filter(e=>used.indexOf(lineText(e))<0):from;
+  const s=lineText(pick(fresh.length?fresh:from));
+  if(used&&used.indexOf(s)<0)used.push(s);
+  return s;
+}
+/* Global udskiftning. .replace("{P}",x) tager kun den FØRSTE — en linje med to
+   pladsholdere efterlod den anden i den renderede HTML. Harness'en fejler nu på
+   enhver {X} der overlever. */
+const fillName=(s,surname)=>s.split("{P}").join(surname);
+/* Situationens tags. Kampens, ikke spillerens: vejr, division, stor kamp,
+   hjemme/ude, stillingen ved halvlegens start, og tavshed på tribunen. */
+function matchCtx(match,half){
+  const c=[],w=match.weather?match.weather.n:"";
+  if(w==="Mudbath")c.push("mud","rain");
+  else if(w==="Heavy rain")c.push("rain","mud");
+  else if(w==="Drizzle")c.push("rain");
+  else if(w==="Frost")c.push("frost");
+  else if(w==="Howling wind")c.push("wind");
+  else c.push("clear");
+  if(match.big)c.push("big");
+  c.push(match.home?"home":"away");
+  c.push(G.div>=2?"low":"high");
+  const a=match.h1?match.h1.gf:0,b=match.h1?match.h1.ga:0;
+  if(half===2){
+    c.push(a>b?"lead":a<b?"behind":"level");
+    if(Math.abs(a-b)>=BAL.text.routBy)c.push("rout");
+  }else c.push("level");
+  if(match.home&&protestLevel()>=2)c.push("silent");
+  return c;
+}
+/* Minuttet er ikke kampens, men begivenhedens: "late" hoerer til den enkelte
+   chance, ikke til hele anden halvleg. Egen funktion, saa harness'ens
+   tag-instrumentering kan se den -- foerste udgave lagde 'late' paa inde i
+   halfEvents, og rapporten meldte helt korrekt tagget som aldrig produceret. */
+function eventCtx(base,minute){return minute>=BAL.text.lateFrom?base.concat("late"):base;}
+/* Klubnyhedernes kontekst: sidste resultat, stemning, tabellen, vinduet. */
+function flavourCtx(){
+  const c=[G.div>=2?"low":"high"],r=G.lastResult;
+  if(r){
+    c.push(r.gf>r.ga?"won":r.gf<r.ga?"lost":"drew");
+    const w=r.weather?r.weather.n:"";
+    if(w==="Mudbath"||w==="Heavy rain")c.push("mud","rain");
+    else if(w==="Drizzle")c.push("rain");
+    else if(w==="Frost")c.push("frost");
+    else if(w==="Howling wind")c.push("wind");
+    else c.push("clear");
+    if(r.big)c.push("big");
+  }
+  if(G.fanMood>=BAL.text.happyAt)c.push("happy");
+  if(protestLevel()>=1)c.push("angry");
+  if(myPos()<=2)c.push("toptwo");
+  if(G.capacity>=BAL.text.bigGroundAt)c.push("bigground");
+  if(windowOpen())c.push("window");
+  return c;
+}
+/* En klubnyhed må ikke gentages inden for en sæson, så den huskes i G — en
+   kappet liste af strenge, ikke referencer. */
+function flavourLine(){
+  if(!G.flavourSeen)G.flavourSeen=[];
+  const s=pickLine(FLAVOR,flavourCtx(),G.flavourSeen);
+  if(G.flavourSeen.length>BAL.text.flavourMemory)G.flavourSeen.shift();
+  return s;
+}
+
+const GOALDESC=[
+ "taps in from close range","curls one into the top corner",
+ "bundles it over the line — they all count","heads home from a corner",
+ "slots it coolly past the keeper","scores a scruffy one after a goalmouth scramble",
+ "lashes it in from 25 yards — an absolute screamer","chips the keeper, the cheeky sod",
+ "sweeps it in first time, no backlift, no fuss","stabs it in from six yards with his shin",
+ "gets the faintest touch on a corner and that is all it needs",
+ "nods it in at the back post while nobody marks him","rolls it under the keeper's dive",
+ "drills it low and hard through a forest of legs","volleys it in on the turn",
+ "beats two men and finishes with his weaker foot","wins it back himself and buries it",
+ "arrives late in the box like a man who has read the script",
+ "turns the defender inside out and slots it",
+ "side-foots it in after the keeper spills a routine one",
+ "finishes off a move that started with the goalkeeper",
+ "gets a shin on it — off the post, in","bullets a header in from eight yards",
+ "dinks it over a keeper who had come far too far",
+ "hammers a free kick in off the underside of the bar",
+ "converts the rebound after his own shot was blocked",
+ "pokes home a corner the keeper never came for",
+ "is first to the loose ball and makes no mistake",
+ "lifts it over the last defender and walks it in",
+ "shoots from a ridiculous angle and it goes in anyway",
+ "slides in at the far post with his studs up",
+ "gets a deflection off his backside and will claim it for twenty years",
+ "picks his spot from twelve yards","thumps it in and points straight at the man who crossed it",
+ "shrugs off a shirt-pull and finishes anyway","steers a header in off the crossbar",
+ "reaches a cross that was going nowhere and makes it something",
+ "finishes a counter that took eight seconds end to end",
+ "scores with the outside of his boot and looks faintly embarrassed",
+ "meets it on the half-volley and never looks up",
+ "wins the second ball, the third ball, and then the game",
+ T("mud","slides half the length of the six-yard box and takes the ball in with him"),
+ T("mud","scores out of a puddle. There is no other way to describe it"),
+ T("mud","wins a header nobody else fancied in that swamp"),
+ T("mud","hits one that stops dead in the mud, then trickles over the line"),
+ T("frost","slips, falls, and toe-pokes it in off the floor"),
+ T("frost","beats a defender who is still looking for his footing"),
+ T("wind","watches the wind carry a hopeful cross in off his head"),
+ T("wind","hits one that changes direction twice and beats everyone, keeper included"),
+ T("rain","pounces when the keeper's gloves let a wet one squirm through"),
+ T("rain","finishes with the ball skidding off the surface and away from the dive"),
+ T("late","scores with the fourth official already holding the board up"),
+ T("late","gets there in the last minute and the ground comes apart"),
+ T("late","settles it with almost nothing left on the clock"),
+ T("big","picks the biggest afternoon of the season to score the best goal of his life"),
+ T("big","scores on the day it actually mattered — one people will bring up for years"),
+ T("big","does it in front of the biggest crowd this ground has had in a decade"),
+ T("behind","drags one back and refuses to let it be over"),
+ T("behind","halves it, and the bench is off the seats"),
+ T("level","breaks the deadlock at long last"),
+ T("lead","adds another and the away end starts looking for the exit"),
+ T("rout","helps himself to another. Nobody is counting now"),
+ T("low","scores past a keeper who also drives the club minibus"),
+ T("low","finishes past a centre-half who is plainly a plumber on Saturdays"),
+ T("silent","scores into a silence so complete you can hear the net")
 ];
+/* Straffespark havde ÉN linje. GDD kalder det "høj-dramatisk
+   ticker-øjeblik", og et øjeblik man har læst fyrre gange er ikke et. */
+const PENDESC=[
+ "{P} steps up… breathes… buries it.",
+ "{P} puts it exactly where he was always going to put it. The keeper knew. It didn't help.",
+ "{P} takes an age over it, then rolls it in like a man paying a bill.",
+ "{P} sends the keeper the wrong way and does not celebrate. Consummate.",
+ "{P} smashes it. No placement, no nerves, no need.",
+ "{P} waits for the keeper to move and passes it into the other corner.",
+ "The keeper gets a hand to it. {P} has hit it too hard for that to matter.",
+ "{P} slips as he strikes it and it goes in off his shin. He will take it.",
+ T("big","{P} stands over the biggest kick of his life and puts it in the corner. Some men are just built for it."),
+ T("late","{P} scores it in the last minute of the game. The ground does not know what to do with itself."),
+ T("mud","{P} has to dig the spot out of the mud before he can even place the ball. Then he scores."),
+ T("silent","{P} scores it into total silence. Even the penalty gets no noise.")
+];
+const OPPGOAL=[
+ "They celebrate like they've won the league.",
+ "Nobody picks it up. Two of ours are still arguing about who was marking him.",
+ "A goal against the run of play, and the run of play carries on regardless.",
+ "Well worked. Nobody in the ground pretends otherwise.",
+ "Our keeper stands with his hands on his hips, looking at the defence. Fair enough.",
+ "Straight through the middle of us. It was never going to be complicated.",
+ "Deflected in off a shin. It will be in the record books as a good goal.",
+ "A free header from six yards. Somebody will be asked about that on Monday.",
+ T("mud","Nobody could get near him in that. Their striker looks like he has been dredged."),
+ T("frost","Our defender's feet went from under him and that was the game's turning point."),
+ T("late","Late. Very late. The worst kind."),
+ T("big","On this of all afternoons. You can feel the ground sag.")
+];
+/* Den bortsolgte spiller der scorer mod dig havde EN linje i hver tone. Han kan
+   score to gange i samme kamp, og saa laeste man den samme saetning to gange --
+   praecis den fejl kontekst-taggene skal fjerne. To sma puljer, ingen tags:
+   tonen bestemmes af om han gik i vrede eller i taknemmelighed. */
+const GHOSTBITTER=[
+ "{P} wheels away, arms out, drinking in the boos. He hasn't forgotten.",
+ "{P} celebrates in front of the Shed End for slightly too long. He has waited for this.",
+ "{P} does not look at the bench once. That is the point of it.",
+ "{P} cups his ear to the stand that used to sing his name.",
+ "{P} scores and holds up the badge on his new shirt. Message received.",
+ "{P} is booked for his celebration and could not care less."
+];
+const GHOSTWARM=[
+ "{P} scores — and refuses to celebrate. Hand raised in apology. The Shed End applauds him anyway.",
+ "{P} stands still with his hands up, looking genuinely sorry about it.",
+ "{P} points at the away end, then at our bench, and shrugs. Football.",
+ "{P} scores and immediately jogs back to the halfway line, head down.",
+ "{P} gets a hug from his old centre-half at the restart. Nobody minds.",
+ "{P} apologises to Reg on the way past the dugout. Reg waves him off."
+];
+const MOMENTUM=[
+ "They smell blood now. The whole ground can feel it.",
+ "The gaffer is off his seat and shouting one word, over and over.",
+ "The tempo has gone up a gear and nobody on the pitch decided it.",
+ "Second balls are dropping our way. That is usually a sign.",
+ "Their bench has gone very quiet.",
+ "Three corners in two minutes. Something is going to give.",
+ "Their centre-half has started kicking it long and hoping.",
+ T("home","The Shed End has found a song and will not be letting it go."),
+ T("away","Two hundred travelling fans are making the noise of a thousand."),
+ T("lead","Their manager is on the touchline gesturing at nobody in particular."),
+ T("behind","We have nothing to lose now, and the crowd knows it before the players do."),
+ T("silent","Still nothing from the stands. The players glance up and look away again.")
+];
+const NEARMISS=[
+ "Chance! {P} drags it wide. The Shed End groans in unison.",
+ "{P} hits the bar! The woodwork is still shaking.",
+ "Their keeper pulls off a save he'll tell his grandkids about.",
+ "Corner comes to nothing. The pigeons on the roof remain unimpressed.",
+ "{P} goes on a mazy run and then remembers where he plays his football.",
+ "{P} skies it. Somewhere in the car park a windscreen holds its breath.",
+ "{P} is through — and the flag goes up. Nobody in the ground agrees about it.",
+ "{P} shoots straight at the keeper's chest. Comfortable. Infuriating.",
+ "A scramble on the six-yard line ends with the ball trickling wide and four men on the floor.",
+ "{P} squares it when he should have shot. The gaffer's hands go to his face.",
+ "{P} beats the keeper and finds the side netting from a yard out.",
+ "Their defender clears off the line with his knee and does not know it.",
+ "{P} wins the header and puts it a foot over.",
+ "Free kick from twenty yards. {P} hits the first man. Then does it again.",
+ "{P} nutmegs a defender, gets his applause, and loses the ball immediately.",
+ "Penalty appeal, waved away. The bench is up. The referee is unmoved.",
+ "{P} turns and volleys. It clears the stand.",
+ "Two shots blocked in a row. Their keeper has not touched the ball in ten minutes and looks bored.",
+ "{P} rounds the keeper and runs out of pitch.",
+ "The corner finds nobody at all. Reg will be repainting that line either way.",
+ "{P} lets fly from thirty. Not far off. Not close, either.",
+ "Their keeper claws one out from under the bar and gets up grinning.",
+ "{P} is clean through and slips. No contact, no excuse, no goal.",
+ "The cross comes in with three men waiting. All three leave it for each other.",
+ "{P} hits the post, then the other post, then a defender hoofs it clear.",
+ "Handball, says the whole ground. Shoulder, says the referee.",
+ "{P} tries the spectacular and achieves the ridiculous.",
+ "Their goalkeeper punches a cross into his own centre-half and survives it.",
+ "{P} shows a defender the ball for four full seconds and still loses it.",
+ "A shot, a block, a rebound, another block. The ball ends up with the linesman.",
+ "{P} works half a yard of space and puts it into the second row.",
+ "Their full-back hacks {P} down twenty yards out and gets a talking-to and nothing else.",
+ T("mud","{P} strikes it perfectly and the ball simply stops in the mud."),
+ T("mud","A shot from {P} sticks in a puddle on the goal line. Nobody can reach it."),
+ T("mud","Nobody can stay upright in the six-yard box. It ends in a throw-in and two bookings."),
+ T("frost","{P} shapes to shoot and his standing foot goes from under him."),
+ T("frost","The ball skids off the frost away from everybody, keeper included."),
+ T("wind","{P} floats a cross and the wind returns it to sender."),
+ T("wind","A corner from {P} nearly goes straight in. The wind is having a day out."),
+ T("rain","The keeper spills it, {P} pounces, and a defender hacks it off his shin."),
+ T("late","Last chance — {P} heads it over from four yards. He will see that one tonight."),
+ T("late","Deep into the last minute {P} forces a save. That is that, then."),
+ T("big","{P} has the afternoon in his boot and puts it over the bar. Silence, then a groan you can feel."),
+ T("big","On any other day nobody remembers that miss. Today {P} will."),
+ T("behind","{P} goes close and for a second the ground believes."),
+ T("behind","{P} hits one from distance in hope rather than expectation."),
+ T("lead","{P} might have had another. He tried to walk it in."),
+ T("low","{P} beats the keeper, the defender AND the advertising hoarding.")
+];
+const FLAVOR=[
+ "The club cat was accidentally included in the team photo. Nobody regrets it.",
+ "Groundskeeper Reg has declared the pitch 'the best in the county'. Reg cuts it with a household mower.",
+ "The pie stand sold out by half time. The chairman (you) is quietly proud.",
+ "Local paper misspelled the club's name again. Third time this month.",
+ "A fan brought a homemade banner. It's slightly too big for the stand. Morale is up anyway.",
+ "Your left-back has started a podcast. It has four listeners. Three are his mum.",
+ "The away dressing room radiator is 'being looked at'. It is not being looked at.",
+ "The tea urn has been descaled. There is a queue to look at it.",
+ "Somebody has painted the dugout. Nobody asked them to. It looks better.",
+ "A supporters' coach broke down on the way home. They sang for two hours in a lay-by.",
+ "The physio's room now has a second chair. This is considered a major upgrade.",
+ "Reg has found a mole on the pitch. Reg has named the mole. Reg is now conflicted.",
+ "The club shop has sold out of extra-large and nothing else.",
+ "Someone donated a full set of corner flags. Two of them match.",
+ "The kit man has retired the 1998 away shirt. Several supporters have written in to object.",
+ "A local butcher is offering free sausages for every clean sheet. The gaffer has taken this personally.",
+ "The turnstile that sticks has been oiled. It now sticks quietly.",
+ "The scoreboard showed the wrong score for eleven minutes. Nobody in the ground noticed.",
+ "Your goalkeeper's dog got onto the training pitch and would not give the ball back.",
+ "The club has been asked to stop parking the minibus on the pavement. The club is considering it.",
+ "A supporter proposed at half time. She said yes, then asked about the substitution.",
+ "The floodlight that flickers has been described as 'atmospheric' in the club's own newsletter.",
+ "There is a new motivational sign in the tunnel. The players have read it once.",
+ "The boardroom biscuits have been downgraded. Questions were asked.",
+ "A supporter has knitted the entire squad into a nativity scene. It is in the club shop window.",
+ "Somebody keeps moving the away team's water bottles. Nobody will admit to it.",
+ "The programme printed one player twice and left another out entirely.",
+ "Two supporters have founded a rival fanzine to the fanzine. Both are excellent.",
+ "The club's oldest season ticket holder turned 91. He got a card and a scarf and wanted the card.",
+ "A drone was spotted over training. It belonged to an estate agent.",
+ "The tannoy played the wrong song at kick-off. The crowd sang it anyway.",
+ "Lost property currently holds eleven left gloves and a set of dentures.",
+ "Somebody repainted the crest in the tunnel very slightly wrong. It is growing on everyone.",
+ "The under-16s beat the first team in a training match. This will not be mentioned again.",
+ "The club defibrillator has been serviced. The boardroom applauded, which felt strange.",
+ "Reg has planted seed in the goalmouth and put a chair over it. The chair is not moving.",
+ "The club has finally thrown out the 1970s bath. Two members of staff asked to keep it.",
+ "A wasp nest behind the Shed End has been dealt with. The invoice is enormous.",
+ T("mud","Reg has stopped calling it a pitch. He refers to it now as 'the situation'."),
+ T("mud","The council has asked why the drainage complaint form has been submitted eleven times."),
+ T("frost","Three fixtures nearby were called off. Reg lit braziers and dared the referee to say no."),
+ T("frost","The tea urn ran dry at half time in minus two. There has been a formal complaint."),
+ T("wind","The corner flags spent Saturday horizontal. One of them did not come back."),
+ T("rain","The Shed End roof has a new leak. It has been named after a former chairman."),
+ T("won","The gaffer bought the coach driver a pint. This is unprecedented."),
+ T("won","A supporter's celebration video has nine hundred views. He is telling people it went viral."),
+ T("lost","The Monday phone-in ran forty minutes over. None of it was kind."),
+ T("lost","Somebody has started a petition. Nine signatures, four of them the same name."),
+ T("drew","The fanzine's match report was one sentence long: 'Well, that happened.'"),
+ T("happy","The supporters' club has crowdfunded a tifo. It is enormous and slightly the wrong colour."),
+ T("happy","Ticket enquiries are up. The club's one telephone line cannot cope."),
+ T("angry","The suggestion box has been emptied twice this week. Most of it was about you."),
+ T("angry","A hand-painted bedsheet appeared on the fence overnight. Grammar aside, the message was clear."),
+ T("angry","The gate was down and the local paper counted the empty seats in print."),
+ T("low","The visiting team changed in a portable cabin. Their manager has written a letter."),
+ T("low","The referee arrived by bus and changed in the boiler room."),
+ T("high","A national newspaper sent a reporter. He asked where the press box was. There isn't one."),
+ T("high","The club has printed a second run of programmes. Nobody can remember that happening."),
+ T("bigground","Whole rows sat empty on Saturday, which in a ground this size is visible from space."),
+ T("toptwo","A rival chairman called the club 'a side punching above itself'. It has been framed."),
+ T("toptwo","Three scouts were counted in the stand. One of them was definitely just cold."),
+ T("window","An agent has been in the car park twice this week. He says he likes the chips."),
+ T("window","The club has received a fax. It is 2026. The club has received a fax."),
+ T("big","The turnstiles opened early and the queue was down the road by one o'clock."),
+ T("big","A television van parked outside and then left again. It was lost.")
+];
+/* GDD linje 121: "8-10 fiktive firma-karakterer MED AGENDA følger dig gennem
+   karrieren". Fire havde en karakterlinje; ingen af dem havde en agenda man
+   kunne læse før man skrev under. `agenda` er hvad de vil HAVE af klubben.
+   `risk` og `stunt` er de to adfærd der før stod som navnetjek inde i
+   sponsorLifeEvents() — nu felter, så en ny sponsor kan bære dem. */
+const SPONSORS=[
+ {n:"Harlow Brewery",av:"HB",per:4200,character:"Proud, local, loyal — they'll follow you up the leagues.",
+  agenda:"Wants the club to stay the town's club. Pays fairly, expects respectability, never asks for a stunt."},
+ {n:"Duncroft Mattress Co.",av:"DM",per:3800,character:"The Mattress King wants his name on everything.",
+  agenda:"Wants his name on the shirt, the stand, the pies and the tannoy. Will pay extra for spectacle.",
+  stunt:{title:"The Mattress King has an idea",
+   txt:"\"Picture it: your keeper diving onto one of MY mattresses at half-time. The crowd will love it. Or hate it. One of those.\"",
+   good:"Against all odds: the crowd LOVED it. The keeper now wants a mattress deal of his own.",
+   bad:"The keeper dove. The mattress slid. The clip is everywhere and none of it is flattering.",
+   no:"You declined. The Mattress King respects it. \"Big mistake. Big. Huge,\" he says, quietly impressed."}},
+ {n:"NimbusCoin",av:"NC",per:6500,character:"Pays wildly. Read the small print. There is a lot of small print.",
+  agenda:"Wants legitimacy and wants it this quarter. Pays over the odds because it may not be here next year.",
+  risk:0.30},
+ {n:"Pemberton's Pies",av:"PP",per:3500,character:"Payment partly in pies. The good ones.",
+  agenda:"Wants the catering contract more than the shirt. Quietly the most reliable money in the division."},
+ {n:"Kestrel Scaffolding",av:"KS",per:3900,character:"Two brothers, one van, forty years in the town.",
+  agenda:"Wants their van parked where the cameras are. Will do the ground's steelwork at cost if asked nicely."},
+ {n:"Ashcombe Skips",av:"AS",per:3300,character:"Blunt, punctual, pays on the day. Never once asked for a favour.",
+  agenda:"Wants nothing except the board by the tunnel and to be left alone. The board must never move."},
+ {n:"Verity & Foyle Solicitors",av:"VF",per:5200,character:"Immaculate letterhead. Reads every clause aloud.",
+  agenda:"Wants respectability by association and a top-half finish in writing. Will enforce the clause to the pound.",
+  demandTough:true},
+ {n:"Glint Energy Drinks",av:"GE",per:5800,character:"Loud, young, in a hurry. Sponsors anything that moves.",
+  agenda:"Wants the youth teams in their colours and clips for their feed. Attention is the whole deal.",
+  stunt:{title:"\"We want a halftime thing\"",
+   txt:"\"Crossbar challenge, prize wheel, our lot in the branded shirts, a big noise. Family fun. Mostly noise.\"",
+   good:"Three kids hit the crossbar and the Shed End adopted all of them. Genuinely charming.",
+   bad:"The prize wheel jammed, the music was too loud, and the second half started four minutes late.",
+   no:"You said no. \"Respect the brand integrity,\" they replied, which was not what you said at all."}},
+ {n:"Tarn Valley Removals",av:"TV",per:3600,character:"Family firm. The grandfather played centre-half here in 1961.",
+  agenda:"Wants the club's history taken seriously. Ask about the grandfather and the money gets easier."},
+ {n:"Orrell Holdings",av:"OH",per:7200,character:"Nobody is entirely sure what they do. The cheque clears.",
+  agenda:"Wants a seat at the table and a quiet word about the shareholder register. The money is real. The interest is not in football.",
+  risk:0.18}
+];
+/* Tre trænere med hver sin stil var ikke nok til at et nyt spil føltes nyt.
+   Otte, med personlighed i den første replik — det er den ENESTE stemme
+   spilleren møder hver kampdag. */
 const COACHES=[
  {n:"Don Mallory",tac:58,man:63,dev:44,style:"attacking",line:"We attack. If we concede four, we score five. That's the maths."},
  {n:"Vera Stanhope",tac:64,man:52,dev:47,style:"defensive",line:"Clean sheets win leagues. Goals are a bonus. Don't quote me on joy."},
- {n:"Ludo Fenwick",tac:47,man:55,dev:66,style:"youth",line:"Give me kids with fire. Old legs cost money and moan about the minibus."}
+ {n:"Ludo Fenwick",tac:47,man:55,dev:66,style:"youth",line:"Give me kids with fire. Old legs cost money and moan about the minibus."},
+ {n:"Ray Corrigan",tac:52,man:71,dev:49,style:"man-management",line:"I don't do systems, chairman. I do people. Get me eleven who'll run for each other and I'll do the rest."},
+ {n:"Aggie Sowerby",tac:69,man:44,dev:52,style:"technical",line:"There is a right way to play and I am not negotiating about it. You'll hate March. You'll love May."},
+ {n:"Mickey Vasey",tac:44,man:58,dev:41,style:"direct",line:"Front man, big lad, second ball. It's not art. It's three points, and it's been working since 1974."},
+ {n:"Halim Osei",tac:61,man:60,dev:58,style:"balanced",line:"No promises and no excuses. Give me a squad, not an eleven, and ask me again in twenty games."},
+ {n:"Bren Cudlipp",tac:55,man:38,dev:70,style:"academy",line:"The first team is the shop window. The academy is the shop. Spend on the shop."}
 ];
 const coachOvr=c=>Math.round((c.tac+c.man+c.dev)/3);
 
@@ -556,7 +935,7 @@ function newGame(name,hue,mode){
     fund:0,fundBonus:0,fundTarget:null,fundRaided:false,seasonTix:{price:150,sold:0},bigExtra:2,jerseyFactor:1,jerseyName:null,
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
     myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,
-    netEwma:0,trust:BAL.owners.trustStart,admins:0,valHistory:[],commitments:[],protest:0,
+    netEwma:0,trust:BAL.owners.trustStart,admins:0,valHistory:[],commitments:[],protest:0,flavourSeen:[],
     /* Whose return leg is a big match. Stored as {opp,md,by} — an INDEX and two
        numbers, never a team reference: G must stay a tree. Cleared every summer,
        because the opponents are regenerated on promotion. */
@@ -853,7 +1232,7 @@ function bigMatchReason(oppIdx){
 function buildMatch(oppIdx,home,big,label){
   const t=G.teams[oppIdx-1];
   return {oppIdx,opp:t.name,home,big,label,weather:pick(WEATHERS),approach:null,
-          h1:null,h2:null,htDone:false,events:[],scorersLog:[]};
+          h1:null,h2:null,htDone:false,events:[],scorersLog:[],used:[]};
 }
 function simHalf(match,mods){
   const t=G.teams[match.oppIdx-1];
@@ -866,20 +1245,35 @@ function halfEvents(match,half,gf,ga){
   const lo=half===1?2:46, hi=half===1?44:90;
   // guard the retry loop: a busy half can otherwise exhaust the minute range
   const mins=new Set();const mkMin=()=>{let m,tries=0;do{m=R(lo,hi)}while(mins.has(m)&&++tries<40);mins.add(m);return m;};
+  /* Pakke 6: every line is drawn through pickLine() with the situation's tags
+     and the match's own used-list, so no sentence is read twice in one
+     afternoon and the tone follows the weather, the scoreline and the stakes. */
+  if(!match.used)match.used=[];
+  const base=matchCtx(match,half);
+  const at=m=>eventCtx(base,m);
+  const surname=p=>p.name.split(" ")[1];
   for(let i=0;i<gf;i++){
     const p=pick(scorers.length?scorers:xiList());
     const pen=Math.random()<0.12;
-    ev.push({m:mkMin(),goal:"me",scorer:p,txt:(pen?"PENALTY! ":"GOAL! ")+p.name.split(" ")[1].toUpperCase()+"!",sub:pen?p.name+" steps up… breathes… buries it.":p.name+" "+pick(GOALDESC)+"."});
-    if(Math.random()<0.4)ev.push({m:Math.min(hi,ev[ev.length-1].m+R(2,5)),txt:"They smell blood now. The whole ground can feel it."});
+    const m=mkMin(),ctx=at(m);
+    ev.push({m,goal:"me",scorer:p,txt:(pen?"PENALTY! ":"GOAL! ")+surname(p).toUpperCase()+"!",
+      sub:pen?fillName(pickLine(PENDESC,ctx,match.used),surname(p))
+             :p.name+" "+pickLine(GOALDESC,ctx,match.used)+"."});
+    if(Math.random()<0.4){const m2=Math.min(hi,m+R(2,5));ev.push({m:m2,txt:pickLine(MOMENTUM,at(m2),match.used)});}
   }
   const ghost=G.soldTo.find(x=>x.club===match.opp);
   for(let i=0;i<ga;i++){
+    const m=mkMin();
     if(ghost&&i===0&&Math.random()<0.4){
-      ev.push({m:mkMin(),goal:"them",txt:"Goal — "+ghost.name.split(" ")[1]+", OF COURSE",sub:ghost.bitter?ghost.name+" wheels away, arms out, drinking in the boos. He hasn't forgotten.":ghost.name+" scores — and refuses to celebrate. Hand raised in apology. The Shed End applauds him anyway."});
-    }else ev.push({m:mkMin(),goal:"them",txt:"Goal — "+match.opp,sub:"They celebrate like they've won the league. It's matchday "+(G.md+1)+"."});
+      ev.push({m,goal:"them",txt:"Goal — "+ghost.name.split(" ")[1]+", OF COURSE",
+        sub:fillName(pickLine(ghost.bitter?GHOSTBITTER:GHOSTWARM,at(m),match.used),ghost.name)});
+    }else ev.push({m,goal:"them",txt:"Goal — "+match.opp,sub:pickLine(OPPGOAL,at(m),match.used)});
   }
   const nm=match.big?2:1;
-  for(let i=0;i<nm+1;i++){const p=pick(scorers.length?scorers:G.squad);ev.push({m:mkMin(),txt:pick(NEARMISS).replace("{P}",p.name.split(" ")[1])});}
+  for(let i=0;i<nm+1;i++){
+    const p=pick(scorers.length?scorers:G.squad),m=mkMin();
+    ev.push({m,txt:fillName(pickLine(NEARMISS,at(m),match.used),surname(p))});
+  }
   if(Math.random()<0.03)ev.push({m:mkMin(),txt:"GOAL — no, WAIT. Flag's up. The linesman is the least popular man in the county."});
   ev.sort((a,b)=>a.m-b.m);
   return ev;
@@ -1218,7 +1612,7 @@ function postMatchMessages(){
     const club=pick(G.teams).name;
     msg(pick(AGENTS).n,"A","Bid for "+p.name.split(" ")[1],club+" offer "+kfmt(bid)+" for "+p.name+" ("+p.pos+", "+ovr(p)+"). Value "+kfmt(p.value)+".",{kind:"sellOffer",pid:p.id,bid,club});
   }
-  if(Math.random()<0.45)addNews("CLUB",pick(FLAVOR));
+  if(Math.random()<0.45)addNews("CLUB",flavourLine());
   // scout report delivery
   if(G.scoutPending>0){G.scoutPending--;if(G.scoutPending===0)deliverScout();}
   // coach request once per season around md 8
@@ -2057,11 +2451,18 @@ function handleAction(m,choice){
     else{p.conf=clamp(p.conf-5,10,95);m.done=true;m.body="Request refused. He'll stay. His body will, anyway — the rest is negotiable.";}
   }
   if(a.kind==="stunt"){
+    /* The outcome text used to be about mattresses, in a branch reached by any
+       sponsor with a stunt. The message carries the sponsor's NAME and the
+       wording is looked up in SPONSORS (a constant, never in G), so the second
+       showman in the pool does not get the first one's props. */
+    const sp=SPONSORS.find(x=>x.n===a.who),st=sp&&sp.stunt,fee=BAL.sponsor.stuntFee;
     if(choice==="yes"){
-      G.balance+=6000;m.done=true;
-      if(Math.random()<0.35){G.fanMood=clamp(G.fanMood-4,5,100);m.body="The keeper dove. The mattress slid. The clip is everywhere. £6,000 richer, slightly less dignified.";}
-      else{G.fanMood=clamp(G.fanMood+2,5,100);m.body="Against all odds: the crowd LOVED it. £6,000, and the keeper wants a mattress sponsorship of his own.";}
-    }else{m.done=true;m.body="You declined. The Mattress King respects it. \"Big mistake. Big. Huge,\" he says, quietly impressed.";}
+      G.balance+=fee;m.done=true;
+      if(Math.random()<0.35){G.fanMood=clamp(G.fanMood-4,5,100);
+        m.body=(st?st.bad:"It happened. The clip is everywhere.")+" "+kfmt(fee)+" richer, slightly less dignified.";}
+      else{G.fanMood=clamp(G.fanMood+2,5,100);
+        m.body=(st?st.good:"Against all odds, the crowd loved it.")+" "+kfmt(fee)+", and nobody is embarrassed.";}
+    }else{m.done=true;m.body=st&&st.no?st.no:"You declined. It was noted, and quietly respected.";}
   }
   if(a.kind==="sponsorChoice"){
     const o=choice==="A"?a.offers[0]:a.offers[1];
@@ -2178,17 +2579,19 @@ function sponsorLifeEvents(){
       ?"\"Top "+target+", as agreed. Carry on, chairman — the boys at the brewery are pleased.\""
       :"\"The deal says top "+target+". You are "+ord(pos)+". We are not angry. We are disappointed. You have half a season to fix it before the clause bites.\"",null);
   }
-  // NimbusCoin risk
-  if(G.sponsor.n==="NimbusCoin"&&G.md===R(8,20)&&Math.random()<0.3){
-    msg("NimbusCoin (liquidators)","NC","SPONSOR COLLAPSE","NimbusCoin has ceased to exist. So has your sponsorship income. The small print, chairman. The small print.",null);
-    addNews("CLUB","NimbusCoin implodes spectacularly. The shirt is naked again.");
+  /* The collapse and the stunt used to be NAME CHECKS on two of the four
+     sponsors. With ten in the pool that meant six of them were decoration, so
+     both behaviours are fields on the sponsor now (`risk`, `stunt`) and any
+     sponsor written with them behaves. Same code path, more characters. */
+  if(G.sponsor.risk&&G.md===R(8,20)&&Math.random()<G.sponsor.risk){
+    msg(G.sponsor.n+" (liquidators)",G.sponsor.av,"SPONSOR COLLAPSE",G.sponsor.n+" has ceased to exist. So has your sponsorship income. The small print, chairman. The small print.",null);
+    addNews("CLUB",G.sponsor.n+" implodes spectacularly. The shirt is naked again.");
     G.sponsor=null;G.sponsorOffered=false;
     return;
   }
-  // mattress stunt
-  if(G.sponsor.n==="Duncroft Mattress Co."&&G.md===11&&!G.stuntDone){
+  if(G.sponsor.stunt&&G.md===11&&!G.stuntDone){
     G.stuntDone=true;
-    msg("Duncroft Mattress Co.","DM","The Mattress King has an idea","\"Picture it: your keeper diving onto one of MY mattresses at half-time. £6,000. The crowd will love it. Or hate it. One of those.\"",{kind:"stunt"});
+    msg(G.sponsor.n,G.sponsor.av,G.sponsor.stunt.title,G.sponsor.stunt.txt+" "+kfmt(BAL.sponsor.stuntFee)+".",{kind:"stunt",who:G.sponsor.n});
   }
 }
 
@@ -2341,7 +2744,7 @@ function inboxActions(m){
       ibtn(id,"walk","Walk away","ghost");
     case "callback":return ibtn(id,"ok","Hear him out","");
     case "transferReq":return ibtn(id,"list","List him","comm")+ibtn(id,"no","Refuse","ghost");
-    case "stunt":return ibtn(id,"yes","Do it · +£6,000","")+ibtn(id,"no","No thanks","ghost");
+    case "stunt":return ibtn(id,"yes","Do it · +"+kfmt(BAL.sponsor.stuntFee),"")+ibtn(id,"no","No thanks","ghost");
   }
   return "";
 }

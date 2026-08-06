@@ -90,7 +90,9 @@ const BRIDGE = `
   get screen(){return screen;}, set screen(v){screen=v;},
   get obStep(){return obStep;}, set obStep(v){obStep=v;},
   get obData(){return obData;},
-  consts:{STANDS,STANDCOST,FACS,FAC_DETAIL,ROLES,APPROACHES,SWATCHES,TRAITS,COACHES,SPONSORS,BAL},
+  consts:{STANDS,STANDCOST,FACS,FAC_DETAIL,ROLES,APPROACHES,SWATCHES,TRAITS,COACHES,SPONSORS,BAL,
+    // pakke 6: tekstbiblioteket skal kunne inspiceres udefra
+    LINE_TAGS,POOLS:{GOALDESC,NEARMISS,FLAVOR,PENDESC,OPPGOAL,MOMENTUM,GHOSTBITTER,GHOSTWARM},lineText,lineOk},
   call(name){
     const f = globalThis[name];
     if(typeof f !== "function") throw new Error("harness: ingen global funktion '"+name+"'");
@@ -218,6 +220,18 @@ function runSeed(seed) {
      gaar gennem globalThis, og negoFinish kalder recordDeal leksikalsk. Det er
      samme faelde som den der gjorde administrationstallet forkert. */
   stats.deals = { cash: 0, inst: 0, promo: 0, goals: 0 };
+  /* Pakke 6: opsaml de tags spillet faktisk producerer over en hel karriere.
+     Et tag der aldrig opstaar goer hver linje med det tag til doed tekst --
+     samme fejlklasse som pakke 5 rettede, bare i teksten. */
+  stats.tagsSeen = new Set();
+  for (const fn of ["matchCtx", "flavourCtx", "eventCtx"]) {
+    const orig = ctx[fn];
+    ctx[fn] = function () {
+      const out = orig.apply(null, arguments);
+      if (Array.isArray(out)) for (const t of out) stats.tagsSeen.add(t);
+      return out;
+    };
+  }
   for (const [fn, key] of [["openBankUltimatum", "bank"], ["administration", "admin"]]) {
     const orig = ctx[fn];
     ctx[fn] = function () { stats[key]++; return orig.apply(null, arguments); };
@@ -256,6 +270,16 @@ function runSeed(seed) {
         fail("renderet HTML indeholder '" + bad + "': …" +
           h.slice(Math.max(0, i - 90), i + 60).replace(/\s+/g, " ") + "…");
       }
+    }
+    /* Pakke 6: en pladsholder der aldrig blev udskiftet. .replace("{P}",x) tager
+       kun den FOERSTE forekomst, saa en linje med to pladsholdere efterlod den
+       anden staaende i den faerdige HTML. Moenstret er snaevert ({ + STORE
+       bogstaver + }) saa CSS og inline-JS ikke giver falske udslag. */
+    const ph = h.match(/\{[A-Z][A-Z0-9_]*\}/);
+    if (ph) {
+      const i = h.indexOf(ph[0]);
+      fail("uudskiftet pladsholder '" + ph[0] + "' i renderet HTML: …" +
+        h.slice(Math.max(0, i - 90), i + 60).replace(/\s+/g, " ") + "…");
     }
   }
 
@@ -445,6 +469,104 @@ function runSeed(seed) {
     G.div = snap.div; G.admins = snap.admins; G.trust = snap.trust; G.balance = snap.balance;
     G.fanMood = snap.mood; G.me.pts = snap.pts; G.md = snap.md; G.loan = snap.loan;
     G.squad.forEach((p, i) => { p.wage = snap.wages[i]; });
+    checkInvariants();
+    H.screen = "home"; H.call("render");
+  }
+
+  /* Pakke 6: tekstbiblioteket. Tre faelder, og de er alle tre stille:
+       (a) en linje gentaget i samme kamp -- man laeser den to gange og
+           illusionen falder sammen,
+       (b) et snaevert tag der matcher NUL linjer, saa puljen er tom efter
+           filtrering og alle situationer af den slags faar samme fallback,
+       (c) en {P} der aldrig blev udskiftet (checkHtml faenger den i markup).
+     Dertil: et TAG kan vaere doed tekst paa to maader -- stavet forkert paa
+     linjen, eller aldrig produceret af nogen situation. Begge veje tjekkes. */
+  function checkTextLibrary() {
+    const G = H.G;
+    where = "tekstbibliotek";
+    const C = H.consts, POOLS = C.POOLS, TAGS = C.LINE_TAGS;
+    const txt = C.lineText, ok = C.lineOk;
+
+    // 1) stoerrelserne: WORKPLAN'ens maal pr. pulje
+    const MIN = { GOALDESC: 60, NEARMISS: 40, FLAVOR: 60, PENDESC: 10, OPPGOAL: 10, MOMENTUM: 10 };
+    for (const k of Object.keys(MIN))
+      if (POOLS[k].length < MIN[k])
+        fail(k + " har " + POOLS[k].length + " linjer, maalet er " + MIN[k]);
+    if (C.SPONSORS.length < 10) fail("SPONSORS har " + C.SPONSORS.length + " af 10 (GDD linje 121)");
+    if (C.COACHES.length < 8) fail("COACHES har " + C.COACHES.length + " af 8");
+    for (const sp of C.SPONSORS) if (!sp.agenda) fail("sponsor uden agenda: " + sp.n);
+    for (const co of C.COACHES) if (!co.line || !co.style) fail("traener uden stil/replik: " + co.n);
+
+    // 2) ingen dubletter i en pulje -- to identiske linjer er den samme fejl
+    for (const k of Object.keys(POOLS)) {
+      const seen = new Set();
+      for (const e of POOLS[k]) {
+        const t = txt(e);
+        if (seen.has(t)) fail(k + " indeholder samme linje to gange: " + t.slice(0, 50));
+        seen.add(t);
+      }
+    }
+
+    // 3) hvert tag paa hver linje skal findes i LINE_TAGS -- en stavefejl goer
+    //    linjen uopnaaelig, og det er praecis pakke 5's fejlklasse igen
+    for (const k of Object.keys(POOLS))
+      for (const e of POOLS[k])
+        if (typeof e !== "string")
+          for (const t of e.c)
+            if (TAGS.indexOf(t) < 0)
+              fail(k + ": ukendt tag '" + t + "' paa \"" + txt(e).slice(0, 40) + "\" -- linjen kan aldrig vaelges");
+
+    /* 4) den tomme pulje. Proeves mod HVER enkelt tag alene OG mod de
+          bredeste realistiske kombinationer. Kravet er ikke "mindst en linje"
+          men et forsvarligt udvalg: en pulje der er nede paa to linjer i regn
+          laeses to gange pr. kamp. */
+    const combos = [[]];
+    for (const t of TAGS) combos.push([t]);
+    for (const w of ["mud", "rain", "frost", "wind", "clear"])
+      for (const st of ["lead", "level", "behind"])
+        for (const extra of [[], ["big"], ["late"], ["big", "late", "rout"], ["silent"]])
+          combos.push([w, st].concat(extra, ["home", "low"]));
+    const FLOOR = 6;
+    for (const k of Object.keys(POOLS))
+      for (const ctx of combos) {
+        const n = POOLS[k].filter(e => ok(e, ctx)).length;
+        if (n < FLOOR)
+          fail(k + " har kun " + n + " mulige linjer i kontekst [" + ctx.join(",") + "] -- under gulvet paa " + FLOOR);
+      }
+
+    /* 5) ingen gentagelse inden for samme kamp. Tvinger en kamp med mange maal
+          gennem halfEvents og laeser den faktiske ticker: dubletter i sub- og
+          txt-felterne er det spilleren ser. */
+    const snap = { md: G.md, w: G.mdWeather };
+    for (const weather of ["Mudbath", "Frost", "Clear skies"]) {
+      const match = H.call("buildMatch", 1, true, true, "TESTKAMP");
+      match.weather = { n: weather, phys: 0.5, txt: "test" };
+      match.approach = "balanced";
+      match.h1 = { gf: 4, ga: 3 };
+      const ev1 = H.call("halfEvents", match, 1, 4, 3);
+      const ev2 = H.call("halfEvents", match, 2, 4, 3);
+      const lines = [];
+      for (const e of ev1.concat(ev2)) { if (e.sub) lines.push(e.sub); if (e.txt) lines.push(e.txt); }
+      if (lines.length < 12) fail("tvunget kamp gav kun " + lines.length + " ticker-linjer -- for lidt at maale paa");
+      const seen = new Set();
+      for (const l of lines) {
+        // maalraab ("GOAL! HOBBS!") og modstandermaal gentages med vilje
+        if (/^(GOAL!|PENALTY!|Goal —)/.test(l)) continue;
+        if (seen.has(l)) fail("samme ticker-linje to gange i EN kamp (" + weather + "): " + l.slice(0, 60));
+        seen.add(l);
+      }
+      for (const l of lines)
+        if (/\{[A-Z][A-Z0-9_]*\}/.test(l)) fail("uudskiftet pladsholder i ticker-linje: " + l.slice(0, 60));
+    }
+    G.md = snap.md; G.mdWeather = snap.w;
+
+    // 6) klubnyheder gentages ikke inden for en saeson
+    G.flavourSeen = [];
+    const news = [], want = Math.min(20, POOLS.FLAVOR.length);
+    for (let i = 0; i < want; i++) news.push(H.call("flavourLine"));
+    const dup = news.filter((x, i) => news.indexOf(x) !== i);
+    if (dup.length) fail(want + " klubnyheder i traek gav " + dup.length + " gentagelser: " + dup[0].slice(0, 50));
+
     checkInvariants();
     H.screen = "home"; H.call("render");
   }
@@ -1512,11 +1634,12 @@ function runSeed(seed) {
   checkValuationDirection();
   checkBigGate();
   checkBigSources();
+  checkTextLibrary();
   checkOwnerBuyout();
   checkBankCascade();
   checkPromotionWithoutSponsor();   // sidst: den rykker sæsonen frem
 
-  return { seed, stats, G: H.G, steps };
+  return { seed, stats, G: H.G, steps, consts: H.consts };
 }
 
 /* ---------------- rapport ---------------- */
@@ -1712,6 +1835,31 @@ function report(runs) {
         }
       console.log("  kilder: " + ["sidste spilledag", "nr. 1 mod nr. 2", "sekser (naboen)", "returopgoer"]
         .map(k => k + " " + (why.get(k) || 0)).join(" · "));
+    }
+  }
+
+  /* ── Pakke 6: tekstbiblioteket ── */
+  {
+    const C = runs[0].consts;
+    if (C && C.POOLS) {
+      const names = Object.keys(C.POOLS);
+      let tot = 0;
+      console.log("\n─── TEKSTBIBLIOTEKET (pakke 6) ───");
+      console.log("  " + names.map(k => {
+        const n = C.POOLS[k].length; tot += n;
+        const tagged = C.POOLS[k].filter(e => typeof e !== "string").length;
+        return k + " " + n + " (" + tagged + " taggede)";
+      }).join(" · "));
+      console.log("  ticker- og nyhedslinjer i alt: " + tot +
+        " · sponsorer " + C.SPONSORS.length + " · traenere " + C.COACHES.length);
+      /* Et tag som ingen situation nogensinde producerer goer hver linje med
+         det tag til doed tekst. Rapport, ikke fejl: en karriere paa 10 seeds
+         behoever ikke ramme hver kombination. */
+      const seen = new Set();
+      for (const r of runs) if (r.stats.tagsSeen) for (const t of r.stats.tagsSeen) seen.add(t);
+      const never = C.LINE_TAGS.filter(t => !seen.has(t));
+      console.log("  tags produceret i spil: " + seen.size + " af " + C.LINE_TAGS.length +
+        (never.length ? " · ALDRIG set: " + never.join(", ") : " · ingen doede tags"));
     }
   }
 
