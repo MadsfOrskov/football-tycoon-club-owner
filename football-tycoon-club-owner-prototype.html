@@ -325,7 +325,7 @@ const BAL={
        approaches ~1,25×. That opens the real squeeze — control is cheap
        exactly when the club is on its knees, which is exactly when you cannot
        afford it. A fixed season gate deleted that dilemma entirely. */
-    premiumHigh:1.95, premiumLow:1.22, premiumFloor:1.05,
+    premiumHigh:1.95, premiumLow:1.22, premiumFloor:1.05, premiumCap:2.3,
     roleButcher:1.06, roleSolicitor:0.96, rolePie:1.00,
     askMult:1.2, openMult:0.72,
     moodDiscount:0.05, insultBelow:0.62, lockSeasons:2,
@@ -372,7 +372,16 @@ const BAL={
   // near break-even by design, so the building money comes from here.
   prize:{champions:150000, runnersUp:100000, playoffs:120000, objective:48000, missed:16000},
   bank:{crisisAt:-60000, loanCash:50000, loanPerMD:5500, loanTerm:10, adminRelief:40000, adminPoints:6},
-  sponsor:{penalty:0.2}      // of a whole season's income, if the clause is missed
+  sponsor:{penalty:0.2},     // of a whole season's income, if the clause is missed
+  /* Deal structures (GDD): "Ratebetaling (køb over 2-4 rater — køb større end
+     kassen, bind fremtiden) og bonusklausuler (+£ ved oprykning / pr. mål —
+     flyt risikoen til fremtiden). Rå pris er altid muligt; strukturer er
+     værktøjer, ikke krav." You pay for the liquidity either way. */
+  deal:{
+    instFrom:0.08, instStep:0.02,   // 2 seasons +8%, 3 +10%, 4 +12% (GDD's band)
+    promoDiscount:0.30, promoBonus:0.55, promoSeasons:2,
+    goalsDiscount:0.22, goalsPer:0.06, goalsSeasons:2
+  }
 };
 
 /* =========================================================
@@ -402,6 +411,11 @@ function loadGame(){
   G=d.G;
   // a career saved before freshness existed has no load on anyone; start them rested
   if(!Array.isArray(G.lastXI))G.lastXI=[];
+  if(!Array.isArray(G.commitments))G.commitments=[];
+  if(!Array.isArray(G.valHistory))G.valHistory=[];
+  if(!Number.isFinite(G.netEwma))G.netEwma=0;
+  if(!Number.isFinite(G.trust))G.trust=BAL.owners.trustStart;
+  if(!Number.isFinite(G.admins))G.admins=0;
   for(const p of [...G.squad,...G.market,...G.freeAgents])if(!Number.isFinite(p.load))p.load=0;
   // the id counter lives outside G — restore it above every id in play
   PID=1+[...G.squad,...G.market,...G.freeAgents].reduce((m,p)=>Math.max(m,p.id||0),0);
@@ -501,7 +515,7 @@ function newGame(name,hue,mode){
     fund:0,fundBonus:0,fundTarget:null,fundRaided:false,seasonTix:{price:150,sold:0},bigExtra:2,jerseyFactor:1,jerseyName:null,
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
     myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,
-    netEwma:0,trust:BAL.owners.trustStart,admins:0,valHistory:[],
+    netEwma:0,trust:BAL.owners.trustStart,admins:0,valHistory:[],commitments:[],
     build:null,buildCost:80000,loan:null,warnedNeg:false,bankForced:false,
     sponsor:null,sponsorOffered:false,sponsorDue:null,
     coach:{...pick(COACHES)},
@@ -572,7 +586,7 @@ function valuationParts(){
   let debt=(G.loan?G.loan.perMD*G.loan.left:0)
           +Math.max(0,-G.balance)*V.debtWeight
           +(G.admins||0)*V.adminScar;                 // a scar that stays put
-  if(Array.isArray(G.commitments))debt+=G.commitments.reduce((s,c)=>s+c.perSeason*c.seasonsLeft,0);
+  debt+=commitmentsOwed();                        // pakke 3: what you already signed away
 
   const total=Math.max(V.floor,Math.round((assets+earnings+brand-debt)/1000)*1000);
   return {assets:Math.round(assets),earnings:Math.round(earnings),brand:Math.round(brand),debt:Math.round(debt),total};
@@ -1159,6 +1173,7 @@ function finishSeason(o){
   {const O=BAL.owners;
    bumpTrust(O.trustPerSeason+(pos<=G.objectivePos?O.trustObjective:O.trustMissed)+(G.fundRaided?0:O.trustFundKept));}
   const promoted=o.promoted&&G.div>0;
+  settleCommitments(promoted);   // before the summer wipes p.sg — goal bonuses need it
   if(promoted){
     G.div--;G.objectivePos={2:10,1:9,0:7}[G.div]||10;G.wageCap=Math.round(G.wageCap*BAL.wages.capOnPromotion/100)*100;
     for(const t of G.teams){t.name=pick(TOWN1)+" "+pick(TOWN2);t.att=R(50,66)+(3-G.div)*2;t.def=R(50,66)+(3-G.div)*2;}
@@ -1428,7 +1443,9 @@ function ownerPremium(o){
   const role={butcher:O.roleButcher,solicitor:O.roleSolicitor,"pie magnate":O.rolePie}[o.role]||1;
   const dir=1+valDirection()*BAL.val.dirWeight;    // rising club = they see the upside
   const mood=G.fanMood>70?1-O.moodDiscount:1;
-  return Math.max(O.premiumFloor,base*role*dir*mood);
+  // bounded at BOTH ends: a fast-rising club with a wary board could otherwise
+  // ask 2,7x, which stops being a negotiation and becomes a wall again
+  return clamp(base*role*dir*mood,O.premiumFloor,O.premiumCap);
 }
 function ownerWhy(o,prem,dir){
   const t=trustLevel();
@@ -1748,6 +1765,64 @@ function negoSubmit(finalOffer){
   }
   render();
 }
+/* ---------- deal structures (pakke 3) ----------
+   G.commitments holds ONLY ids and primitives — no player references — so the
+   state stays a tree across a save. `amt` means a different thing per kind, and
+   deliberately so: one field, three settlements.
+     fee   → this much per season, for seasonsLeft more seasons
+     promo → this much, once, if you go up within seasonsLeft
+     goals → this much per league goal he scores, settled each season end     */
+function dealTerms(fee,plan,clause){
+  const D=BAL.deal;
+  const sur=plan>1?D.instFrom+(plan-2)*D.instStep:0;   // you pay for the liquidity
+  const disc=clause==="promo"?D.promoDiscount:clause==="goals"?D.goalsDiscount:0;
+  const total=Math.round(fee*(1+sur)*(1-disc));
+  const perSeason=Math.round(total/plan/500)*500;
+  return {
+    sur,total,plan,clause,
+    down:total-perSeason*(plan-1),                     // what leaves the bank today
+    perSeason,
+    promo:clause==="promo"?Math.round(fee*D.promoBonus/500)*500:0,
+    perGoal:clause==="goals"?Math.max(500,Math.round(fee*D.goalsPer/500)*500):0
+  };
+}
+function commitmentsOwed(){
+  if(!Array.isArray(G.commitments))return 0;
+  return G.commitments.reduce((s,c)=>s+(c.kind==="fee"?c.amt*c.seasonsLeft:c.kind==="promo"?c.amt:0),0);
+}
+function commitmentsPerSeason(){
+  if(!Array.isArray(G.commitments))return 0;
+  return G.commitments.reduce((s,c)=>s+(c.kind==="fee"?c.amt:0),0);
+}
+function recordDeal(p,club,t){
+  G.commitments=G.commitments||[];
+  if(t.plan>1)G.commitments.push({pid:p.id,name:p.name,club,kind:"fee",amt:t.perSeason,seasonsLeft:t.plan-1});
+  if(t.clause==="promo")G.commitments.push({pid:p.id,name:p.name,club,kind:"promo",amt:t.promo,seasonsLeft:BAL.deal.promoSeasons});
+  if(t.clause==="goals")G.commitments.push({pid:p.id,name:p.name,club,kind:"goals",amt:t.perGoal,seasonsLeft:BAL.deal.goalsSeasons});
+}
+/* Settled at the season boundary — BEFORE the summer wipes p.sg, so a goal
+   bonus is paid on the goals that were actually scored this season. */
+function settleCommitments(promoted){
+  if(!Array.isArray(G.commitments)||!G.commitments.length)return;
+  let paid=0;const lines=[];
+  for(const c of G.commitments){
+    if(c.kind==="fee"){paid+=c.amt;c.seasonsLeft--;lines.push(c.club+" · instalment for "+c.name.split(" ")[1]+" "+kfmt(c.amt)+(c.seasonsLeft?" ("+c.seasonsLeft+" to go)":" (final)"));}
+    else if(c.kind==="promo"){
+      if(promoted){paid+=c.amt;c.seasonsLeft=0;lines.push(c.club+" · promotion clause on "+c.name.split(" ")[1]+" "+kfmt(c.amt)+" — you went up, they get paid");}
+      else c.seasonsLeft--;
+    }else if(c.kind==="goals"){
+      const p=byId(c.pid),g=p?p.sg:0;
+      if(g>0){paid+=c.amt*g;lines.push(c.club+" · "+g+" goal"+(g===1?"":"s")+" from "+c.name.split(" ")[1]+" at "+kfmt(c.amt)+" each = "+kfmt(c.amt*g));}
+      c.seasonsLeft--;
+    }
+  }
+  G.commitments=G.commitments.filter(c=>c.seasonsLeft>0);
+  if(paid>0){
+    G.balance-=paid;
+    msg("Ledger (bookkeeper)","L","The bills you signed for last year","You owe "+kfmt(paid)+" tonight, and it has already gone: "+lines.join(" · ")+". Structures are borrowing from a version of yourself who is not in the room.",null);
+  }
+}
+
 /* "Not today" is a real exit, not a non-event. Closing the sheet on a deal that
    began as a formal bid has to hand the player back to the market — otherwise
    he keeps the BID PENDING flag with no message left to answer. */
@@ -1780,13 +1855,18 @@ function negoFinish(){
   }
   if(n.doneDeal){
     const p=n.p;const fee=n.freeAgent?0:n.agreedFee;
-    if(G.balance<fee){p.pendingBid=false;modal={type:"info",title:"Not enough funds",body:"The deal is agreed and you can't pay. Barry will dine out on this story for years."};nego=null;render();return;}
-    G.balance-=fee;
+    const t=fee?dealTerms(fee,n.payPlan||1,n.clause||null):null;
+    const due=t?t.down:0;                 // structures move the bill, not the price
+    if(G.balance<due){p.pendingBid=false;modal={type:"info",title:"Not enough funds",body:"The deal is agreed and you can't pay. Barry will dine out on this story for years."};nego=null;render();return;}
+    G.balance-=due;
+    if(t)recordDeal(p,p.from||"the selling club",t);
     p.wage=n.wageOffer;p.years=n.years;p.role=n.role;p.pendingBid=false;
     G.squad.push(p);
     if(n.freeAgent)G.freeAgents.splice(n.ix,1);
     else{const mi=G.market.indexOf(p);if(mi>=0)G.market.splice(mi,1);}
-    addNews("TRANSFER",p.name+" signs"+(fee?" for "+kfmt(fee):" on a free")+" · "+n.years+"yr · "+kfmt(n.wageOffer)+"/w · promised "+ROLES[n.role].n.toLowerCase()+" football.");
+    const how=!t?"on a free":t.plan>1?kfmt(t.total)+" over "+t.plan+" seasons ("+kfmt(t.down)+" down)":"for "+kfmt(t.total);
+    const clause=t&&t.clause==="promo"?" · "+kfmt(t.promo)+" more if you go up":t&&t.clause==="goals"?" · "+kfmt(t.perGoal)+" a goal":"";
+    addNews("TRANSFER",p.name+" signs "+how+clause+" · "+n.years+"yr · "+kfmt(n.wageOffer)+"/w · promised "+ROLES[n.role].n.toLowerCase()+" football.");
   }
   nego=null;modal=null;render();
 }
@@ -2354,7 +2434,9 @@ function viewClub(){
     :`<div class="rowline"><span>No main sponsor <small>· the shirt is naked — offers arrive in your inbox</small></span><span class="amt num" style="color:var(--muted)">£0/W</span></div>`}
     <div class="rowline"><span>${G.coach.n} <small>· gaffer · ${G.coach.style}</small></span></div>
     <div class="statchips" style="margin-top:2px"><span class="sc">TAC <b>${G.coach.tac}</b></span><span class="sc">MAN <b>${G.coach.man}</b></span><span class="sc">DEV <b>${G.coach.dev}</b></span><span class="sc">OVR <b>${coachOvr(G.coach)}</b></span></div>
-    ${G.loan?`<div class="rowline"><span>Bank loan <small>· ${G.loan.left} payments left</small></span><span class="amt num" style="color:#E07A6A">−${kfmt(G.loan.perMD)}/MD</span></div>`:""}</div>
+    ${G.loan?`<div class="rowline"><span>Bank loan <small>· ${G.loan.left} payments left</small></span><span class="amt num" style="color:#E07A6A">−${kfmt(G.loan.perMD)}/MD</span></div>`:""}
+    ${(G.commitments||[]).map(c=>`<div class="rowline"><span>${c.kind==="fee"?"Instalment":c.kind==="promo"?"Promotion clause":"Goal clause"} <small>· ${c.name.split(" ")[1]} → ${c.club} · ${c.seasonsLeft} season${c.seasonsLeft===1?"":"s"} left</small></span>
+      <span class="amt num" style="color:#E07A6A">−${kfmt(c.amt)}${c.kind==="fee"?"/yr":c.kind==="goals"?"/goal":""}</span></div>`).join("")}</div>
   <div class="tifo"><div class="q">${fanQuote()}</div><div class="who">The Shed End · mood ${Math.round(G.fanMood)}/100</div>
     <div class="bar" style="margin-top:9px"><i style="width:${G.fanMood}%"></i></div></div>`;
 }
@@ -2632,6 +2714,23 @@ function renderModal(){
             ${short<=Math.round(d*0.03)?`Your <b class="num">${kfmt(n.wageOffer)}</b> should do it.`
               :`Your <b class="num">${kfmt(n.wageOffer)}</b> is about <b class="num">${kfmt(short)}</b> short — or change the terms above.`}</div>`;
         })()}
+        ${(()=>{
+          // the price is agreed; how you PAY it is the second negotiation
+          const fee=n.agreedFee||0;
+          if(!fee||n.freeAgent)return "";
+          const plan=n.payPlan||1,cl=n.clause||null,t=dealTerms(fee,plan,cl);
+          const planBtn=(v,label)=>`<button class="${plan===v?'on':''}" onclick="nego.payPlan=${v};render()">${label}</button>`;
+          const clBtn=(v,label)=>`<button class="${cl===v?'on':''}" onclick="nego.clause=${v===null?"null":"'"+v+"'"};render()">${label}</button>`;
+          return `<div class="kick" style="margin-top:14px">How you pay <span style="font-size:9px;text-transform:none">· agreed price ${kfmt(fee)}</span></div>
+            <div class="modes" style="margin-top:8px">${planBtn(1,"Cash")}${planBtn(2,"2 yr")}${planBtn(3,"3 yr")}${planBtn(4,"4 yr")}</div>
+            <div class="kick" style="margin-top:12px">Sweeteners <span style="font-size:9px;text-transform:none">· move the risk into the future</span></div>
+            <div class="modes" style="margin-top:8px">${clBtn(null,"None")}${clBtn("promo","On promotion")}${clBtn("goals","Per goal")}</div>
+            <div class="why"><b>Today: ${kfmt(t.down)}.</b>
+              ${t.plan>1?" Then "+kfmt(t.perSeason)+" at each of the next "+(t.plan-1)+" season ends — they want "+Math.round(t.sur*100)+"% for waiting.":""}
+              ${t.clause==="promo"?" They take "+Math.round(BAL.deal.promoDiscount*100)+"% off now, and "+kfmt(t.promo)+" if you go up within "+BAL.deal.promoSeasons+" seasons.":""}
+              ${t.clause==="goals"?" They take "+Math.round(BAL.deal.goalsDiscount*100)+"% off now, and "+kfmt(t.perGoal)+" for every league goal he scores over "+BAL.deal.goalsSeasons+" seasons.":""}
+              ${t.plan>1||t.clause?" You are buying above your means and binding a chairman who isn't in the room yet — namely you.":" Nothing owed after tonight."}</div>`;
+        })()}
         <div class="kick" style="text-align:center;margin-top:8px;font-size:9px">Wage budget: ${kfmt(G.squad.reduce((s,p)=>s+p.wage,0))} used of ${kfmt(G.wageCap)}/w cap</div>
         <button class="glowbtn" onclick="negoSubmit()">Offer terms</button>
         ${!n.finalUsed?`<button class="abtn comm" onclick="negoSubmit(true)">⚡ FINAL OFFER — instant yes/no</button>`:""}
@@ -2788,7 +2887,8 @@ function renderModal(){
           <div class="rowline"><span>Kit</span><span class="amt">${m.jersey?m.jersey[0].toUpperCase()+m.jersey.slice(1):"Classic (default)"}</span></div>
           <div class="rowline"><span>Fund deposit${m.target&&STANDS[m.target]?" · "+STANDS[m.target].n:""}</span><span class="amt num">${kfmt(m.fundAdd)}</span></div>
           <div class="rowline"><span><b>Working capital after tonight</b></span><span class="amt num" style="color:${after<0?"#E07A6A":"var(--acc)"}">${kfmt(after)}</span></div>
-          <div class="rowline"><span>Wage bill <small>· of ${kfmt(G.wageCap)} cap</small></span><span class="num">${kfmt(wages)}/w</span></div></div>
+          <div class="rowline"><span>Wage bill <small>· of ${kfmt(G.wageCap)} cap</small></span><span class="num">${kfmt(wages)}/w</span></div>
+          ${commitmentsOwed()?`<div class="rowline"><span>Signed away <small>· instalments &amp; clauses still to pay</small></span><span class="amt num" style="color:#E07A6A">−${kfmt(commitmentsOwed())}</span></div>`:""}</div>
         ${G.myShare<100?(m.capMsg?`<p style="margin-top:10px"><b>${m.capMsg}</b></p>`:`<button class="abtn comm" onclick="askCapRaise()" ${G.capRaiseUsed?"disabled style='opacity:.4'":""}>Ask the co-owners to raise the wage cap <small>(once per season)</small></button>`):""}
         <div class="why"><b>What this means:</b> this is your whole season's room for manoeuvre. Wages leave the bank <b>every matchday</b>, home or away — ${kfmt(wages*G.rounds)} across the ${G.rounds} of them. Objective: top ${G.objectivePos}.</div>`;
     }

@@ -213,6 +213,11 @@ function runSeed(seed) {
       return orig.apply(null, arguments);
     };
   }
+  /* Pakke 3: hvor tit bruges strukturerne? Taelles hvor handlen UNDERSKRIVES,
+     ikke med en wrapper om recordDeal -- en wrapper paa ctx ser kun kald der
+     gaar gennem globalThis, og negoFinish kalder recordDeal leksikalsk. Det er
+     samme faelde som den der gjorde administrationstallet forkert. */
+  stats.deals = { cash: 0, inst: 0, promo: 0, goals: 0 };
   for (const [fn, key] of [["openBankUltimatum", "bank"], ["administration", "admin"]]) {
     const orig = ctx[fn];
     ctx[fn] = function () { stats[key]++; return orig.apply(null, arguments); };
@@ -364,7 +369,7 @@ function runSeed(seed) {
     if (!H.modal || H.modal.type !== "ownerNego") fail("buyOutOwner aabnede ikke ownerNego");
     const { fair, min, ask } = H.modal;
     if (min <= fair) fail("minimumsprisen er ikke over fair vaerdi: min=" + min + " fair=" + fair);
-    if (min > Math.round(fair * 2.1)) fail("minimumspris over 2,1x fair: " + (min / fair).toFixed(2) + "x — uden for kurven");
+    if (min > Math.round(fair * (H.consts.BAL.owners.premiumCap + 0.05))) fail("minimumspris over praemieloftet: " + (min / fair).toFixed(2) + "x — uden for kurven");
     if (ask <= min) fail("aabningskravet ligger ikke over minimumsprisen: " + ask + " vs " + min);
 
     // kollaps skal laase i 2 saesoner
@@ -635,6 +640,75 @@ function runSeed(seed) {
     checkInvariants();
   }
 
+  /* Pakke 3: botten rammer ikke alle tre strukturer i hver koersel, og en
+     klausul der aldrig udloeses ville se ud som om den virkede. Tvinges igennem. */
+  function checkDealStructures() {
+    const G = H.G;
+    where = "handelsstrukturer";
+    const keep = { commitments: G.commitments.slice(), balance: G.balance, div: G.div, inbox: G.inbox.slice() };
+    const fee = 100000;
+
+    const cash = H.call("dealTerms", fee, 1, null);
+    if (cash.down !== cash.total) fail("kontanthandel: down != total (" + cash.down + " vs " + cash.total + ")");
+    if (cash.total !== fee) fail("kontanthandel aendrer prisen: " + cash.total + " vs " + fee);
+
+    let prevSur = -1;
+    for (const plan of [2, 3, 4]) {
+      const t = H.call("dealTerms", fee, plan, null);
+      if (t.total <= fee) fail(plan + " rater koster ikke et tillaeg: " + t.total + " vs " + fee);
+      if (t.sur <= prevSur) fail("tillaegget stiger ikke med antallet af rater (" + plan + " saesoner)");
+      prevSur = t.sur;
+      if (t.down >= t.total) fail(plan + " rater: hele beloebet forfalder i dag");
+      if (Math.abs(t.down + t.perSeason * (plan - 1) - t.total) > 2) {
+        fail(plan + " rater summer ikke til totalen: " + t.down + " + " + (plan - 1) + "x" + t.perSeason + " != " + t.total);
+      }
+    }
+    for (const cl of ["promo", "goals"]) {
+      const t = H.call("dealTerms", fee, 1, cl);
+      if (t.total >= fee) fail(cl + "-klausul giver ingen rabat i dag: " + t.total + " vs " + fee);
+      if ((cl === "promo" ? t.promo : t.perGoal) <= 0) fail(cl + "-klausul uden beloeb");
+    }
+
+    // ratebetaling: afdrages og doer ud
+    const p = G.squad[0];
+    G.commitments = [{ pid: p.id, name: p.name, club: "Testfield", kind: "fee", amt: 20000, seasonsLeft: 2 }];
+    let b = G.balance;
+    H.call("settleCommitments", false);
+    if (G.balance !== b - 20000) fail("raten blev ikke betalt: " + b + " -> " + G.balance);
+    if (G.commitments[0].seasonsLeft !== 1) fail("raten talte ikke ned");
+    H.call("settleCommitments", false);
+    if (G.commitments.length) fail("raten doede aldrig ud: " + JSON.stringify(G.commitments));
+
+    // oprykningsklausul: udloeses KUN ved oprykning, og udloeber ellers
+    G.commitments = [{ pid: p.id, name: p.name, club: "Testfield", kind: "promo", amt: 30000, seasonsLeft: 2 }];
+    b = G.balance;
+    H.call("settleCommitments", false);
+    if (G.balance !== b) fail("oprykningsklausul betalte uden oprykning");
+    H.call("settleCommitments", true);
+    if (G.balance !== b - 30000) fail("oprykningsklausul udloestes ikke ved oprykning");
+    if (G.commitments.length) fail("oprykningsklausul blev staaende efter udbetaling");
+
+    // maalklausul: betales pr. maal, foer sommeren nulstiller p.sg
+    const sg = p.sg; p.sg = 3;
+    G.commitments = [{ pid: p.id, name: p.name, club: "Testfield", kind: "goals", amt: 2000, seasonsLeft: 1 }];
+    b = G.balance;
+    H.call("settleCommitments", false);
+    if (G.balance !== b - 6000) fail("maalklausul betalte ikke 3 x 2.000: " + b + " -> " + G.balance);
+    if (G.commitments.length) fail("maalklausul doede ikke ud");
+    p.sg = sg;
+
+    // og gaelden skal vaere synlig i klubvaerdien
+    G.commitments = [{ pid: p.id, name: p.name, club: "Testfield", kind: "fee", amt: 25000, seasonsLeft: 3 }];
+    if (H.call("commitmentsOwed") !== 75000) fail("commitmentsOwed() = " + H.call("commitmentsOwed") + ", forventet 75000");
+    const withDebt = H.call("clubValuation");
+    G.commitments = [];
+    if (H.call("clubValuation") <= withDebt) fail("forpligtelser saenker ikke klubvaerdien");
+
+    G.commitments = keep.commitments; G.balance = keep.balance; G.div = keep.div; G.inbox = keep.inbox;
+    checkInvariants();
+    H.screen = "home"; H.call("render");
+  }
+
   function checkInvariants() {
     const G = H.G;
     if (!G) return;
@@ -660,6 +734,15 @@ function runSeed(seed) {
     if (!Number.isFinite(val) || val <= 0) fail("clubValuation() = " + val + " (skal vaere endelig og > 0)");
     if (!Number.isFinite(G.netEwma)) fail("G.netEwma er ikke et tal: " + G.netEwma);
     if (!Number.isFinite(G.trust) || G.trust < 0 || G.trust > 100) fail("G.trust = " + G.trust);
+    // pakke 3: forpligtelser er kun id'er og primitive vaerdier, og de doer ud
+    if (!Array.isArray(G.commitments)) fail("G.commitments er ikke en liste");
+    for (const c of G.commitments) {
+      if (!Number.isFinite(c.pid)) fail("forpligtelse uden spiller-id: " + JSON.stringify(c));
+      if (!Number.isFinite(c.amt) || c.amt < 0) fail("forpligtelse med ugyldigt beloeb: " + JSON.stringify(c));
+      if (!Number.isFinite(c.seasonsLeft) || c.seasonsLeft <= 0) fail("forpligtelse der aldrig doer ud: " + JSON.stringify(c));
+      if (!["fee", "promo", "goals"].includes(c.kind)) fail("ukendt forpligtelsestype: " + c.kind);
+    }
+    if (!Number.isFinite(H.call("commitmentsOwed"))) fail("commitmentsOwed() er ikke et tal");
     if (!Array.isArray(G.lastXI)) fail("G.lastXI er ikke en liste");
     if (G.lastXI.some(id => !Number.isFinite(id))) fail("G.lastXI indeholder andet end id'er");
     for (const k of Object.keys(H.consts.STANDS)) {
@@ -1068,12 +1151,33 @@ function runSeed(seed) {
         if (!n) { H.modal = null; H.call("render"); break; }
         n.__tries = (n.__tries || 0) + 1;
         if (n.__tries > 16) { H.call("negoAbort"); break; }
-        if (n.doneDeal || n.dead) { H.call("negoFinish"); break; }
+        if (n.doneDeal || n.dead) {
+          const plan = n.payPlan || 1, cl = n.clause, paid = n.doneDeal && n.agreedFee && !n.freeAgent;
+          const before = H.G.commitments.length;
+          H.call("negoFinish");
+          if (H.G.commitments.length > before) {
+            if (plan > 1) stats.deals.inst++;
+            if (cl === "promo") stats.deals.promo++;
+            if (cl === "goals") stats.deals.goals++;
+          } else if (paid && H.G.squad.some(p => p.id === n.p.id)) stats.deals.cash++;
+          break;
+        }
         if (n.stage === "fee") {
           n.fee = Math.max(1000, Math.round(n.p.value * (1.03 + 0.07 * n.round) / 1000) * 1000);
           if (H.G.balance < n.fee + 15000) { H.call("negoAbort"); break; }
           H.call("negoSubmit", n.round >= 2);
         } else {
+          /* Pakke 3: strukturen vaelges i samme ark som vilkaarene. En spiller
+             der ikke har kontanterne straekker handlen -- det er hele pointen
+             med rater ("koeb stoerre end kassen"). */
+          if (n.agreedFee && !n.freeAgent) {
+            // GDD: "strukturer er vaerktoejer, ikke krav". En formand der HAR
+            // pengene betaler kontant -- rater koster et tillaeg han saa slipper
+            // for. Strukturen er den straekkede klubs redskab, ikke standarden.
+            const stretched = H.G.balance < n.agreedFee * 1.6;
+            n.payPlan = stretched ? pick([2, 3, 4]) : pick([1, 1, 1, 1, 2]);
+            n.clause = stretched ? pick([null, "promo", "goals"]) : pick([null, null, null, "promo"]);
+          }
           const o = Math.round((n.p.att + n.p.def + n.p.phy) / 3);
           n.years = pick([1, 2, 3, 4]);
           if (o >= 48 || n.__tries >= 4) n.role = "key";
@@ -1198,6 +1302,7 @@ function runSeed(seed) {
   renderAllScreens();
   checkInvariants();
   checkAllMessageKinds();
+  checkDealStructures();
   checkSaveLoad();
   checkPriceCurves();
   checkGroundStates();
@@ -1348,6 +1453,19 @@ function report(runs) {
       }
       console.log("  sæsoner hvor værdien FALDT: " + drops + " af " + pairs +
         " (den gamle formel kunne kun stige — " + verdict(drops > 0) + ")");
+    }
+  }
+
+  /* ── Pakke 3: ratebetaling og bonusklausuler ── */
+  {
+    const d = { cash: 0, inst: 0, promo: 0, goals: 0 };
+    for (const r of runs) for (const k of Object.keys(d)) d[k] += (r.stats.deals ? r.stats.deals[k] : 0);
+    const bought = d.cash + d.inst;
+    if (bought) {
+      console.log("\n─── HANDELSSTRUKTURER (pakke 3) ───");
+      console.log("  køb med fee: " + bought + " · kontant " + d.cash +
+        " · rater " + d.inst + " (" + Math.round(100 * d.inst / bought) + "%)");
+      console.log("  klausuler: oprykning " + d.promo + " · pr. mål " + d.goals);
     }
   }
 
