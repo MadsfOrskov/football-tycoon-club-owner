@@ -290,8 +290,15 @@ const BAL={
     base:1400, perDivision:0.85, familyStand:0.22, basics:0.05
   },
   wages:{
-    scale:13.5,              // player wage = ovr × scale × division multiplier
-    cap:11500, capOnPromotion:1.5, capRaise:1.2,
+    /* Per-head rate, not payroll. Change 6 balanced the matchday economy around
+       a squad of 13, because 13 was all depth was worth. Pakke 1 makes ~16 the
+       intended squad, so the same payroll now has to stretch over three more
+       men: 13.5 × 13/16 ≈ 11.5. The whole scale moves together with the cap, so
+       every ratio in the wage system is preserved — as when the scale was last
+       rescaled (ov×30 → ov×13,5). Without it, depth would simply cost £1.7k a
+       matchday and push the club into administration for doing the right thing. */
+    scale:11.5,              // player wage = ovr × scale × division multiplier
+    cap:10500, capOnPromotion:1.5, capRaise:1.2,
     freeAgentMult:1.5, promotionRise:1.35, adminCut:0.8
   },
   owners:{
@@ -299,6 +306,38 @@ const BAL={
     openingAsk:1.8, openingOffer:1.25, insultBelow:0.62, lockSeasons:2
   },
   fund:{bonusPerMD:0.015, bonusCap:0.15},
+  /* Freshness. The game's unit of time is the MATCHDAY — there are no rest
+     days — so a battery that empties and refills does not work. Instead a
+     rolling load with exponential decay, which converges on a plateau:
+        load  = load*decay + (played ? cost*ageFactor : 0)
+        fresh = 100 - max(0, load-free) * slope,  clamped 0-100
+     Nobody plays every game for free: at equilibrium a 20-year-old sits on
+     ~49 and a 34-year-old on ~36. Age decides how many games IN A ROW a man
+     holds up, not whether he can. One game off lifts a 20-year-old 49 → 69. */
+  fresh:{
+    decay:0.78, cost:1.0, ageFrom:22, agePerYear:0.018,
+    free:2.0, slope:20,
+    trainingRecovery:0.03,   // training ground: 0.78 → 0.81 decay
+    glassCost:0.12,          // glass body: pricier per game
+    grafterCost:-0.06,       // grafter: cheaper
+    phyFloor:0.72,           // phyMult = phyFloor + (1-phyFloor)*min(1, fresh/softFrom)
+    softFrom:80,             // above 80 nothing is felt
+    skillShare:0.5,          // att/def suffer half as much as phy
+    injBase:0.07, injClinic:0.05,
+    injuryScale:1.3,         // risk × (1 + (100-fresh)/100 × this)
+    clinicScale:0.6,         // the medical room blunts that multiplier too
+    /* Gaffer's rotation weight: restBase + MAN/restManDiv, applied to the
+       freshness deficit. Measured, not guessed: at the first values the term
+       was worth ~1 OVR against real starter-to-backup gaps of 3-5, so he never
+       rotated and the whole squad simply plateaued at 49. These make a rested
+       man worth ~3-4 OVR, which is what it takes for cover to get used — and
+       leaves MAN as the difference between a gaffer who rests men in time and
+       one who rides his star into the ground. */
+    restBase:0.06, restManDiv:400,
+    benchForm:0.35, benchConf:0.6,   // missing a game dulls the edge, gently
+    bandFresh:75, bandUsed:45,       // chip thresholds: Fresh / Used / Flat
+    gafferMoans:60                   // he speaks up below this squad average
+  },
   // A fax nobody answers used to hang forever, and the player stayed flagged
   // BID PENDING for the rest of the career. Bids now have a shelf life.
   bids:{replyMD:2},
@@ -334,6 +373,9 @@ function loadGame(){
   const d=readSave();
   if(!d||!d.G)return false;
   G=d.G;
+  // a career saved before freshness existed has no load on anyone; start them rested
+  if(!Array.isArray(G.lastXI))G.lastXI=[];
+  for(const p of [...G.squad,...G.market,...G.freeAgents])if(!Number.isFinite(p.load))p.load=0;
   // the id counter lives outside G — restore it above every id in play
   PID=1+[...G.squad,...G.market,...G.freeAgents].reduce((m,p)=>Math.max(m,p.id||0),0);
   modal=null;nego=null;screen="home";
@@ -438,7 +480,7 @@ function newGame(name,hue,mode){
     fanMood:60,objectivePos:8,
     squad:posPlan.map(p=>genPlayer(p,R(42,58),G_DIV_WAGE(3))),
     market:[],freeAgents:[],scoutPending:0,scoutUsed:false,sponsorBoost:false,
-    wageCap:BAL.wages.cap,bids:[],callbacks:[],
+    wageCap:BAL.wages.cap,bids:[],callbacks:[],lastXI:[],
     captain:null,captSuggested:false,talkCooldown:0,mentors:[],soldTo:[],
     teams:[],me:{pts:0,gd:0,pl:0},fixtures:[],
     inbox:[],news:[],msgId:1,lastResult:null,deadlineDone:{},playoff:null,
@@ -498,7 +540,7 @@ function genPlayer(pos,base,wmult){
   return {id:PID++,name:pick(FIRST)+" "+pick(LAST),pos,att,def,phy,form:0,age:R(18,33),
     wage:Math.round((ov*BAL.wages.scale*wmult+R(-70,110))/10)*10,
     value:Math.round((ov*ov*14+R(-4000,9000))/1000)*1000,
-    traits:[...new Set(traits)],gem:false,inj:0,susp:0,sg:0,sapps:0,smotm:0,
+    traits:[...new Set(traits)],gem:false,inj:0,susp:0,sg:0,sapps:0,smotm:0,load:0,
     conf:R(42,60),focus:null,capps:0,promiseMD:null,years:R(1,3),from:null,listed:false,reqDone:false,renewLockMD:-99};
 }
 function refreshMarket(){
@@ -561,16 +603,64 @@ const APPROACHES={
  bal:{n:"Balanced",own:0,opp:0,txt:"Play our game. Whatever that is this week."},
  allout:{n:"All-out",own:0.30,opp:0.28,txt:"Throw everything at them. Back door's open, mind."}
 };
+/* ---------- freshness ----------
+   p.load is what is STORED; freshness is derived from it. Storing the derived
+   value instead would need a second rule for how it refills, and the two would
+   drift apart the moment either is tuned. */
+function freshOf(p){
+  const F=BAL.fresh;
+  return clamp(Math.round(100-Math.max(0,(p.load||0)-F.free)*F.slope),0,100);
+}
+/* Age does not decide whether a man tires — it decides how fast. */
+function loadCost(p){
+  const F=BAL.fresh;
+  let c=F.cost*(1+Math.max(0,p.age-F.ageFrom)*F.agePerYear);
+  if(p.traits.includes("glass"))c+=F.glassCost;
+  if(p.traits.includes("grafter"))c+=F.grafterCost;
+  return Math.max(0.1,c);
+}
+function loadDecay(){return BAL.fresh.decay+(G.fac.training?BAL.fresh.trainingRecovery:0);}
+/* Tired legs give less of themselves — most of it physical, some of it touch. */
+function phyMult(p){
+  const F=BAL.fresh;
+  return F.phyFloor+(1-F.phyFloor)*Math.min(1,freshOf(p)/F.softFrom);
+}
+function skillMult(p){return 1-(1-phyMult(p))*BAL.fresh.skillShare;}
+function freshBand(p){
+  const f=freshOf(p);
+  return f>=BAL.fresh.bandFresh?"fresh":f>=BAL.fresh.bandUsed?"used":"flat";
+}
+function freshCount(){return available().filter(p=>freshOf(p)>=BAL.fresh.bandUsed).length;}
+function squadFreshness(){
+  const a=available();
+  return a.length?Math.round(a.reduce((s,p)=>s+freshOf(p),0)/a.length):100;
+}
+/* Applied once per matchday, to the whole squad: those who played take load on,
+   everyone else — bench, injured, suspended — sheds it. */
+function applyLoad(playedIds){
+  const d=loadDecay(),played=new Set(playedIds);
+  for(const p of G.squad){
+    const l=(p.load||0)*d+(played.has(p.id)?loadCost(p):0);
+    p.load=Math.round(Math.max(0,l)*1000)/1000;   // keep the save small and exact
+  }
+}
+
 /* ---------- strength ---------- */
 function available(){return G.squad.filter(p=>!p.inj&&!p.susp);}
+/* The gaffer picks the eleven — the chairman never does. Freshness is simply
+   one more thing he weighs, and a high-MAN gaffer weighs it heavier: he rests
+   men in time, a low one rides his star into the ground. Rotation only happens
+   if there is cover — with thirteen men and two injuries the tired play. */
+function restWeight(){return BAL.fresh.restBase+G.coach.man/BAL.fresh.restManDiv;}
 function bestXI(){
-  const by=p=>p.att+p.def+p.phy+p.form*2;
+  const rw=restWeight();
+  const by=p=>p.att+p.def+p.phy+p.form*2-(100-freshOf(p))*rw;
   const sq=[...available()].sort((a,b)=>by(b)-by(a));
   const take=(pos,n)=>sq.filter(p=>p.pos===pos).slice(0,n);
   return {gk:take("GK",1),df:take("DF",4),mf:take("MF",4),fw:take("FW",2)};
 }
 function xiList(){const xi=bestXI();return [...xi.gk,...xi.df,...xi.mf,...xi.fw];}
-function myPhy(){const l=xiList();return l.length?l.reduce((s,p)=>s+p.phy,0)/l.length:40;}
+function myPhy(){const l=xiList();return l.length?l.reduce((s,p)=>s+p.phy*phyMult(p),0)/l.length:40;}
 function myStrength(){
   const xi=bestXI();
   const avg=(arr,f)=>arr.length?arr.reduce((s,p)=>s+f(p),0)/arr.length:35;
@@ -580,8 +670,10 @@ function myStrength(){
   const all=[...xi.df,...xi.mf,...xi.fw];
   const confAvg=(avg(all,p=>p.conf)-50)/22; // confidence: the slow layer
   const formAvg=avg(all,p=>p.form)+confAvg;
-  const att=avg(xi.fw,p=>p.att)*0.5+avg(xi.mf,p=>p.att)*0.35+avg(xi.df,p=>p.att)*0.15;
-  const def=avg(xi.gk,p=>p.def)*0.35+avg(xi.df,p=>p.def)*0.45+avg(xi.mf,p=>p.def)*0.2;
+  // tired legs turn up, but they don't turn up all the way
+  const A=p=>p.att*skillMult(p),D=p=>p.def*skillMult(p);
+  const att=avg(xi.fw,A)*0.5+avg(xi.mf,A)*0.35+avg(xi.df,A)*0.15;
+  const def=avg(xi.gk,D)*0.35+avg(xi.df,D)*0.45+avg(xi.mf,D)*0.2;
   const coachB=(G.coach.tac+G.coach.man)/2/16;
   return {att:att+formAvg+coachB+leader,def:def+formAvg+coachB+leader};
 }
@@ -641,9 +733,19 @@ function matchIncidents(match){ // red cards & injuries with consequences
     if(mine){const p=pick(xiList());p.susp=1;out.push({m:R(20,85),txt:"RED CARD! "+p.name.split(" ")[1]+" sees red. The referee's notebook has a new enemy.",sub:"Suspended next matchday."});}
     else out.push({m:R(20,85),txt:"RED CARD — "+match.opp+" down to ten! Their bench is furious. Lovely stuff."});
   }
-  if(Math.random()<(G.fac.clinic?0.05:0.07)){
-    const p=pick(xiList());p.inj=Math.max(1,R(2,4)-(G.fac.clinic?1:0));
-    out.push({m:R(10,80),txt:"Injury: "+p.name.split(" ")[1]+" pulls up. The physio's sponge is out.",sub:"Out for "+p.inj+" matchdays."});
+  /* The loop that closes itself: thin squad → no rotation → tired legs → injury
+     → thinner squad. It stops hurting the moment you buy depth. */
+  {
+    const F=BAL.fresh,p=pick(xiList());
+    if(p){
+      const scale=F.injuryScale*(G.fac.clinic?F.clinicScale:1);
+      const risk=(G.fac.clinic?F.injClinic:F.injBase)*(1+(100-freshOf(p))/100*scale);
+      if(Math.random()<risk){
+        p.inj=Math.max(1,R(2,4)-(G.fac.clinic?1:0));
+        out.push({m:R(10,80),txt:"Injury: "+p.name.split(" ")[1]+" pulls up. The physio's sponge is out.",
+          sub:"Out for "+p.inj+" matchdays."+(freshOf(p)<F.bandUsed?" He was running on empty.":"")});
+      }
+    }
   }
   return out;
 }
@@ -721,6 +823,10 @@ function finalizeMatch(match){
   }
   // player stats & MOTM
   const xi=xiList();
+  // Who actually played is settled HERE and reused by everything downstream —
+  // applying load changes freshness, which would change a second bestXI() call.
+  G.lastXI=xi.map(p=>p.id);
+  applyLoad(G.lastXI);
   for(const p of xi){p.sapps++;p.capps++;}
   const w=gf>ga,l=ga>gf;
   for(const p of xi)p.conf=clamp(p.conf+(w?2:l?-2:0),10,95);
@@ -850,13 +956,18 @@ function settleFinances(res){
 }
 function updateFormMood(res){
   const w=res.gf>res.ga,d=res.gf===res.ga;
+  /* Form follows MINUTES, not the depth chart. The old rule docked everyone
+     outside the best sixteen BY OVR, so a seventeenth man rotted whether or not
+     he played — depth was punished twice over. Now: you played, the result
+     moves your form; you didn't, the edge dulls a little. That also gives us a
+     man back from four matchdays out who is FRESH but not sharp, without
+     inventing a fourth number for it. */
+  const played=new Set(G.lastXI||[]);
   for(const p of G.squad){
-    p.form=clamp(p.form+(w?R(0,2):d?R(-1,1):R(-2,0))+(p.traits.includes("grafter")?0.5:0),-6,6);
+    if(played.has(p.id))p.form=clamp(p.form+(w?R(0,2):d?R(-1,1):R(-2,0))+(p.traits.includes("grafter")?0.5:0),-6,6);
+    else{p.form=clamp(p.form-BAL.fresh.benchForm,-6,6);p.conf=clamp(p.conf-BAL.fresh.benchConf,10,95);}
   }
   G.fanMood=clamp(G.fanMood+(w?3:d?0:-4)+(G.ticket>BAL.ticket.moodPenaltyAbove?-1:0)+G.stands.family*0.5+(G.fac.pub?0.2:0),5,100);
-  // bench rust: outside the best ~16, edges dull
-  const ranked=[...G.squad].sort((a,b)=>ovr(b)-ovr(a));
-  ranked.slice(16).forEach(p=>{p.form=clamp(p.form-0.7,-6,6);p.conf=clamp(p.conf-1.2,10,95);});
   if(G.talkCooldown>0)G.talkCooldown--;
   for(const t of G.teams){t.att=clamp(t.att+R(-1,1)*0.5,40,75);t.def=clamp(t.def+R(-1,1)*0.5,40,75);}
 }
@@ -1013,7 +1124,7 @@ function finishSeason(o){
     p.phy=clamp(p.phy+(p.age>=30?-R(1,3):dev),25,95);
     if(p.focus&&p.age<28){p[p.focus]=clamp(p[p.focus]+(p.age<24?2:1),25,95);}
     p.value=Math.max(1000,Math.round((ovr(p)*ovr(p)*14*(p.age<24?1.3:p.age>30?0.6:1))/1000)*1000);
-    p.form=0;p.sg=0;p.sapps=0;p.smotm=0;p.inj=0;p.susp=0;p.promiseMD=null;
+    p.form=0;p.sg=0;p.sapps=0;p.smotm=0;p.inj=0;p.susp=0;p.promiseMD=null;p.load=0; // a summer is a summer
     p.conf=clamp(p.conf*0.6+20,10,95); // confidence regresses toward the mean over summer
   }
   applyRetirements();
@@ -1026,7 +1137,7 @@ function finishSeason(o){
   G.me={pts:0,gd:0,pl:0};for(const t of G.teams){t.pts=0;t.gd=0;t.pl=0;}
   G.fixtures=makeFixtures();refreshMarket();
   G.scoutUsed=false;G.sponsorBoost=false;G.coachAsked=false;G.deadlineDone={};G.playoff=null;
-  G.bids=[];G.callbacks=[];G.midwayDone=false;G.stuntDone=false;G.sponsorChecked=false;G.capRaiseUsed=false;G.fundRaided=false;
+  G.bids=[];G.callbacks=[];G.midwayDone=false;G.stuntDone=false;G.sponsorChecked=false;G.capRaiseUsed=false;G.fundRaided=false;G.lastXI=[];
   G.seasonTix.sold=0;G.jerseyFactor=1;
   modal={type:"seasonDone",txt,promoted,pos,prize,crown};
   saveGame();
@@ -1966,6 +2077,13 @@ function squadRow(p,last){
   if(p.id===G.captain)chips.push('<span class="mini a">©</span>');
   if(p.inj)chips.push(`<span class="mini r">Inj ${p.inj}md</span>`);
   if(p.susp)chips.push('<span class="mini r">Susp</span>');
+  // a chairman hears "he looks flat", not "load 4.87" — states, never numbers
+  if(!p.inj&&!p.susp){
+    const b=freshBand(p);
+    if(b==="used")chips.push('<span class="mini m">Used</span>');
+    else if(b==="flat")chips.push('<span class="mini r">Flat</span>');
+    else chips.push('<span class="mini a">Fresh</span>');
+  }
   if(p.listed)chips.push('<span class="mini c">Listed</span>');
   if(p.gem)chips.push('<span class="mini c">Gem</span>');
   if(mentor)chips.push(`<span class="mini a">${mentor.vet===p.id?"Mentor":"Apprentice"}</span>`);
@@ -2305,7 +2423,18 @@ function renderModal(){
       <p><b>${M.weather.n}</b> — ${M.weather.txt}.</p>
       ${(()=>{ // a thin squad plays short without ever saying so
         const xi=xiList(),out=G.squad.filter(p=>p.inj||p.susp);
-        if(xi.length>=11)return out.length?`<div class="why"><b>Unavailable:</b> ${out.map(p=>p.name.split(" ")[1]+(p.inj?" (injured)":" (suspended)")).join(", ")}. The gaffer has eleven, just about.</div>`:"";
+        if(xi.length>=11){
+          // He never asks you to pick the team. He asks you to give him bodies.
+          const tired=xi.filter(p=>freshBand(p)==="flat").length;
+          const cover=available().length-11;
+          const moan=(squadFreshness()<BAL.fresh.gafferMoans||tired>=3)&&cover<=2
+            ? `<div class="why" style="border-left-color:rgba(243,179,60,.6);background:rgba(243,179,60,.09)">
+                <b>"${tired>=3?"Look at them. "+tired+" of my eleven are running on fumes":"They're cooked, chairman"}."</b>
+                ${cover<=0?"I've no one to put in. Same eleven again, and they know it."
+                  :"I can change "+cover+", and then I'm out of bodies."} Get me a squad and I'll get you a season.</div>`
+            : "";
+          return moan+(out.length?`<div class="why"><b>Unavailable:</b> ${out.map(p=>p.name.split(" ")[1]+(p.inj?" (injured)":" (suspended)")).join(", ")}. The gaffer has eleven, just about.</div>`:"");
+        }
         return `<div class="why" style="border-left-color:rgba(224,90,74,.6);background:rgba(224,90,74,.09)">
           <b>You cannot field a full eleven.</b> Only ${xi.length} fit players in the best shape available${out.length?" — "+out.map(p=>p.name.split(" ")[1]).join(", ")+" are out":""}. The team plays short today, and it will show.</div>`;
       })()}
@@ -2704,7 +2833,9 @@ function renderModal(){
       <div class="card">
         ${bar("Attack",p.att)}${bar("Defence",p.def)}${bar("Physical",p.phy)}
         <div class="rowline"><span>Confidence</span><span class="amt num">${Math.round(p.conf)}</span></div>
-        <div class="rowline"><span>Form</span><span class="amt">${p.form>1?"▲ rising":p.form<-1?"▼ falling":"– steady"}</span></div></div>
+        <div class="rowline"><span>Form</span><span class="amt">${p.form>1?"▲ rising":p.form<-1?"▼ falling":"– steady"}</span></div>
+        <div class="rowline"><span>Legs</span><span class="amt">${
+          {fresh:"fresh — ready to go again",used:"used — he's felt every one of them",flat:"flat — the gaffer needs cover"}[freshBand(p)]}</span></div></div>
       <div class="card">
         <div class="rowline"><span>Wage</span><span class="amt num">${kfmt(p.wage)}/w</span></div>
         <div class="rowline"><span>Contract</span><span class="amt num" style="${p.years<=1?"color:var(--comm)":""}">${p.years} year${p.years===1?"":"s"}${p.years<=1?" · final":""}</span></div>

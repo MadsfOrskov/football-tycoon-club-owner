@@ -90,7 +90,7 @@ const BRIDGE = `
   get screen(){return screen;}, set screen(v){screen=v;},
   get obStep(){return obStep;}, set obStep(v){obStep=v;},
   get obData(){return obData;},
-  consts:{STANDS,STANDCOST,FACS,FAC_DETAIL,ROLES,APPROACHES,SWATCHES,TRAITS,COACHES,SPONSORS},
+  consts:{STANDS,STANDCOST,FACS,FAC_DETAIL,ROLES,APPROACHES,SWATCHES,TRAITS,COACHES,SPONSORS,BAL},
   call(name){
     const f = globalThis[name];
     if(typeof f !== "function") throw new Error("harness: ingen global funktion '"+name+"'");
@@ -224,7 +224,10 @@ function runSeed(seed) {
     stats.md.push({
       season: H.G.season, md: H.G.md, home: !!res.home,
       net: H.G.balance - before, gate: res.gate || 0, wages: res.wages || 0,
-      att: res.att || 0, cap: H.G.capacity
+      att: res.att || 0, cap: H.G.capacity,
+      // pakke 1: dybde og friskhed maales pr. kampdag, ikke kun ved saesonslut
+      squad: H.G.squad.length, fresh: H.call("freshCount"),
+      avail: H.call("available").length
     });
     return out;
   };
@@ -376,7 +379,7 @@ function runSeed(seed) {
   function checkBankCascade() {
     const G = H.G;
     where = "bankCascade";
-    const snap = { balance: G.balance, loan: G.loan, fund: G.fund, bonus: G.fundBonus, target: G.fundTarget, pts: G.me.pts, squad: G.squad.slice(), wages: G.squad.map(p => p.wage) };
+    const snap = { balance: G.balance, loan: G.loan, fund: G.fund, bonus: G.fundBonus, target: G.fundTarget, pts: G.me.pts, squad: G.squad.slice(), wages: G.squad.map(p => p.wage), captain: G.captain, mentors: G.mentors.slice() };
 
     // 1) banken toemmer stadionfonden foerst
     G.balance = -70000; G.fund = 30000; G.fundBonus = 5000; G.fundTarget = null; G.loan = null;
@@ -393,7 +396,13 @@ function runSeed(seed) {
 
     // 3) hverken salg (trup 13) eller laan (allerede taget) => administration
     G.balance = -90000; G.fund = 0; G.fundBonus = 0;
+    // Foer pakke 1 var truppen altid praecis 13, saa denne slice var et no-op.
+    // Nu skaerer den rent faktisk -- og maa ikke efterlade anfoerer eller
+    // mentorpar pegende paa nogen der ikke laengere er i truppen.
     G.squad = G.squad.slice(0, 13);
+    const ids = new Set(G.squad.map(p => p.id));
+    if (!ids.has(G.captain)) G.captain = G.squad[0].id;
+    G.mentors = G.mentors.filter(m => ids.has(m.vet) && ids.has(m.kid));
     const before = G.me.pts;
     H.call("openBankUltimatum");
     if (G.me.pts !== Math.max(0, before - 6)) fail("administration gav ikke -6 point (" + before + " -> " + G.me.pts + ")");
@@ -402,6 +411,7 @@ function runSeed(seed) {
 
     G.balance = snap.balance; G.loan = snap.loan; G.fund = snap.fund; G.fundBonus = snap.bonus;
     G.fundTarget = snap.target; G.me.pts = snap.pts; G.squad = snap.squad;
+    G.captain = snap.captain; G.mentors = snap.mentors;
     snap.squad.forEach((p, i) => { p.wage = snap.wages[i]; });
     H.call("render");
   }
@@ -570,10 +580,16 @@ function runSeed(seed) {
     const shares = G.owners.reduce((s, o) => s + o.share, 0) + G.myShare;
     if (shares !== 100) fail("ejerandele summer til " + shares + " (skal være 100)");
     for (const p of G.squad) {
-      for (const k of ["att", "def", "phy", "wage", "value", "conf", "age", "years", "form"]) {
+      for (const k of ["att", "def", "phy", "wage", "value", "conf", "age", "years", "form", "load"]) {
         if (!Number.isFinite(p[k])) fail("spiller " + p.name + "." + k + " = " + p[k]);
       }
+      // pakke 1: belastning er det gemte tal, friskhed er det afledte
+      if (p.load < 0) fail("spiller " + p.name + " har negativ belastning: " + p.load);
+      const f = H.call("freshOf", p);
+      if (!Number.isFinite(f) || f < 0 || f > 100) fail("freshOf(" + p.name + ") = " + f + " (skal vaere 0-100)");
     }
+    if (!Array.isArray(G.lastXI)) fail("G.lastXI er ikke en liste");
+    if (G.lastXI.some(id => !Number.isFinite(id))) fail("G.lastXI indeholder andet end id'er");
     for (const k of Object.keys(H.consts.STANDS)) {
       if (G.stands[k] < 0 || G.stands[k] > 2) fail("stand " + k + " niveau " + G.stands[k]);
     }
@@ -708,7 +724,7 @@ function runSeed(seed) {
     const msg = pick(live);
     const kind = msg.action.kind;
     const choice = {
-      sellOffer: () => pick(["accept", "demand", "reject"]),
+      sellOffer: () => hasSurplus() ? pick(["accept", "demand", "reject"]) : pick(["demand", "reject"]),
       bidAccepted: () => pick(["ok", "ok", "die"]),
       bidCounter: () => pick(["accept", "die"]),
       bidWar: () => pick(["raise", "walk"]),
@@ -721,6 +737,19 @@ function runSeed(seed) {
     H.call("actMsg", msg.id, choice());
   }
 
+  /* Pakke 1 gav dybde en pris OG en vaerdi. Botten skal svare paa det samme
+     signal som en spiller: gafferen brokker sig, benene er flade, der er ingen
+     at saette ind. Foer pakke 1 var spiller nr. 12 ren loenudgift, og botten
+     solgte derfor helt ned til gulvet paa 13 — hver eneste saeson. */
+  function wantsDepth() {
+    const G = H.G;
+    return G.squad.length < 15 ||
+      H.call("squadFreshness") < H.consts.BAL.fresh.gafferMoans ||
+      H.call("freshCount") < 13;
+  }
+  // saelg kun ægte overskud: elleve paa banen + reel rotationsdaekning
+  function hasSurplus() { return H.G.squad.length > 16; }
+
   function doTransfer() {
     const G = H.G;
     if (G.squad.length >= 19) return;
@@ -732,7 +761,7 @@ function runSeed(seed) {
       if (G.market[ix].pendingBid) return;
       if (chance(0.5)) H.call("startBuyNego", ix, false, { quick: true });
       else H.call("openFormalBid", ix);
-    } else if (G.freeAgents.length && chance(0.35)) {
+    } else if (G.freeAgents.length && chance(wantsDepth() ? 0.6 : 0.35)) {
       H.call("startBuyNego", Math.floor(rnd() * G.freeAgents.length), true);
     }
   }
@@ -770,10 +799,23 @@ function runSeed(seed) {
     if (G.talkCooldown <= 0) opts.push(() => H.call("openChat", id));
     if (p.age >= 28) opts.push(() => H.call("setMentor", id));
     if (!G.captSuggested && p.id !== G.captain) opts.push(() => H.call("suggestCaptain", id));
-    if (p.years <= 1) opts.push(() => H.call("startRenewal", id));
-    if (H.call("windowOpen") && G.squad.length > 13) opts.push(() => H.call("openSellSheet", id));
+    // en trup der skal rotere holder paa sine kontrakter og saelger kun overskud
+    if (p.years <= 1) { opts.push(() => H.call("startRenewal", id)); opts.push(() => H.call("startRenewal", id)); }
+    if (H.call("windowOpen") && hasSurplus()) opts.push(() => H.call("openSellSheet", id));
     if (p.age < 28) opts.push(() => H.call("setFocus", id, pick(["att", "def", "phy"])));
     if (opts.length) pick(opts)();
+  }
+
+  /* Bosman toemte truppen hver sommer: alle med udloebet kontrakt gik gratis,
+     og gulvet paa 13 var det eneste der stoppede blodet. Modtraekket findes i
+     spillet allerede -- forlaengelser -- men botten brugte det kun tilfaeldigt. */
+  function doRenewals() {
+    const G = H.G;
+    const due = G.squad.filter(p => p.years <= 1 && G.md >= p.renewLockMD);
+    if (!due.length) return;
+    const wagesNow = G.squad.reduce((s, p) => s + p.wage, 0);
+    if (G.myShare < 100 && wagesNow > G.wageCap * 0.94) return;   // ingen plads under loftet
+    H.call("startRenewal", pick(due).id);
   }
 
   function doOwnerBuyout() {
@@ -800,6 +842,7 @@ function runSeed(seed) {
   function botIdle() {
     if (chance(0.55)) { processInbox(); if (H.modal) return; }
     if (chance(0.35)) { doTransfer(); if (H.modal) return; }
+    if (chance(0.30)) { doRenewals(); if (H.modal) return; }
     if (chance(0.30)) { doBuild(); if (H.modal) return; }
     if (chance(0.25)) { doSquadStuff(); if (H.modal) return; }
     if (chance(0.06)) { doOwnerBuyout(); if (H.modal) return; }
@@ -1155,6 +1198,39 @@ function report(runs) {
   }
   console.log("  tribune bygget undervejs      : " + built + " af " + runs.length + " seeds");
   console.log("  bank-ultimatum " + bank + " · administration " + admin + " (0 = ingen gik konkurs)");
+
+  /* ── Pakke 1: trupdybde og friskhed ──
+     Truppen stod på PRÆCIS 13 i 40 af 40 sæsonafslutninger: dybde var ren
+     lønudgift. Stiger tallet her, virker pakken; gør det ikke, gør den ikke. */
+  const depth = new Map();         // sæson → [trupstørrelse pr. kampdag]
+  const endSquad = new Map();      // sæson → [trupstørrelse ved sæsonslut]
+  let mdTotal = 0, mdThin = 0;
+  for (const r of runs) {
+    for (const e of r.stats.md) {
+      if (e.squad === undefined) continue;
+      if (!depth.has(e.season)) depth.set(e.season, []);
+      depth.get(e.season).push(e.squad);
+      mdTotal++; if (e.fresh < 11) mdThin++;
+    }
+    for (const e of r.stats.seasonEnd) {
+      if (!endSquad.has(e.season)) endSquad.set(e.season, []);
+      endSquad.get(e.season).push(e.squad);
+    }
+  }
+  if (mdTotal) {
+    console.log("\n─── TRUPDYBDE OG FRISKHED (pakke 1) ───");
+    console.log("  sæson   trup ved sæsonslut   trup pr. kampdag   (mål: sæsonslut OVER 13)");
+    const allEnd = [];
+    for (const s of [...endSquad.keys()].sort((a, b) => a - b)) {
+      const es = endSquad.get(s); allEnd.push(...es);
+      const d = depth.get(s) || [];
+      console.log("    " + String(s).padEnd(6) + avg(es).toFixed(2).padStart(14) +
+        String(d.length ? avg(d).toFixed(2) : "–").padStart(19));
+    }
+    const m = avg(allEnd);
+    console.log("  gennemsnit ved sæsonslut: " + m.toFixed(2) + " spillere   " + verdict(m > 13));
+    console.log("  kampdage med under 11 friske: " + Math.round(100 * mdThin / mdTotal) + "% (" + mdThin + " af " + mdTotal + ")");
+  }
 
   /* Sportslig fremdrift: er sværhedsgraden "gennembalanceret" (GDD)?
      Rykker alle op med det samme, er der ingen klatretur at fortælle om. */
