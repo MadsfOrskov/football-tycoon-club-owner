@@ -63,6 +63,23 @@ try {
   process.exit(1);
 }
 
+/* Modaltyper botten kender. Sammenholdes med kildekoden NEDENFOR, så en ny
+   modal fejler med det samme — ikke først når botten tilfældigvis rammer den. */
+const HANDLED_MODALS = new Set(["prematch", "ticker", "quickOffer", "interstitial", "info",
+  "rewarded", "seasonDone", "budget", "midway", "bank", "deadline", "nego", "formalBid",
+  "sellChoice", "sell", "ownerNego", "facConfirm", "chat", "player", "sponsorOffer"]);
+{
+  const found = new Set([...SRC.matchAll(/modal\s*=\s*\{\s*type\s*:\s*"([A-Za-z]+)"/g)].map(m => m[1]));
+  const missing = [...found].filter(t => !HANDLED_MODALS.has(t));
+  const stale = [...HANDLED_MODALS].filter(t => !found.has(t));
+  if (missing.length) {
+    console.error("FEJL: modaltyper i koden som botten ikke håndterer: " + missing.join(", "));
+    console.error("  → tilføj dem i handleModal-switchen OG i HANDLED_MODALS øverst i test-harness.js");
+    process.exit(1);
+  }
+  if (stale.length) console.log("  bemærk: harness kender modaltyper der ikke længere findes: " + stale.join(", "));
+}
+
 /* Bro til script-scopede let/const (G, modal, nego, screen, obStep …)
    samt en generisk call() der slår funktioner op på sandbox-globalen. */
 const BRIDGE = `
@@ -406,12 +423,20 @@ function runSeed(seed) {
   }
   function checkPriceCurves() {
     where = "priskurver";
+    // Sweep RELATIVT til den "fair" pris — den skalerer med kampdagsbilletten,
+    // så en fast £-øvre grænse ville teste noget forskelligt fra spil til spil.
+    const fair = H.call("seasonTixFair");
+    const lo = Math.max(10, Math.round(fair * 0.15)), hi = Math.round(fair * 3);
+    const step = Math.max(5, Math.round((hi - lo) / 40));
     const cash = [], sold = [];
-    for (let p = 20; p <= 400; p += 10) { const e = H.call("seasonTixEstimate", p); cash.push(e.cash); sold.push(e.sold); }
+    for (let p = lo; p <= hi; p += step) { const e = H.call("seasonTixEstimate", p); cash.push(e.cash); sold.push(e.sold); }
     assertUnimodal(cash, "sæsonkort: kontant");
     assertNonIncreasing(sold, "sæsonkort: solgte");
-    if (cash[cash.length - 1] !== 0) fail("sæsonkort: kontant falder ikke til nul ved høj pris (" + cash[cash.length - 1] + ")");
-    if (sold[sold.length - 1] !== 0) fail("sæsonkort: der sælges stadig ved £400 (" + sold[sold.length - 1] + ")");
+    if (sold[sold.length - 1] !== 0) fail("sæsonkort: der sælges stadig ved 3x fair pris (£" + hi + " → " + sold[sold.length - 1] + " solgte)");
+    // og inden for det interval UI'et faktisk tillader, skal toppunktet være nåeligt
+    const uiCash = [];
+    for (let p = 20; p <= 400; p += 10) uiCash.push(H.call("seasonTixEstimate", p).cash);
+    assertUnimodal(uiCash, "sæsonkort: kontant i UI-intervallet £20-400");
 
     const keep = H.G.ticket, rev = [], att = [];
     for (let t = 5; t <= 30; t++) { H.G.ticket = t; const a = H.call("attendance"); att.push(a); rev.push(Math.max(0, a - H.G.seasonTix.sold) * t); }
@@ -461,6 +486,18 @@ function runSeed(seed) {
     if (fresh.id <= maxId) fail("PID blev ikke gendannet ved load: nyt id " + fresh.id + " ≤ eksisterende " + maxId);
     checkInvariants();
     // og spillet skal kunne fortsætte bagefter
+    H.screen = "home"; H.call("render"); checkHtml();
+  }
+
+  /* Oprykning uden sponsor kastede TypeError og dræbte hele karrieren.
+     Botten tegner næsten altid en sponsor, så scenariet tvinges igennem. */
+  function checkPromotionWithoutSponsor() {
+    where = "oprykning uden sponsor";
+    H.G.sponsor = null;
+    if (H.G.div === 0) H.G.div = 1;              // der skal være noget at rykke op til
+    H.call("finishSeason", { promoted: true, how: "champions" });
+    if (H.modal && H.modal.type === "seasonDone") H.modal = null;
+    checkInvariants();
     H.screen = "home"; H.call("render"); checkHtml();
   }
 
@@ -671,6 +708,13 @@ function runSeed(seed) {
     if (chance(0.30)) { doBuild(); if (H.modal) return; }
     if (chance(0.25)) { doSquadStuff(); if (H.modal) return; }
     if (chance(0.06)) { doOwnerBuyout(); if (H.modal) return; }
+    // billetprisen var utestet: hele elasticitetskurven og stemningsstraffen
+    // over £16 blev aldrig ramt, fordi botten lod prisen stå på £10
+    if (chance(0.10)) {
+      H.G.ticket = Math.max(5, Math.min(30, H.G.ticket + (chance(0.5) ? -1 : 1) * (1 + Math.floor(rnd() * 3))));
+      if (chance(0.3)) H.G.bigExtra = Math.max(0, Math.min(8, H.G.bigExtra + (chance(0.5) ? -1 : 1)));
+      H.call("render");
+    }
     if (chance(0.25)) renderAllScreens();
   }
 
@@ -699,6 +743,14 @@ function runSeed(seed) {
       const seen = !!H.nego.renewal || H.nego.cround >= 1;
       maybeEcho("nego:" + (seen ? "seen" : "blind"));
       if (H.nego.renewal) maybeEcho("nego:renewal");
+      // GDD: poker-princippet — første runde er blind (undtagen forlængelser)
+      const h = lastHtml.v;
+      if (!seen && h.includes("he expects")) {
+        fail("poker-reglen brudt: lønkravet vises allerede i runde 1 (cround=" + H.nego.cround + ")");
+      }
+      if (seen && !h.includes("he expects")) {
+        fail("lønkravet vises ikke efter modbud/ved forlængelse — ændring 3 er gået i stykker");
+      }
     }
     switch (md.type) {
 
@@ -755,8 +807,14 @@ function runSeed(seed) {
           md.fundAdd = Math.min(Math.max(0, H.G.balance), Math.floor(rnd() * 7) * 10000);
         }
         if (hasFn("askCapRaise") && !H.G.capRaiseUsed && chance(0.6)) { H.call("askCapRaise"); break; }
-        if (hasFn("budgetNext")) H.call("budgetNext");
-        else H.call("budgetConfirm");
+        if (hasFn("budgetNext")) { H.call("budgetNext"); break; }
+        // Ændring 1 lovede at live-estimatet og det faktiske salg deler formel.
+        const predicted = H.call("seasonTixEstimate", md.tixPrice).sold;
+        H.call("budgetConfirm");
+        if (H.G.seasonTix.sold !== predicted) {
+          fail("budgetguidens live-estimat (" + predicted + " sæsonkort) matcher ikke det faktiske salg (" +
+            H.G.seasonTix.sold + ") — formlerne er skredet fra hinanden");
+        }
         break;
       }
 
@@ -903,6 +961,7 @@ function runSeed(seed) {
   checkGroundStates();
   checkOwnerBuyout();
   checkBankCascade();
+  checkPromotionWithoutSponsor();   // sidst: den rykker sæsonen frem
 
   return { seed, stats, G: H.G, steps };
 }
