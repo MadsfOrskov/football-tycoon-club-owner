@@ -501,6 +501,63 @@ function runSeed(seed) {
     H.screen = "home"; H.call("render"); checkHtml();
   }
 
+  /* Botten moeder ikke alle otte beskedtyper i hver koersel, saa RNG maa ikke
+     afgoere om blindgyden opdages. Her tvinges én af hver igennem, plus de to
+     veje der lod spilleren haenge: sletning og udloeb. */
+  function checkAllMessageKinds() {
+    const G = H.G;
+    where = "alle beskedtyper";
+    const keepInbox = G.inbox.slice(), keepScreen = H.screen, keepMd = G.md, keepBal = G.balance;
+    const p = G.market[0];
+    if (!p) fail("intet marked at proeve beskedtyperne paa");
+    const squadId = G.squad[0].id;
+    const kinds = [
+      { kind: "sellOffer", pid: squadId, bid: 20000, club: "Testfield United" },
+      { kind: "sponsorChoice", offers: [{ n: "A", per: 400 }, { n: "B", per: 700 }] },
+      { kind: "bidAccepted", pid: p.id, fee: 30000 },
+      { kind: "bidCounter", pid: p.id, ask: 35000 },
+      { kind: "bidWar", pid: p.id, raise: 40000, club: "Testfield United" },
+      { kind: "callback", pid: p.id },
+      { kind: "transferReq", pid: squadId },
+      { kind: "stunt" }
+    ];
+    // ogsaa med tom kasse: en daempet knap maa ikke vaere den ENESTE udvej
+    for (const balance of [5000000, 0]) {
+      G.balance = balance;
+      for (const action of kinds) {
+        G.inbox = [];
+        H.call("msg", "Test", "T", "Test " + action.kind, "body", { ...action });
+        H.screen = "inbox"; H.call("render");
+        const m = G.inbox[0];
+        if (!lastHtml.v.includes("actMsg(" + m.id + ",")) {
+          fail("beskedtypen '" + action.kind + "' kan ikke besvares fra indbakken ved kasse " +
+            balance + " — tilfoej den i inboxActions()");
+        }
+      }
+    }
+
+    // sletning skal frigive spilleren igen
+    G.inbox = []; p.pendingBid = true;
+    H.call("msg", "Test", "T", "Counter", "body", { kind: "bidCounter", pid: p.id, ask: 35000 });
+    H.call("delMsg", G.inbox[0].id);
+    if (p.pendingBid) fail("delMsg() ryddede ikke pendingBid — spilleren er laast paa BID PENDING");
+
+    // og en ubesvaret budbesked skal doe af sig selv
+    G.inbox = []; p.pendingBid = true;
+    H.call("msg", "Test", "T", "War", "body", { kind: "bidWar", pid: p.id, raise: 40000, club: "X" });
+    const live = G.inbox[0];
+    if (!Number.isFinite(live.action.expires)) fail("budbesked fik ingen frist (action.expires)");
+    G.md = live.action.expires;
+    H.call("expireMessages");
+    if (!live.done) fail("budbeskeden udloeb ikke ved fristen");
+    if (p.pendingBid) fail("udloebet budbesked ryddede ikke pendingBid");
+
+    G.inbox = keepInbox; G.md = keepMd; G.balance = keepBal;
+    H.screen = keepScreen; H.call("render");
+    checkNoOrphanBids();
+    checkInvariants();
+  }
+
   function checkInvariants() {
     const G = H.G;
     if (!G) return;
@@ -534,6 +591,43 @@ function runSeed(seed) {
     if (G.captain !== null && !squadIds.has(G.captain)) fail("anfører-id " + G.captain + " findes ikke i truppen");
     for (const m of G.mentors) {
       if (!squadIds.has(m.vet) || !squadIds.has(m.kid)) fail("mentor-par peger på ukendt id (" + m.vet + "/" + m.kid + ")");
+    }
+  }
+
+  /* Samme fejlklasse som en uregistreret modaltype: handleAction() kunne otte
+     beskedtyper, men viewInbox() tegnede kun knapper for to. Botten kaldte
+     actMsg() direkte og opdagede det aldrig — en rigtig spiller sad fast.
+     Derfor: hver besked med action && !done SKAL kunne besvares fra skærmen. */
+  function checkInboxActionable() {
+    const G = H.G;
+    if (!G) return;
+    const live = G.inbox.filter(m => m.action && !m.done);
+    if (!live.length) return;
+    const keep = H.screen, keepWhere = where;
+    where = "indbakke-knapper";
+    H.screen = "inbox"; H.call("render");
+    const h = lastHtml.v;
+    for (const m of live) {
+      if (!h.includes("actMsg(" + m.id + ",")) {
+        fail("indbakken tegner INGEN knap for besked #" + m.id + " af typen '" + m.action.kind +
+          "' — den kan ikke besvares. Tilfoej den i inboxActions().");
+      }
+    }
+    H.screen = keep; where = keepWhere; H.call("render");
+  }
+
+  /* Foelgefejlen: en ubesvaret budbesked lader p.pendingBid staa, og
+     marketRow() tegner 'BID PENDING' i stedet for knapper — for evigt. */
+  function checkNoOrphanBids() {
+    const G = H.G;
+    if (!G) return;
+    where = "BID PENDING-laas";
+    for (const p of G.market) {
+      if (!p.pendingBid) continue;
+      if (G.bids.some(b => b.pid === p.id)) continue;
+      if (G.inbox.some(m => m.action && !m.done && m.action.pid === p.id)) continue;
+      fail("spiller " + p.name + " (#" + p.id + ") staar paa BID PENDING uden hverken bud i luften " +
+        "eller en aaben besked — han kan aldrig koebes igen");
     }
   }
 
@@ -615,7 +709,7 @@ function runSeed(seed) {
     const kind = msg.action.kind;
     const choice = {
       sellOffer: () => pick(["accept", "demand", "reject"]),
-      bidAccepted: () => "ok",
+      bidAccepted: () => pick(["ok", "ok", "die"]),
       bidCounter: () => pick(["accept", "die"]),
       bidWar: () => pick(["raise", "walk"]),
       callback: () => "ok",
@@ -847,11 +941,11 @@ function runSeed(seed) {
         const n = H.nego;
         if (!n) { H.modal = null; H.call("render"); break; }
         n.__tries = (n.__tries || 0) + 1;
-        if (n.__tries > 16) { H.nego = null; H.modal = null; H.call("render"); break; }
+        if (n.__tries > 16) { H.call("negoAbort"); break; }
         if (n.doneDeal || n.dead) { H.call("negoFinish"); break; }
         if (n.stage === "fee") {
           n.fee = Math.max(1000, Math.round(n.p.value * (1.03 + 0.07 * n.round) / 1000) * 1000);
-          if (H.G.balance < n.fee + 15000) { H.nego = null; H.modal = null; H.call("render"); break; }
+          if (H.G.balance < n.fee + 15000) { H.call("negoAbort"); break; }
           H.call("negoSubmit", n.round >= 2);
         } else {
           const o = Math.round((n.p.att + n.p.def + n.p.phy) / 3);
@@ -862,7 +956,7 @@ function runSeed(seed) {
           n.wageOffer = Math.max(100, Math.round(n.p.wage * (1.02 + 0.13 * n.cround) / 100) * 100);
           const wagesNow = H.G.squad.reduce((s, p) => s + p.wage, 0);
           if (H.G.myShare < 100 && wagesNow + n.wageOffer > H.G.wageCap) {
-            H.nego = null; H.modal = null; H.call("render"); break;
+            H.call("negoAbort"); break;
           }
           H.call("negoSubmit", n.cround >= 2);
         }
@@ -947,6 +1041,8 @@ function runSeed(seed) {
     prevModal = null; sameModal = 0;
 
     checkFixtureIntegrity();
+    checkInboxActionable();
+    checkNoOrphanBids();
     where = "idle S" + H.G.season + " MD" + H.G.md;
     botIdle();
     if (H.modal) continue;
@@ -968,6 +1064,7 @@ function runSeed(seed) {
   };
   renderAllScreens();
   checkInvariants();
+  checkAllMessageKinds();
   checkSaveLoad();
   checkPriceCurves();
   checkGroundStates();

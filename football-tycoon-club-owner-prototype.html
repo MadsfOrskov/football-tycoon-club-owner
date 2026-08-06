@@ -299,6 +299,9 @@ const BAL={
     openingAsk:1.8, openingOffer:1.25, insultBelow:0.62, lockSeasons:2
   },
   fund:{bonusPerMD:0.015, bonusCap:0.15},
+  // A fax nobody answers used to hang forever, and the player stayed flagged
+  // BID PENDING for the rest of the career. Bids now have a shelf life.
+  bids:{replyMD:2},
   // A season's honest work should pay for roughly one stand — matchdays are
   // near break-even by design, so the building money comes from here.
   prize:{champions:150000, runnersUp:100000, playoffs:120000, objective:48000, missed:16000},
@@ -1335,9 +1338,40 @@ function openDeadline(key){
 }
 
 /* ---------- inbox & messages ---------- */
+/* The three replies to a formal bid are the only messages that hold a market
+   player hostage (p.pendingBid hides the Quick/Offer buttons). Every route out
+   of such a message — answered, expired, deleted, pushed off the end of the
+   inbox — MUST release him again, or he is unbuyable for the rest of the game. */
+const BID_KINDS=["bidAccepted","bidCounter","bidWar"];
+function clearPendingBid(pid){const ix=marketById(pid);if(ix>=0)G.market[ix].pendingBid=false;}
+function releaseMsg(m){
+  if(m&&m.action&&!m.done&&BID_KINDS.includes(m.action.kind))clearPendingBid(m.action.pid);
+}
 function msg(from,av,title,body,action){
+  if(action&&BID_KINDS.includes(action.kind))action.expires=G.md+BAL.bids.replyMD;
   G.inbox.unshift({id:G.msgId++,from,av,title,body,action,unread:true,done:false});
-  if(G.inbox.length>18)G.inbox.pop();
+  if(G.inbox.length>18)releaseMsg(G.inbox.pop());
+}
+/* A bid you never answered is a bid the selling club stops waiting for. This
+   both un-sticks the player and gives the bidding war the hurry it needs. */
+function expireMessages(){
+  for(const m of G.inbox){
+    if(m.done||!m.action||!m.action.expires||G.md<m.action.expires)continue;
+    releaseMsg(m);m.done=true;m.unread=false;
+    m.body=m.action.kind==="bidWar"
+      ? "You slept on it. He signed for them this morning — the photos are already up."
+      : "No answer came, so they went with someone else. \"We did try,\" says the secretary, filing the fax.";
+  }
+}
+/* Belt and braces: any market player still flagged after the dust settles,
+   with neither a bid in flight nor a live message about him, is set free. */
+function sweepPendingBids(){
+  for(const p of G.market){
+    if(!p.pendingBid)continue;
+    if(G.bids.some(b=>b.pid===p.id))continue;
+    if(G.inbox.some(m=>!m.done&&m.action&&BID_KINDS.includes(m.action.kind)&&m.action.pid===p.id))continue;
+    p.pendingBid=false;
+  }
 }
 function addNews(tag,txt){G.news.unshift({tag,txt});if(G.news.length>10)G.news.pop();}
 function unreadCount(){return G.inbox.filter(m=>m.unread&&!m.done).length;}
@@ -1386,6 +1420,7 @@ function sendFormalBid(){
   modal=null;render();
 }
 function resolveBids(){
+  expireMessages();
   const due=G.bids.filter(b=>b.due<=G.md);
   G.bids=G.bids.filter(b=>b.due>G.md);
   for(const b of due){
@@ -1417,6 +1452,7 @@ function resolveBids(){
       msg(c.agentName,"A","He's back on the table: "+c.p.name.split(" ")[1],"\"Chairman. That deal that died? It can un-die. The club needs the money now — the price has dropped.\"",{kind:"callback",pid:c.p.id});
     }
   }
+  sweepPendingBids();
 }
 /* Prices a hypothetical set of terms — lets the sheet show what each contract
    length and each promised role would cost, without a second formula to drift. */
@@ -1503,9 +1539,17 @@ function negoSubmit(finalOffer){
   }
   render();
 }
+/* "Not today" is a real exit, not a non-event. Closing the sheet on a deal that
+   began as a formal bid has to hand the player back to the market — otherwise
+   he keeps the BID PENDING flag with no message left to answer. */
+function negoAbort(){
+  if(nego&&nego.p)nego.p.pendingBid=false;
+  nego=null;modal=null;render();
+}
 function negoCollapse(){
   const n=nego;
-  if(n.fromInbox)return; // inbox deals just die
+  // inbox deals just die — but the bid flag has to die with them
+  if(n.fromInbox){if(n.p)n.p.pendingBid=false;return;}
   if(n.freeAgent){G.freeAgents.splice(n.ix,1);return;}
   const p=G.market[n.ix];
   G.market.splice(n.ix,1);
@@ -1527,7 +1571,7 @@ function negoFinish(){
   }
   if(n.doneDeal){
     const p=n.p;const fee=n.freeAgent?0:n.agreedFee;
-    if(G.balance<fee){modal={type:"info",title:"Not enough funds",body:"The deal is agreed and you can't pay. Barry will dine out on this story for years."};nego=null;render();return;}
+    if(G.balance<fee){p.pendingBid=false;modal={type:"info",title:"Not enough funds",body:"The deal is agreed and you can't pay. Barry will dine out on this story for years."};nego=null;render();return;}
     G.balance-=fee;
     p.wage=n.wageOffer;p.years=n.years;p.role=n.role;p.pendingBid=false;
     G.squad.push(p);
@@ -1557,6 +1601,9 @@ function handleAction(m,choice){
   if(a.kind==="bidAccepted"){
     const p=G.market[marketById(a.pid)];
     if(!p){m.done=true;m.body="Too late — he's no longer available.";render();return;}
+    // an accepted bid you cannot fund must still be answerable, or the player
+    // stays flagged BID PENDING and the market row never comes back
+    if(choice==="die"){p.pendingBid=false;m.done=true;m.body="You let the agreement lapse. The fee was there; the money wasn't.";render();return;}
     m.done=true;startContractTalks(p,a.fee);return;
   }
   if(a.kind==="bidCounter"){
@@ -1845,18 +1892,44 @@ function formDots(){
   G.formHist=G.formHist||[];
   return G.formHist.slice(-5).map(x=>`<span class="fd ${x}">${x.toUpperCase()}</span>`).join("")||'<span class="kick">First match awaits</span>';
 }
+/* Every kind handleAction() understands MUST be drawable here. Half of them
+   weren't, which made the whole formal-bid track a dead end you could not even
+   back out of. The harness now fails if a live message renders no button. */
+function ibtn(id,choice,label,cls,blockedWhy){
+  return blockedWhy
+    ? `<button class="abtn ${cls}" disabled style="opacity:.4" title="${blockedWhy}">${label}</button>`
+    : `<button class="abtn ${cls}" onclick="actMsg(${id},'${choice}')">${label}</button>`;
+}
+function shortWhy(amount){return G.balance<amount?"Only "+kfmt(Math.max(0,G.balance))+" in the account":null;}
+function inboxActions(m){
+  const a=m.action,id=m.id;
+  switch(a.kind){
+    case "sellOffer":return ibtn(id,"accept","Accept "+kfmt(a.bid),"")+
+      (a.demanded?"":ibtn(id,"demand","Demand more","comm"))+ibtn(id,"reject","Reject","ghost");
+    case "sponsorChoice":return ibtn(id,"A","Take A (safe)","")+ibtn(id,"B","Take B (bold)","comm");
+    case "bidAccepted":return ibtn(id,"ok","Open talks · "+kfmt(a.fee),"",shortWhy(a.fee))+
+      ibtn(id,"die","Let it lapse","ghost");
+    case "bidCounter":return ibtn(id,"accept","Accept "+kfmt(a.ask),"",shortWhy(a.ask))+
+      ibtn(id,"die","Let it die","ghost");
+    case "bidWar":return ibtn(id,"raise","Match "+kfmt(a.raise),"",shortWhy(a.raise))+
+      ibtn(id,"walk","Walk away","ghost");
+    case "callback":return ibtn(id,"ok","Hear him out","");
+    case "transferReq":return ibtn(id,"list","List him","comm")+ibtn(id,"no","Refuse","ghost");
+    case "stunt":return ibtn(id,"yes","Do it · +£6,000","")+ibtn(id,"no","No thanks","ghost");
+  }
+  return "";
+}
 function viewInbox(){
   if(!G.inbox.length)return '<div class="card"><div class="newsline">Empty. Even Barry is quiet. Enjoy it while it lasts.</div></div>';
   return '<div class="card">'+G.inbox.map(m=>{
     let act="";
     if(m.action&&!m.done){
-      if(m.action.kind==="sellOffer")act=`<div class="actions">
-        <button class="abtn" onclick="actMsg(${m.id},'accept')">Accept ${kfmt(m.action.bid)}</button>
-        ${!m.action.demanded?`<button class="abtn comm" onclick="actMsg(${m.id},'demand')">Demand more</button>`:""}
-        <button class="abtn ghost" onclick="actMsg(${m.id},'reject')">Reject</button></div>`;
-      if(m.action.kind==="sponsorChoice")act=`<div class="actions">
-        <button class="abtn" onclick="actMsg(${m.id},'A')">Take A (safe)</button>
-        <button class="abtn comm" onclick="actMsg(${m.id},'B')">Take B (bold)</button></div>`;
+      const btns=inboxActions(m);
+      if(btns){
+        const left=m.action.expires?m.action.expires-G.md:null;
+        const clock=left===null?"":`<div class="kick" style="margin-top:2px">${left<=0?"They want an answer today.":left===1?"Answer by the next matchday.":"Answer within "+left+" matchdays."}</div>`;
+        act=`<div class="actions">${btns}</div>${clock}`;
+      }
     }
     return `<div class="irow"><div class="iav ${m.av==='R'||m.av==='GM'||m.av==='SF'?'g':''}">${m.av}</div>
       <div class="t">${m.title}<small>${m.from} — ${m.body}</small>${act}</div>${m.unread?'<div class="unread"></div>':''}
@@ -1864,7 +1937,10 @@ function viewInbox(){
   }).join("")+'</div>';
 }
 function actMsg(id,choice){const m=G.inbox.find(x=>x.id===id);if(m)handleAction(m,choice);}
-function delMsg(id){G.inbox=G.inbox.filter(x=>x.id!==id);render();}
+function delMsg(id){
+  releaseMsg(G.inbox.find(x=>x.id===id));   // binning a bid must not strand the player
+  G.inbox=G.inbox.filter(x=>x.id!==id);render();
+}
 const SQUAD_GROUPS=[["GK","Goalkeepers"],["DF","Defence"],["MF","Midfield"],["FW","Attack"]];
 function viewSquad(){
   const wages=G.squad.reduce((s,p)=>s+p.wage,0);
@@ -2290,7 +2366,7 @@ function renderModal(){
         <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £1,000 · ‹‹ ›› = £10,000</div>
         <button class="glowbtn" onclick="negoSubmit()">Offer ${kfmt(n.fee)}</button>
         ${!n.finalUsed?`<button class="abtn comm" onclick="negoSubmit(true)">⚡ FINAL OFFER · ${kfmt(n.fee)} — instant yes/no</button>`:""}
-        <button class="abtn ghost" onclick="nego=null;modal=null;render()">Not today</button>`;
+        <button class="abtn ghost" onclick="negoAbort()">Not today</button>`;
     }else{
       const seen=demandVisible();
       const sub=v=>seen?`<br><span style="font-size:10px;opacity:.75" class="num">${kfmt(v)}</span>`:"";
@@ -2317,7 +2393,7 @@ function renderModal(){
         <div class="kick" style="text-align:center;margin-top:8px;font-size:9px">Wage budget: ${kfmt(G.squad.reduce((s,p)=>s+p.wage,0))} used of ${kfmt(G.wageCap)}/w cap</div>
         <button class="glowbtn" onclick="negoSubmit()">Offer terms</button>
         ${!n.finalUsed?`<button class="abtn comm" onclick="negoSubmit(true)">⚡ FINAL OFFER — instant yes/no</button>`:""}
-        <button class="abtn ghost" onclick="nego=null;modal=null;render()">Not today</button>`;
+        <button class="abtn ghost" onclick="negoAbort()">Not today</button>`;
     }
     return `<div class="overlay"><div class="sheet">
       <div class="kick">${head}</div>
