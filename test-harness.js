@@ -78,6 +78,40 @@ const HANDLED_MODALS = new Set(["prematch", "ticker", "quickOffer", "interstitia
     process.exit(1);
   }
   if (stale.length) console.log("  bemærk: harness kender modaltyper der ikke længere findes: " + stale.join(", "));
+
+  /* Pakke 8: en modaltype kan SAETTES uden at nogen TEGNER den. Botten ville
+     hente den, handleModal ville kende den, og spilleren ville se et tomt
+     overlay -- en blindgyde af samme slags som indbakkens ubesvarlige beskeder.
+     Statisk tjek, saa det fejler ved opstart og ikke naar botten er heldig. */
+  const drawn = new Set([...SRC.matchAll(/modal\.type\s*===\s*"([A-Za-z]+)"/g)].map(m => m[1]));
+  const undrawn = [...found].filter(t => !drawn.has(t));
+  if (undrawn.length) {
+    console.error("FEJL: modaltyper der kan saettes men aldrig tegnes: " + undrawn.join(", "));
+    console.error("  → tilfoej en gren i renderModal(), ellers ser spilleren et tomt overlay");
+    process.exit(1);
+  }
+  const undead = [...drawn].filter(t => !found.has(t));
+  if (undead.length) console.log("  bemærk: renderModal tegner typer der aldrig sættes: " + undead.join(", "));
+}
+
+/* Pakke 8: hver onclick i renderet markup skal pege paa noget der findes. En
+   knap der kalder en funktion med stavefejl gør INTET -- ingen fejl i konsollen
+   for spilleren, ingen reaktion, bare en doed knap. Det er den fejlklasse hele
+   blindgyde-auditten handler om, og den fandtes kun som engangsscript.
+   Indbyggede navne skal ikke tjekkes; alt andet skal. */
+const JS_BUILTINS = new Set(["Math", "JSON", "Number", "String", "Array", "Object", "Date",
+  "parseInt", "parseFloat", "isNaN", "console", "document", "window", "localStorage",
+  "setTimeout", "clearTimeout", "setInterval", "clearInterval", "if", "for", "while",
+  "return", "typeof", "function", "catch", "switch", "Boolean", "Set", "Map"]);
+function onclickTargets(html) {
+  const out = new Set();
+  for (const m of html.matchAll(/on(?:click|change|input)="([^"]*)"/g)) {
+    const body = m[1];
+    // navne der efterfoelges af '(' og IKKE staar efter et punktum
+    for (const c of body.matchAll(/(^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(/g))
+      if (!JS_BUILTINS.has(c[2])) out.add(c[2]);
+  }
+  return out;
 }
 
 /* Bro til script-scopede let/const (G, modal, nego, screen, obStep …)
@@ -196,7 +230,10 @@ function runSeed(seed) {
   const chance = p => rnd() < p;
 
   /* --- instrumentering: fang netto pr. kampdag (til økonomibalancering) --- */
-  const stats = { md: [], seasonEnd: [], bank: 0, admin: 0, startBalance: 0, build: 0 };
+  const stats = { md: [], seasonEnd: [], bank: 0, admin: 0, startBalance: 0, build: 0,
+    // pakke 8: blindgyde-auditten, nu permanent
+    buttons: new Map(), calls: new Map() };
+  const seenClicks = new Set();
   /* "Opsparing" målt som balanceændring undervurderer indtjeningen, fordi
      botten bruger pengene på anlæg undervejs. Byggeforbruget spores separat,
      så spørgsmålet "hvor længe tager en tribune at spare op?" kan besvares. */
@@ -224,6 +261,24 @@ function runSeed(seed) {
      Et tag der aldrig opstaar goer hver linje med det tag til doed tekst --
      samme fejlklasse som pakke 5 rettede, bare i teksten. */
   stats.tagsSeen = new Set();
+  /* Pakke 8: hvilke funktioner bliver faktisk KALDT i en fuld gennemspilning?
+     Hver global funktion pakkes i en taeller. To forbehold, som staar i
+     rapporten frem for at blive gemt: (1) `const f=()=>…` paa oeverste niveau
+     bliver IKKE en global egenskab i et vm-script, saa arrow-hjaelpere kan ikke
+     taelles her -- de daekkes af den statiske gennemgang; (2) et 0 betyder
+     "aldrig naaet i DENNE gennemspilning", ikke noedvendigvis doed kode. */
+  {
+    const skip = new Set(["render", "saveGame", "pick", "R", "clamp", "ovr", "byId", "kfmt", "gbp"]);
+    for (const name of Object.keys(ctx)) {
+      if (typeof ctx[name] !== "function" || skip.has(name) || name.startsWith("__")) continue;
+      const orig = ctx[name];
+      stats.calls.set(name, 0);
+      ctx[name] = function () {
+        stats.calls.set(name, stats.calls.get(name) + 1);
+        return orig.apply(this, arguments);
+      };
+    }
+  }
   for (const fn of ["matchCtx", "flavourCtx", "eventCtx"]) {
     const orig = ctx[fn];
     ctx[fn] = function () {
@@ -262,8 +317,8 @@ function runSeed(seed) {
   const tick = () => { if (++steps > STEP_BUDGET) fail("step-budget opbrugt (uendelig løkke?)"); };
 
   const BAD_HTML = ["NaN", "undefined", "[object Object]"];
-  function checkHtml() {
-    const h = lastHtml.v;
+  function checkHtml() { checkMarkup(lastHtml.v); }
+  function checkMarkup(h) {
     for (const bad of BAD_HTML) {
       if (h.includes(bad)) {
         const i = h.indexOf(bad);
@@ -275,6 +330,34 @@ function runSeed(seed) {
        kun den FOERSTE forekomst, saa en linje med to pladsholdere efterlod den
        anden staaende i den faerdige HTML. Moenstret er snaevert ({ + STORE
        bogstaver + }) saa CSS og inline-JS ikke giver falske udslag. */
+    /* Pakke 8: knappernes maal. Samles op ved hver render (billigt: kun nye
+       navne koster noget) og verificeres med det samme mod sandkassens globaler.
+       En stavefejl i en onclick er en knap der intet gør, uden en lyd. */
+    for (const name of onclickTargets(h)) {
+      if (seenClicks.has(name)) continue;
+      seenClicks.add(name);
+      if (typeof ctx[name] !== "function")
+        fail("onclick kalder '" + name + "()' som ikke findes som funktion — knappen gør INTET");
+    }
+    /* Pakke 8: knapper der er deaktiverede i ALLE tilstande. Rapport, ikke fejl:
+       en knap kan legitimt vaere graa lige nu. Men en knap der aldrig i en hel
+       karriere har vaeret trykbar er en doed mekanik. */
+    for (const b of h.matchAll(/<button([^>]*)>([\s\S]*?)<\/button>/g)) {
+      const attrs = b[1], label = b[2].replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+      if (!label) continue;
+      /* Noeglen er onclick-MAALET, ikke etiketten. Etiketten baerer selve
+         begrundelsen for at knappen er graa ("Find buyers… — the window is
+         shut"), saa den deaktiverede udgave har sin egen tekst -- og hver
+         tilstand blev talt som sin egen knap. Foerste udgave rapporterede
+         derfor tre knapper som "altid deaktiverede", som i virkeligheden var
+         den samme knap i sin graa tilstand. */
+      const t = /on(?:click|change)="\s*([A-Za-z_$][\w$]*)/.exec(attrs);
+      const key = t ? t[1] + "()" : "«" + label.slice(0, 30) + "»";
+      const off = /\bdisabled\b/.test(attrs);
+      const rec = stats.buttons.get(key) || { on: 0, off: 0, label: label.slice(0, 34) };
+      rec[off ? "off" : "on"]++;
+      stats.buttons.set(key, rec);
+    }
     const ph = h.match(/\{[A-Z][A-Z0-9_]*\}/);
     if (ph) {
       const i = h.indexOf(ph[0]);
@@ -1412,6 +1495,13 @@ function runSeed(seed) {
   function handleModal() {
     const md = H.modal;
     where = "modal:" + md.type;
+    /* Pakke 8: modalerne var ALDRIG blevet skannet. checkHtml() koerte kun paa
+       de seks skaerme, og modalerne er den stoerste del af UI'et -- prematch,
+       nego, budget, sæsonslut. Det var derfor onclick-auditten manglede
+       choosePrematch: knapperne fandtes, men ingen havde set paa dem. Renderer
+       og tjekker her, hvor modalen ER aaben. */
+    try { checkMarkup(String(H.call("renderModal"))); }
+    catch (e) { if (/^\[seed/.test(e.message)) throw e; }
     maybeEcho(md.type);
     if (md.type === "budget") maybeEcho("budget" + (md.step || 0));
     if (md.type === "sponsorOffer") maybeEcho("sponsor:" + (H.G.sponsorDue && H.G.sponsorDue.renewal ? "renewal" : "first") + ":" + (md.after || "?"));
@@ -1682,6 +1772,22 @@ function runSeed(seed) {
         " (" + Math.round(bigs / league * 100) + "%) -- bliver hver anden kamp stor, er ingen af dem det");
     }
   }
+  /* Selvtjek paa pakke 8's egen invariant: hvis onclick-regexen holder op med
+     at matche, verificerer den ingenting og bestaar for evigt. Antallet af
+     fundne knapmaal skal vaere i naerheden af det kilden indeholder. */
+  {
+    stats.clickTargets = seenClicks.size;
+    if (process.env.DUMPCLICKS) console.log("CLICKS: " + [...seenClicks].sort().join(","));
+    /* Ankre frem for en andel: en gennemspilning naar ikke hvert ark, saa et
+       forholdstal ville svinge med hvor heldig botten var. Disse fem tegnes i
+       ENHVER karriere -- navbaren, indbakken, spillerarket, steppere, kampen.
+       Holder de op med at optraede, er det regexen der er gaaet i staa. */
+    const ANCHORS = ["go", "actMsg", "render", "choosePrematch", "openPlayer"];
+    const lost = ANCHORS.filter(a => !seenClicks.has(a));
+    if (lost.length || seenClicks.size < 15)
+      fail("onclick-auditten fandt " + seenClicks.size + " knapmaal og mangler ankrene [" +
+        lost.join(",") + "] -- den verificerer reelt ingenting");
+  }
   renderAllScreens();
   checkInvariants();
   checkAllMessageKinds();
@@ -1896,6 +2002,63 @@ function report(runs) {
       console.log("  kilder: " + ["sidste spilledag", "nr. 1 mod nr. 2", "sekser (naboen)", "returopgoer"]
         .map(k => k + " " + (why.get(k) || 0)).join(" · "));
     }
+  }
+
+  /* ── Pakke 8: blindgyde-auditten ── */
+  {
+    console.log("\n─── BLINDGYDE-AUDIT (pakke 8) ───");
+    console.log("  onclick-maal verificeret mod sandkassen: " +
+      Math.max(...runs.map(r => r.stats.clickTargets || 0)) + " forskellige");
+
+    /* (a) STATISK: en funktion hvis navn ikke optraeder andre steder end i sin
+       egen erklaering er aldrig refereret. Det er den haarde version af "doed
+       kode" -- den holder ogsaa for arrow-hjaelpere, som runtime-taelleren ikke
+       kan se, og den er immun over for hvor heldig botten var. */
+    const declared = [...SRC.matchAll(/(?:^|\n)\s*(?:function\s+([A-Za-z_$][\w$]*)\s*\(|const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>)/g)]
+      .map(m => m[1] || m[2]).filter(Boolean);
+    // harness'ens egen kilde taeller med: en funktion der KUN bruges af
+    // testen er ikke doed kode, den er et maaleinstrument.
+    let OWN = ""; try { OWN = fs.readFileSync(__filename, "utf8"); } catch (e) { OWN = ""; }
+    const refs = (hay, name) =>
+      (hay.match(new RegExp("(^|[^.\\w$])" + name.replace(/\$/g, "\\$") + "\\b", "g")) || []).length;
+    const unref = [], testOnly = [];
+    for (const name of declared) {
+      if (refs(SRC, name) > 1) continue;
+      (refs(OWN, name) > 0 ? testOnly : unref).push(name);
+    }
+    console.log("  funktioner erklaeret: " + declared.length +
+      " · aldrig refereret nogen steder: " + (unref.length ? unref.join(", ") : "ingen") +
+      (testOnly.length ? " · kun brugt af harness'en: " + testOnly.join(", ") : ""));
+
+    /* (b) RUNTIME: aldrig kaldt i en hel gennemspilning. Rapport, ikke fejl. */
+    const tot = new Map();
+    for (const r of runs) for (const [k, v] of (r.stats.calls || new Map()))
+      tot.set(k, (tot.get(k) || 0) + v);
+    /* Browser-stubbe og titelskaermens navigation er ikke spilmekanik -- botten
+       starter aldrig en ny karriere fra menuen. Adskilt, saa de rigtige fund
+       ikke bliver begravet i stoej. */
+    const SHELL = new Set(["setTimeout", "clearTimeout", "setInterval", "clearInterval",
+      "requestAnimationFrame", "renderTitle", "newCareer", "continueCareer", "deleteSave",
+      "toggleMode", "go", "renderOnboarding"]);
+    const never = [], shell = [];
+    for (const [k, v] of tot) if (v === 0) (SHELL.has(k) ? shell : never).push(k);
+    console.log("  globale funktioner maalt: " + tot.size + " · skaerm-skal aldrig brugt: " +
+      shell.length + " (forventet)");
+    console.log("  SPILMEKANIK botten aldrig roerer i " + runs.length + " karrierer: " +
+      (never.length ? never.sort().join(", ") : "ingen"));
+    console.log("    (0 = ikke naaet i DENNE gennemspilning, ikke bevis for doed kode." +
+      " Arrow-hjaelpere paa oeverste niveau er ikke globale i et vm-script og" +
+      " daekkes kun af den statiske liste ovenfor.)");
+
+    /* (c) knapper der aldrig var trykbare. Rapport. */
+    const dead = [], all = new Map();
+    for (const r of runs) for (const [k, v] of (r.stats.buttons || new Map())) {
+      const rec = all.get(k) || { on: 0, off: 0, label: v.label };
+      rec.on += v.on; rec.off += v.off; all.set(k, rec);
+    }
+    for (const [k, v] of all) if (v.on === 0 && v.off > 0) dead.push(k + " \"" + v.label + "\" (" + v.off + "×)");
+    console.log("  knapper set: " + all.size + " · deaktiverede i ALLE tilstande: " +
+      (dead.length ? dead.join(" · ") : "ingen"));
   }
 
   /* ── Pakke 6: tekstbiblioteket ── */

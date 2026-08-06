@@ -1562,6 +1562,12 @@ function settleFinances(res){
   // stadium fund: patience earns its bonus (1.5%/MD, capped at +15%)
   if(G.fund>0)G.fundBonus=Math.min(G.fund*BAL.fund.bonusCap,G.fundBonus+G.fund*BAL.fund.bonusPerMD);
   // project target reached → construction starts by itself
+  /* Maalet skal stadig vaere det naeste niveau. Uden dette kunne et foraeldet
+     maal (sat foer tribunen blev betalt kontant) starte et byggeri paa et
+     niveau der er passeret -- og finishStand() saetter G.stands[key]=b.lvl
+     direkte, saa tribunen ville blive NEDGRADERET og regningen betalt. Fundet
+     af pakke 8's egen onclick/NaN-audit, som foerst naaede modalerne i nat. */
+  if(G.fundTarget&&!fundTargetValid())staleFundTarget();
   if(G.fundTarget&&!G.standBuild&&G.fund+G.fundBonus>=G.fundTarget.cost){
     const t=G.fundTarget;
     let total=G.fund+G.fundBonus-t.cost;
@@ -2337,10 +2343,11 @@ function commitmentsOwed(){
   if(!Array.isArray(G.commitments))return 0;
   return G.commitments.reduce((s,c)=>s+(c.kind==="fee"?c.amt*c.seasonsLeft:c.kind==="promo"?c.amt:0),0);
 }
-function commitmentsPerSeason(){
-  if(!Array.isArray(G.commitments))return 0;
-  return G.commitments.reduce((s,c)=>s+(c.kind==="fee"?c.amt:0),0);
-}
+/* commitmentsPerSeason() stod her og blev aldrig kaldt fra nogen steder --
+   pakke 8's foerste fund med sin egen nye audit. Slettet frem for at blive ved
+   med at blive rapporteret: commitmentsOwed() daekker det brugsmoenster der
+   faktisk findes, og en ubrugt funktion der laeser `amt` uden at se paa `kind`
+   er en faelde for den naeste der kalder den (amt betyder tre ting). */
 function recordDeal(p,club,t){
   G.commitments=G.commitments||[];
   if(t.plan>1)G.commitments.push({pid:p.id,name:p.name,club,kind:"fee",amt:t.perSeason,seasonsLeft:t.plan-1});
@@ -2513,6 +2520,8 @@ function startStandBuild(key){ // direct cash build — the impatient way, no fu
   if(G.balance<cost){modal={type:"info",title:"Not enough funds",body:"The builders want "+kfmt(cost)+" up front in cash. They've been burned by football clubs before. (Tip: fund it patiently via the budget meeting — patience earns up to "+pct(BAL.fund.bonusCap)+".)"};render();return;}
   G.balance-=cost;
   G.standBuild={key,remain:5,lvl};
+  // betaler man kontant, er fondens plan for SAMME tribune overhalet
+  if(G.fundTarget&&G.fundTarget.key===key)staleFundTarget();
   addNews("CLUB","Construction begins on "+STANDS[key].n+". The seagulls have been served notice.");
   render();
 }
@@ -2524,6 +2533,19 @@ function withdrawFund(){
   msg("The co-owners","CO","\"About the fund…\"","\"You raided the stadium fund. "+kfmt(amt)+" back in the kitty, every penny of earned bonus gone — and our confidence in the word 'plan' somewhat dented.\"",null);
   addNews("CLUB","The stadium fund was emptied. The surveyors have been sent home. Again.");
   render();
+}
+/* Et gyldigt fondsmaal peger paa NAESTE niveau for en tribune der ikke er
+   maksimeret, og det niveau skal have en pris. Alle tre steder der laeser
+   G.fundTarget bruger den samme regel, saa de ikke kan komme fra hinanden. */
+function fundTargetValid(){
+  const t=G.fundTarget;
+  if(!t||!STANDS[t.key])return false;
+  return G.stands[t.key]<2&&t.lvl===G.stands[t.key]+1&&Number.isFinite(STANDCOST[t.lvl]);
+}
+function staleFundTarget(){
+  const t=G.fundTarget;G.fundTarget=null;
+  if(t&&STANDS[t.key])msg("Site foreman","SF","The project has moved on",
+    "The "+STANDS[t.key].n+" plan in the fund is out of date — that work is already done. The money stays in the fund; pick a new project at the next budget meeting.",null);
 }
 function finishStand(){
   const b=G.standBuild;
@@ -3462,7 +3484,7 @@ function renderModal(){
     }
     if(st===2){
       const opts=Object.entries(STANDS).filter(([k])=>G.stands[k]<2);
-      const tgt=m.target&&STANDS[m.target]?{key:m.target,lvl:G.stands[m.target]+1}:null;
+      const tgt=m.target&&STANDS[m.target]&&G.stands[m.target]<2?{key:m.target,lvl:G.stands[m.target]+1}:null;
       body=`<div class="kick" style="margin-top:10px">Stadium fund · which stand are we saving for?</div>
         <div class="modes" style="margin-top:8px;flex-wrap:wrap">
           ${opts.map(([k,s])=>{
