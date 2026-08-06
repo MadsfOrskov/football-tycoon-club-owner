@@ -233,7 +233,8 @@ function runSeed(seed) {
       // pakke 1: dybde og friskhed maales pr. kampdag, ikke kun ved saesonslut
       squad: H.G.squad.length, fresh: H.call("freshCount"),
       avail: H.call("available").length,
-      protest: H.G.protest || 0, mood: Math.round(H.G.fanMood)   // pakke 2
+      protest: H.G.protest || 0, mood: Math.round(H.G.fanMood),   // pakke 2
+      big: !!res.big, bigWhy: res.big ? String(res.label || "?") : null   // pakke 5
     });
     return out;
   };
@@ -444,6 +445,141 @@ function runSeed(seed) {
     G.div = snap.div; G.admins = snap.admins; G.trust = snap.trust; G.balance = snap.balance;
     G.fanMood = snap.mood; G.me.pts = snap.pts; G.md = snap.md; G.loan = snap.loan;
     G.squad.forEach((p, i) => { p.wage = snap.wages[i]; });
+    checkInvariants();
+    H.screen = "home"; H.call("render");
+  }
+
+  /* Pakke 5: 'big' blev sat for NUL af de 26 ligakampdage, saa fem lovede
+     mekanikker var doede paa en gang. Her maales de tre oekonomiske hver for
+     sig -- og, vigtigere, at de er GATED paa big. En storskaerm der havde
+     virket paa alle kampe ville bestaa en naiv "storskaerm haever gate"-test,
+     saa hver af de tre proeves ogsaa i en almindelig kamp hvor den IKKE maa
+     flytte noget. Sabotage der skal fange den:
+       - fjern `res.big &&` i bigMult   -> normalkamp-assertionen fejler
+       - fjern hele bigMult             -> skaerm/away-assertionerne fejler
+       - byt `res.big?G.bigExtra:0` ud med 0 -> pristillaeg-assertionen fejler
+     Alle tre er efterproevet ved at knaekke koden med vilje. */
+  function checkBigGate() {
+    const G = H.G;
+    where = "store kampe flytter gate";
+    const snap = { screen: G.fac.screen, away: G.stands.away, extra: G.bigExtra,
+      sold: G.seasonTix.sold, ticket: G.ticket };
+    // saesonkortholdere betaler ikke ved laagen -- med et solgt hus er gate 0
+    // og alle tre forhold ville vaere 1:1 uden at noget virkede.
+    G.seasonTix.sold = 0; G.bigExtra = 3; G.ticket = 10;
+    const gate = big => H.call("gateReceipts", { home: true, big: big }).gate;
+    if (gate(false) <= 0) fail("gate er 0 i testopsaetningen -- maalingen ville vaere tom");
+
+    // 1) pristillaegget gaelder kun store kampe
+    G.fac.screen = 0; G.stands.away = 0;
+    const plainNoScreen = gate(false), bigNoScreen = gate(true);
+    if (!(bigNoScreen > plainNoScreen))
+      fail("bigExtra flytter ikke gate i en stor kamp: " + plainNoScreen + " -> " + bigNoScreen);
+
+    // 2) storskaermen: +10% i store kampe, INTET i almindelige
+    G.fac.screen = 1;
+    const plainScreen = gate(false), bigScreen = gate(true);
+    if (!(bigScreen > bigNoScreen))
+      fail("storskaermen (£25.000) haever ikke gate i en stor kamp: " + bigNoScreen + " -> " + bigScreen);
+    if (plainScreen !== plainNoScreen)
+      fail("storskaermen virker paa ALMINDELIGE kampe (" + plainNoScreen + " -> " + plainScreen + ") -- den er ikke gated paa big");
+
+    // 3) Away End: +6% pr. niveau i store kampe, intet i almindelige
+    G.fac.screen = 0; G.stands.away = 2;
+    const plainAway = gate(false), bigAway = gate(true);
+    if (!(bigAway > bigNoScreen))
+      fail("Away End haever ikke gate i en stor kamp: " + bigNoScreen + " -> " + bigAway);
+    if (plainAway !== plainNoScreen)
+      fail("Away End virker paa ALMINDELIGE kampe -- den er ikke gated paa big");
+
+    G.fac.screen = snap.screen; G.stands.away = snap.away; G.bigExtra = snap.extra;
+    G.seasonTix.sold = snap.sold; G.ticket = snap.ticket;
+    checkInvariants();
+    H.screen = "home"; H.call("render");
+  }
+
+  /* De fire kilder til `big` udledes af tabellen, saa de kan hver isaer vaere
+     uopnaaelige uden at nogen bemaerker det. Her tvinges hver kilde frem med
+     en konstrueret tabel og en konstrueret sæsonhistorie -- fejler en af dem,
+     er en af de fire regler doed kode. */
+  function checkBigSources() {
+    const G = H.G;
+    where = "big-kilder";
+    const snap = { md: G.md, pts: G.me.pts, revenge: G.revenge,
+      teamPts: G.teams.map(t => t.pts), teamGd: G.teams.map(t => t.gd) };
+    const B = H.consts.BAL.big;
+    const reason = i => H.call("bigMatchReason", i);
+    // en flad tabel: alle modstandere paa 0 point, mig paa 0 -> jeg staar 1. paa navn
+    const flat = () => { G.teams.forEach(t => { t.pts = 0; t.gd = 0; }); G.me.pts = 0; G.me.gd = 0; };
+
+    // 1) tidligt i saesonen er INGEN kamp stor (bortset fra 1-mod-2, som en flad
+    //    tabel ikke kan lave) -- ellers ville frekvensen loebe loebsk
+    flat(); G.md = 4; G.revenge = null;
+    for (let i = 1; i <= G.teams.length; i++)
+      if (reason(i)) fail("kampdag 4 gav en stor kamp (" + reason(i) + ") -- tidlige tabeller lyver");
+
+    /* 2) sidste spilledag med point taet paa en oprykningsstreg.
+          HVER kilde proeves paa sit EGET maerkat, ikke paa "der kom noget".
+          Foerste udgave af denne test spurgte kun om reason(i) var sand, og saa
+          bestod den mod BAADE en doed regel 1 OG en doed regel 3, fordi en flad
+          tabel ogsaa udloeser sekseren og nr.1-mod-nr.2. Opdaget ved at knaekke
+          hver regel med vilje -- praecis nat 1's fejl gentaget. */
+    G.md = G.rounds - 1;
+    let found = null;
+    for (let i = 1; i <= G.teams.length && !found; i++) {
+      const r = reason(i); if (r && r.indexOf("FINAL DAY") === 0) found = r;
+    }
+    if (!found) fail("sidste spilledag med alle paa lige point gav ingen 'FINAL DAY'-kamp");
+
+    // 3) sidste spilledag hvor alt er afgjort: jeg er langt fra hver streg
+    flat(); G.md = G.rounds - 1;
+    G.teams.forEach(t => { t.pts = 90; });      // alle 13 over mig, jeg er 14. paa 0
+    G.me.pts = 0;
+    for (let i = 1; i <= G.teams.length; i++) {
+      const r = reason(i);
+      if (r && r.indexOf("FINAL DAY") === 0)
+        fail("sidste spilledag var stor selvom intet kunne afgoeres: " + r);
+    }
+
+    // 4) nr. 1 mod nr. 2, sent -- eget maerkat
+    flat(); G.md = B.lateFrom + 1;
+    G.me.pts = 40; G.teams[0].pts = 43;         // team 1 er 1., jeg er 2.
+    G.teams.slice(1).forEach(t => { t.pts = 5; });
+    if (String(reason(1)).indexOf("TOP OF THE TABLE") !== 0)
+      fail("nr. 2 mod nr. 1 sent i saesonen gav ikke 'TOP OF THE TABLE': " + reason(1));
+
+    /* 5) sekseren. Skal ligge et sted hvor regel 2 IKKE kan naa: to klubber
+          over os begge, saa vi er nr. 3 og nr. 4 og kaemper om playoff-pladsen. */
+    flat(); G.md = B.lateFrom + 1;
+    G.teams.forEach((t, i) => { t.pts = i < 2 ? 70 : 5; });
+    G.me.pts = 40; G.teams[2].pts = 42;         // team 3 lige over mig, vi er 3. og 4.
+    if (String(reason(3)).indexOf("SIX-POINTER") !== 0)
+      fail("naboen i tabellen sent i saesonen gav ingen sekser: " + reason(3));
+    G.teams[2].pts = 40 + B.rivalPts + 3;       // samme plads, men uden for pointvinduet
+    if (reason(3)) fail("sekseren ignorerer pointafstanden: " + reason(3));
+
+    // 6) samme opstilling, men hos en klub uden for raekkevidde: rivalTop
+    flat(); G.md = B.lateFrom + 1;
+    G.me.pts = 5; G.teams[0].pts = 6;           // vi er nr. 13 og 14 -- betyder intet
+    G.teams.slice(1).forEach(t => { t.pts = 60; });
+    if (reason(1)) fail("bundopgoer blev stort (" + reason(1) + ") -- der er ingen nedrykning at spille om");
+
+    /* 7) returopgoeret. Tabellen skal vaere tavs her, ellers maaler man en af de
+          tre andre regler: alle 13 modstandere langt over mig, saa jeg er nr. 14
+          -- uden for rivalTop, ikke nr. 1 eller 2, og ikke sidste spilledag. */
+    flat(); G.md = 20;
+    G.teams.forEach(t => { t.pts = 90; }); G.me.pts = 0;
+    for (let i = 1; i <= G.teams.length; i++)
+      if (reason(i)) fail("tabellen var ikke tavs i revenge-opsaetningen: " + reason(i));
+    G.revenge = { opp: 3, md: 6, by: 5 };
+    if (String(reason(3)).indexOf("THE RETURN") !== 0)
+      fail("returopgoeret mod den der ydmygede dig gav ingen stor kamp: " + reason(3));
+    if (reason(4)) fail("returopgoeret smittede af paa en anden modstander");
+    G.revenge = { opp: 3, md: 22, by: 5 };      // 'foerste' kamp ligger EFTER nu
+    if (reason(3)) fail("revenge udloeste foer den kamp den haevner");
+
+    G.md = snap.md; G.me.pts = snap.pts; G.revenge = snap.revenge;
+    G.teams.forEach((t, i) => { t.pts = snap.teamPts[i]; t.gd = snap.teamGd[i]; });
     checkInvariants();
     H.screen = "home"; H.call("render");
   }
@@ -1351,6 +1487,20 @@ function runSeed(seed) {
        lavt. Snapshottet tages her, FOER de tvungne scenarier. */
     admins: H.G.admins || 0
   };
+  /* Pakke 5's frekvenskrav er 3-5 pr. saeson af 26. Et haardt krav PR. SAESON
+     ville vaere forkert: en klub der ender 14. med alt afgjort og uden en
+     oedelaeggende nederlag i efteraaret SKAL kunne have en saeson uden en
+     eneste stor kamp. Baandet her er derfor det absurde: nul over hele
+     karrieren betyder at mekanikken er doed igen, og over 30% betyder at
+     ingen af dem er store. Det maalte tal staar i --stats og er beviset. */
+  {
+    const league = stats.md.length, bigs = stats.md.filter(e => e.big).length;
+    if (league >= 26) {
+      if (bigs === 0) fail("ingen af " + league + " ligakampe var stor -- 'big' er doed kode igen");
+      if (bigs / league > 0.30) fail("for mange store kampe: " + bigs + " af " + league +
+        " (" + Math.round(bigs / league * 100) + "%) -- bliver hver anden kamp stor, er ingen af dem det");
+    }
+  }
   renderAllScreens();
   checkInvariants();
   checkAllMessageKinds();
@@ -1360,6 +1510,8 @@ function runSeed(seed) {
   checkPriceCurves();
   checkGroundStates();
   checkValuationDirection();
+  checkBigGate();
+  checkBigSources();
   checkOwnerBuyout();
   checkBankCascade();
   checkPromotionWithoutSponsor();   // sidst: den rykker sæsonen frem
@@ -1519,6 +1671,47 @@ function report(runs) {
       console.log("  køb med fee: " + bought + " · kontant " + d.cash +
         " · rater " + d.inst + " (" + Math.round(100 * d.inst / bought) + "%)");
       console.log("  klausuler: oprykning " + d.promo + " · pr. mål " + d.goals);
+    }
+  }
+
+  /* ── Pakke 5: store kampe ── */
+  {
+    const perSeason = new Map(); let bigs = 0, tot = 0;
+    let bigGate = 0, bigN = 0, plainGate = 0, plainN = 0;
+    for (const r of runs) for (const e of r.stats.md) {
+      if (e.big === undefined) continue;
+      tot++;
+      const k = r.seed + "/" + e.season;
+      perSeason.set(k, (perSeason.get(k) || 0) + (e.big ? 1 : 0));
+      if (e.big) bigs++;
+      if (e.home) { if (e.big) { bigGate += e.gate; bigN++; } else { plainGate += e.gate; plainN++; } }
+    }
+    if (tot) {
+      const counts = [...perSeason.values()];
+      const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
+      const zero = counts.filter(c => c === 0).length;
+      console.log("\n─── STORE KAMPE (pakke 5) ───");
+      console.log("  store kampe pr. sæson: " + avg.toFixed(1) + " af 26 (mål 3-5) " +
+        verdict(avg >= 3 && avg <= 5));
+      console.log("  spænd " + Math.min(...counts) + "–" + Math.max(...counts) +
+        " · sæsoner uden en enkelt stor kamp: " + zero + " af " + counts.length +
+        " · andel af alle kampdage " + Math.round(1000 * bigs / tot) / 10 + "%");
+      if (bigN && plainN) console.log("  gns. hjemme-gate: stor kamp " + fmtGbp(bigGate / bigN) +
+        " · almindelig " + fmtGbp(plainGate / plainN) +
+        " (+" + Math.round(100 * (bigGate / bigN / (plainGate / plainN) - 1)) + "%)");
+      /* Hvilken af de fire regler leverer? En kilde der aldrig fyrer er doed
+         kode, som er praecis den fejlklasse pakke 5 selv retter. */
+      const why = new Map();
+      for (const r of runs) for (const e of r.stats.md)
+        if (e.bigWhy) {
+          const k = e.bigWhy.indexOf("FINAL DAY") === 0 ? "sidste spilledag"
+            : e.bigWhy.indexOf("TOP OF") === 0 ? "nr. 1 mod nr. 2"
+            : e.bigWhy.indexOf("SIX-POINTER") === 0 ? "sekser (naboen)"
+            : e.bigWhy.indexOf("THE RETURN") === 0 ? "returopgoer" : e.bigWhy;
+          why.set(k, (why.get(k) || 0) + 1);
+        }
+      console.log("  kilder: " + ["sidste spilledag", "nr. 1 mod nr. 2", "sekser (naboen)", "returopgoer"]
+        .map(k => k + " " + (why.get(k) || 0)).join(" · "));
     }
   }
 

@@ -404,6 +404,23 @@ const BAL={
     instFrom:0.08, instStep:0.02,   // 2 seasons +8%, 3 +10%, 4 +12% (GDD's band)
     promoDiscount:0.30, promoBonus:0.55, promoSeasons:2,
     goalsDiscount:0.22, goalsPer:0.06, goalsSeasons:2
+  },
+  /* Which league matches are BIG. `buildMatch` was called with big=false for
+     all 26 matchdays, so five things were dead at once: the big screen
+     (+10% gate), the Away End (+6%/tier), the `bigExtra` price knob, the
+     `biggame` trait, and the GDD's rule that a big match is always played out
+     in full (quick mode tests `!M.big`). No new competitions are needed — the
+     TABLE already knows which afternoons matter. Four derived sources, and the
+     thresholds live here so the frequency can be tuned without touching logic.
+     Target: 3-5 a season out of 26. If every other match is big, none is. */
+  big:{
+    lateFrom:14,        // the return half: before that the table has not settled
+    cuts:[2,6],         // automatic promotion, and the playoff cut
+    cutGap:4,           // within a win-and-a-draw of a cut = still undecided
+    rivalTop:8,         // a six-pointer only counts if you are in the race
+    rivalGap:3,         // places between you: "the club just above or below"
+    rivalPts:6,         // and points between you: two wins is still catchable
+    revengeMargin:2     // beaten by this many = a debt the return leg collects
   }
 };
 
@@ -540,6 +557,10 @@ function newGame(name,hue,mode){
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
     myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,
     netEwma:0,trust:BAL.owners.trustStart,admins:0,valHistory:[],commitments:[],protest:0,
+    /* Whose return leg is a big match. Stored as {opp,md,by} — an INDEX and two
+       numbers, never a team reference: G must stay a tree. Cleared every summer,
+       because the opponents are regenerated on promotion. */
+    revenge:null,
     build:null,buildCost:80000,loan:null,warnedNeg:false,bankForced:false,
     sponsor:null,sponsorOffered:false,sponsorDue:null,
     coach:{...pick(COACHES)},
@@ -794,6 +815,41 @@ function myLambdas(t,home,big,appr,weather){
   const lo=clamp(1.05+(t.att-s.def)/24+(home?0:0.28)+appr.opp-phyEdge*0.6,0.15,3.6);
   return [lm,lo];
 }
+/* ---------- pakke 5: which afternoons are BIG ----------
+   Derived, never declared. The table exists, the fixture list exists, and the
+   first half of the season is already a record of who did what to you — so no
+   new competition is needed to find 3-5 matches a season that matter more than
+   the rest. Returns the LABEL (which the prematch sheet and the ticker already
+   know how to show) or null. `big` is then simply `!!bigMatchReason(...)`.
+   Deliberately NOT a big match: anything in the first two thirds of a season
+   that is not first-against-second. Early-season tables lie. */
+function bigMatchReason(oppIdx){
+  const B=BAL.big,t=table();
+  const pos=t.findIndex(r=>r.i===0)+1, me=t[pos-1];
+  const oi=t.findIndex(r=>r.i===oppIdx); if(oi<0||!me)return null;
+  const oppPos=oi+1;
+  // 1. Final day with the promotion picture still open — either cut, either way
+  if(G.md===G.rounds-1){
+    for(const c of B.cuts){
+      const row=t[c-1];
+      if(row&&Math.abs(me.pts-row.pts)<=B.cutGap)
+        return c===2?"FINAL DAY · PROMOTION AT STAKE":"FINAL DAY · PLAYOFF PLACE AT STAKE";
+    }
+  }
+  // 2. First against second, once the table has earned the right to say so
+  if(G.md>=B.lateFrom&&((pos===1&&oppPos===2)||(pos===2&&oppPos===1)))return "TOP OF THE TABLE";
+  /* 3. The club just above or below you, late on and inside the race. Both
+     tests have to pass: near you in the table AND near you on points. Position
+     alone would make a 9-point gap a six-pointer whenever the table happened to
+     be strung out; points alone would pair you with a club eleven places away
+     on an even afternoon. Neither is a six-pointer. */
+  if(G.md>=B.lateFrom&&Math.abs(pos-oppPos)<=B.rivalGap&&pos<=B.rivalTop
+     &&Math.abs(me.pts-t[oi].pts)<=B.rivalPts)
+    return oppPos<pos?"SIX-POINTER · THEY'RE ABOVE YOU":"SIX-POINTER · THEY'RE BREATHING DOWN YOUR NECK";
+  // 4. The return leg against whoever humiliated you before Christmas
+  if(G.revenge&&G.revenge.opp===oppIdx&&G.md>G.revenge.md)return "THE RETURN · THEY PUT "+G.revenge.by+" PAST YOU";
+  return null;
+}
 function buildMatch(oppIdx,home,big,label){
   const t=G.teams[oppIdx-1];
   return {oppIdx,opp:t.name,home,big,label,weather:pick(WEATHERS),approach:null,
@@ -860,7 +916,8 @@ function playMatchday(){
   const round=G.fixtures[G.md];
   const my=round.find(([h,a])=>h===0||a===0);
   const home=my[0]===0;const oppIdx=home?my[1]:my[0];
-  const match=buildMatch(oppIdx,home,false,null);
+  const reason=bigMatchReason(oppIdx);
+  const match=buildMatch(oppIdx,home,!!reason,reason);
   // The weather belongs to the MATCHDAY, not to the visit: otherwise backing out
   // of the team talk and returning would re-roll it until you liked it.
   if(!G.mdWeather||G.mdWeather.md!==G.md||G.mdWeather.season!==G.season)G.mdWeather={md:G.md,season:G.season,w:{...match.weather}};
@@ -920,6 +977,12 @@ function finalizeMatch(match){
   const res={gf,ga,opp:match.opp,home:match.home,big:match.big,label:match.label,weather:{...match.weather}};
   if(!match.isPlayoff){
     applyPts(match.home?0:match.oppIdx,match.home?gf:ga,match.home?match.oppIdx:0,match.home?ga:gf);
+    /* The worst hiding of the first half books its own return leg (pakke 5).
+       The second half of the fixture list is the exact reverse of the first, so
+       the rematch is guaranteed to exist — and only the first half can set it,
+       or a late thrashing would point at a fixture already played. */
+    if(G.md<G.rounds/2&&ga-gf>=BAL.big.revengeMargin&&(!G.revenge||ga-gf>G.revenge.by))
+      G.revenge={opp:match.oppIdx,md:G.md,by:ga-gf};
     G.md++;
     settleFinances(res);
   }
@@ -1041,18 +1104,27 @@ function attendance(){
   const want=townDemand()*clamp(0.35+0.55*posF,0.25,1)*moodF*ticketPriceFactor(G.ticket);
   return Math.max(0,Math.min(G.capacity,Math.round(want)));
 }
+/* Split out of settleFinances so the big-match promises (screen, Away End,
+   bigExtra) can be MEASURED before/after in a forced scenario instead of being
+   verified by reading the source. Pure: it reads G and res, writes nothing. */
+function gateReceipts(res){
+  if(!res.home)return {att:0,gate:0,extras:0};
+  const att=Math.max(attendance(),G.seasonTix.sold);
+  const paying=Math.max(0,att-G.seasonTix.sold);
+  const bigMult=(res.big&&G.fac.screen?1+BAL.matchday.bigScreenGate:1)*(res.big?1+G.stands.away*BAL.matchday.awayEndBigGate:1);
+  const gate=Math.round(paying*(G.ticket+(res.big?G.bigExtra:0))*bigMult);
+  const M=BAL.matchday;
+  const extras=Math.round(att*(M.kiosk+G.fac.shop*M.shop+G.fac.pub*M.pub+(G.fac.basics?M.basics:0))
+        +att*M.merch*G.jerseyFactor*(1+G.fac.shop*M.shopMerchBoost)
+        +(G.fac.vip?M.vipFlat:0));
+  return {att,gate,extras};
+}
 function settleFinances(res){
   const wages=G.squad.reduce((s,p)=>s+p.wage,0);
   let gate=0,extras=0;
   if(res.home){
-    res.att=Math.max(attendance(),G.seasonTix.sold);
-    const paying=Math.max(0,res.att-G.seasonTix.sold);
-    const bigMult=(res.big&&G.fac.screen?1+BAL.matchday.bigScreenGate:1)*(res.big?1+G.stands.away*BAL.matchday.awayEndBigGate:1);
-    gate=Math.round(paying*(G.ticket+(res.big?G.bigExtra:0))*bigMult);
-    const M=BAL.matchday;
-    extras=Math.round(res.att*(M.kiosk+G.fac.shop*M.shop+G.fac.pub*M.pub+(G.fac.basics?M.basics:0))
-          +res.att*M.merch*G.jerseyFactor*(1+G.fac.shop*M.shopMerchBoost)
-          +(G.fac.vip?M.vipFlat:0));
+    const r=gateReceipts(res);
+    res.att=r.att;gate=r.gate;extras=r.extras;
   }
   let loanPay=0;
   if(G.loan){loanPay=G.loan.perMD;G.loan.left--;if(G.loan.left<=0)G.loan=null;}
@@ -1288,6 +1360,7 @@ function finishSeason(o){
   G.scoutUsed=false;G.sponsorBoost=false;G.coachAsked=false;G.deadlineDone={};G.playoff=null;
   G.bids=[];G.callbacks=[];G.midwayDone=false;G.stuntDone=false;G.sponsorChecked=false;G.capRaiseUsed=false;G.fundRaided=false;G.lastXI=[];
   G.seasonTix.sold=0;G.jerseyFactor=1;
+  G.revenge=null;   // last year's grudge died with last year's fixture list
   // the curve the boardroom reads: one point per season, kept for the career
   G.valHistory=(G.valHistory||[]).concat([{s:G.season-1,v:clubValuation()}]).slice(-30);
   modal={type:"seasonDone",txt,promoted,pos,prize,crown};
@@ -2459,7 +2532,7 @@ function viewClub(){
   <div class="card"><div class="kick" style="margin-bottom:4px">Matchday tickets · season tickets: <b>${G.seasonTix.sold.toLocaleString("en-GB")}</b> holders</div>
     <div class="rowline"><span>Ticket price</span>
     <span class="stepper" style="margin:0"><button onclick="G.ticket=Math.max(5,G.ticket-1);render()">‹</button><span class="val" style="font-size:20px;min-width:60px">£${G.ticket}</span><button onclick="G.ticket=Math.min(30,G.ticket+1);render()">›</button></span></div>
-    <div class="rowline"><span>Big-match surcharge <small>· derby/playoff · fans tolerate ~£3</small></span>
+    <div class="rowline"><span>Big-match surcharge <small>· six-pointers, run-ins, playoffs · 3-5 games a season · fans tolerate ~£3</small></span>
     <span class="stepper" style="margin:0"><button onclick="G.bigExtra=Math.max(0,G.bigExtra-1);render()">‹</button><span class="val" style="font-size:20px;min-width:50px">+£${G.bigExtra}</span><button onclick="G.bigExtra=Math.min(8,G.bigExtra+1);render()">›</button></span></div>
     ${(()=>{
       const at=attendance(),paying=Math.max(0,at-G.seasonTix.sold);
