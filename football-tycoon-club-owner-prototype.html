@@ -2300,12 +2300,12 @@ function renderModal(){
         <div class="modes" style="margin-top:8px">${Object.entries(ROLES).map(([k,r])=>`<button class="${n.role===k?'on':''}" onclick="nego.role='${k}';render()">${r.n}${sub(wageDemandFor(n.years,k))}</button>`).join("")}</div>
         <div class="kick" style="margin-top:12px">Weekly wage</div>
         <div class="stepper">
-          <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-1000);render()" title="−£1,000">‹‹</button>
-          <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-100);render()" title="−£100">‹</button>
+          <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-500);render()" title="−£500">‹‹</button>
+          <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-50);render()" title="−£50">‹</button>
           <span class="val num" style="font-size:24px">${kfmt(n.wageOffer)}/w</span>
-          <button onclick="nego.wageOffer+=100;render()" title="+£100">›</button>
-          <button onclick="nego.wageOffer+=1000;render()" title="+£1,000">››</button></div>
-        <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £100 · ‹‹ ›› = £1,000</div>
+          <button onclick="nego.wageOffer+=50;render()" title="+£50">›</button>
+          <button onclick="nego.wageOffer+=500;render()" title="+£500">››</button></div>
+        <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £50 · ‹‹ ›› = £500</div>
         ${(()=>{
           if(!seen)return `<div class="why"><b>He hasn't named his number.</b> Contract length and the role you promise both move it — make an offer and his agent will tell you how far off you are.</div>`;
           const d=wageDemand();
