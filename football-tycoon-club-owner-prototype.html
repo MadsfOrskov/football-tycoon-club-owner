@@ -258,6 +258,51 @@ const gbp=n=>"£"+Math.round(n).toLocaleString("en-GB");
 const kfmt=n=>Math.abs(n)>=1000?"£"+(n/1000).toFixed(n%1000===0?0:1)+"k":gbp(n);
 function poisson(l){let L=Math.exp(-l),k=0,p=1;do{k++;p*=Math.random();}while(p>L);return k-1;}
 function ord(n){return n+(n===1?"st":n===2?"nd":n===3?"rd":"th");}
+/* user input goes into innerHTML in ~20 places — strip anything that could
+   break markup rather than escaping at every call site */
+function safeName(s){return String(s||"").replace(/[<>&"'`]/g,"").replace(/\s+/g," ").trim();}
+
+/* =========================================================
+   BAL — every tunable number in the game, in one place.
+   Nothing below this object should contain a bare balance
+   constant: tune here, and the Godot port becomes a data port.
+========================================================= */
+const BAL={
+  matchday:{                 // £ per spectator, every home game
+    kiosk:2.4, shop:1.2, pub:0.8, basics:0.4,
+    merch:0.45, shopMerchBoost:0.5, vipFlat:3000,
+    bigScreenGate:0.10, awayEndBigGate:0.06
+  },
+  seasonTix:{
+    share:0.25,              // of the crowd you can actually draw
+    discount:0.8,            // "fair" price = ticket × home games × this
+    demandAt0:1.55,          // linear demand: d = demandAt0 − slope × (price/fair)
+    slope:0.62,              // → sells out at ~2.5× fair, cash peaks at ~1.25×
+    demandCap:1.4
+  },
+  ticket:{
+    sweetSpot:10,            // the price the town considers normal
+    elasticity:0.055,        // demand lost per £ above the sweet spot
+    bargainLift:0.030,       // demand gained per £ below it (weaker — cheap ≠ free crowd)
+    moodPenaltyAbove:16      // dearer than this and the terraces grumble
+  },
+  demand:{                   // the town, not the concrete
+    base:1400, perDivision:0.85, familyStand:0.22, basics:0.05
+  },
+  wages:{
+    scale:13.5,              // player wage = ovr × scale × division multiplier
+    cap:11500, capOnPromotion:1.5, capRaise:1.2,
+    freeAgentMult:1.5, promotionRise:1.35, adminCut:0.8
+  },
+  owners:{
+    gateSeason:3, floorMin:1.35, floorSpan:0.25, moodDiscount:0.05,
+    openingAsk:1.8, openingOffer:1.25, insultBelow:0.62, lockSeasons:2
+  },
+  fund:{bonusPerMD:0.015, bonusCap:0.15},
+  prize:{champions:150000, runnersUp:100000, playoffs:120000, objective:25000, missed:10000},
+  bank:{crisisAt:-60000, loanCash:50000, loanPerMD:5500, loanTerm:10, adminRelief:40000, adminPoints:6},
+  sponsor:{penalty:0.2}      // of a whole season's income, if the clause is missed
+};
 
 /* ---------- theme engine ---------- */
 function applyTheme(hue,mode){
@@ -339,7 +384,7 @@ function newGame(name,hue,mode){
     fanMood:60,objectivePos:8,
     squad:posPlan.map(p=>genPlayer(p,R(42,58),G_DIV_WAGE(3))),
     market:[],freeAgents:[],scoutPending:0,scoutUsed:false,sponsorBoost:false,
-    wageCap:11500,bids:[],callbacks:[],
+    wageCap:BAL.wages.cap,bids:[],callbacks:[],
     captain:null,captSuggested:false,talkCooldown:0,mentors:[],soldTo:[],
     teams:[],me:{pts:0,gd:0,pl:0},fixtures:[],
     inbox:[],news:[],msgId:1,lastResult:null,deadlineDone:{},playoff:null,
@@ -394,14 +439,14 @@ function genPlayer(pos,base,wmult){
   if(Math.random()<0.35)traits.push(pick(Object.keys(TRAITS)));
   if(Math.random()<0.08)traits.push(pick(Object.keys(TRAITS)));
   return {name:pick(FIRST)+" "+pick(LAST),pos,att,def,phy,form:0,age:R(18,33),
-    wage:Math.round((ov*13.5*wmult+R(-70,110))/10)*10,
+    wage:Math.round((ov*BAL.wages.scale*wmult+R(-70,110))/10)*10,
     value:Math.round((ov*ov*14+R(-4000,9000))/1000)*1000,
     traits:[...new Set(traits)],gem:false,inj:0,susp:0,sg:0,sapps:0,smotm:0,
     conf:R(42,60),focus:null,capps:0,promiseMD:null,years:R(1,3),from:null,listed:false,reqDone:false,renewLockMD:-99};
 }
 function refreshMarket(){
   G.market=["GK","DF","DF","MF","MF","FW"].map(p=>{const pl=genPlayer(p,R(45,60),G_DIV_WAGE(G.div));pl.from=pick(G.teams).name;return pl;});
-  G.freeAgents=["DF","MF","FW"].map(p=>{const pl=genPlayer(p,R(44,56),G_DIV_WAGE(G.div));pl.wage=Math.round(pl.wage*1.5/10)*10;pl.free=true;pl.from=pick(G.teams).name;return pl;});
+  G.freeAgents=["DF","MF","FW"].map(p=>{const pl=genPlayer(p,R(44,56),G_DIV_WAGE(G.div));pl.wage=Math.round(pl.wage*BAL.wages.freeAgentMult/10)*10;pl.free=true;pl.from=pick(G.teams).name;return pl;});
 }
 function marketFlow(){ // the living market: names in, names out — window days are worth checking
   if(!windowOpen())return;
@@ -419,7 +464,7 @@ function marketFlow(){ // the living market: names in, names out — window days
   }
   if(G.freeAgents.length<4&&Math.random()<0.2){
     const pl=genPlayer(pick(["DF","MF","FW"]),R(43,56),G_DIV_WAGE(G.div));
-    pl.wage=Math.round(pl.wage*1.5/10)*10;pl.free=true;pl.from=pick(G.teams).name;
+    pl.wage=Math.round(pl.wage*BAL.wages.freeAgentMult/10)*10;pl.free=true;pl.from=pick(G.teams).name;
     G.freeAgents.push(pl);
     addNews("MARKET",pl.name+" released by "+pl.from+" — a free agent with a point to prove.");
   }
@@ -679,7 +724,8 @@ function applyPts(h,gh,a,ga){
    the fan-growth work (Family Stand), so a new stand is built ahead of demand
    and pays off as the town grows into it. */
 function townDemand(){
-  return 1400*(1+(3-G.div)*0.85)*(1+G.stands.family*0.22)*(1+(G.fac.basics?0.05:0));
+  const D=BAL.demand;
+  return D.base*(1+(3-G.div)*D.perDivision)*(1+G.stands.family*D.familyStand)*(1+(G.fac.basics?D.basics:0));
 }
 function attendance(){
   const pos=myPos();
@@ -696,11 +742,12 @@ function settleFinances(res){
   if(res.home){
     res.att=Math.max(attendance(),G.seasonTix.sold);
     const paying=Math.max(0,res.att-G.seasonTix.sold);
-    const bigMult=(res.big&&G.fac.screen?1.1:1)*(res.big?1+G.stands.away*0.06:1);
+    const bigMult=(res.big&&G.fac.screen?1+BAL.matchday.bigScreenGate:1)*(res.big?1+G.stands.away*BAL.matchday.awayEndBigGate:1);
     gate=Math.round(paying*(G.ticket+(res.big?G.bigExtra:0))*bigMult);
-    extras=Math.round(res.att*(2.4+G.fac.shop*1.2+G.fac.pub*0.8+(G.fac.basics?0.4:0))
-          +res.att*0.45*G.jerseyFactor*(1+G.fac.shop*0.5)
-          +(G.fac.vip?3000:0));
+    const M=BAL.matchday;
+    extras=Math.round(res.att*(M.kiosk+G.fac.shop*M.shop+G.fac.pub*M.pub+(G.fac.basics?M.basics:0))
+          +res.att*M.merch*G.jerseyFactor*(1+G.fac.shop*M.shopMerchBoost)
+          +(G.fac.vip?M.vipFlat:0));
   }
   let loanPay=0;
   if(G.loan){loanPay=G.loan.perMD;G.loan.left--;if(G.loan.left<=0)G.loan=null;}
@@ -720,7 +767,7 @@ function settleFinances(res){
   if(G.standBuild){G.standBuild.remain--;if(G.standBuild.remain<=0)finishStand();}
   if(G.facBuild){G.facBuild.remain--;if(G.facBuild.remain<=0)finishFac();}
   // stadium fund: patience earns its bonus (1.5%/MD, capped at +15%)
-  if(G.fund>0)G.fundBonus=Math.min(G.fund*0.15,G.fundBonus+G.fund*0.015);
+  if(G.fund>0)G.fundBonus=Math.min(G.fund*BAL.fund.bonusCap,G.fundBonus+G.fund*BAL.fund.bonusPerMD);
   // project target reached → construction starts by itself
   if(G.fundTarget&&!G.standBuild&&G.fund+G.fundBonus>=G.fundTarget.cost){
     const t=G.fundTarget;
@@ -735,7 +782,7 @@ function settleFinances(res){
   if(G.balance<0&&!G.warnedNeg){G.warnedNeg=true;
     msg("The co-owners","CO","A politely furious letter","\"We note with interest that the club is now technically insolvent. We trust you have a plan. We would love to hear it. Any time. Really.\"",null);}
   if(G.balance>0)G.warnedNeg=false;
-  if(G.balance< -60000&&!G.bankDue)G.bankDue=true;
+  if(G.balance<BAL.bank.crisisAt&&!G.bankDue)G.bankDue=true;
 }
 function updateFormMood(res){
   const w=res.gf>res.ga,d=res.gf===res.ga;
@@ -854,12 +901,12 @@ function playPlayoff(){
 }
 function finishSeason(o){
   const pos=myPos();
-  let prize=10000,txt;
-  if(o.how==="champions"){prize=150000;txt="CHAMPIONS. The town has run out of bunting.";}
-  else if(o.how==="runners-up"){prize=100000;txt="Promoted as runners-up. The champagne is mid-range but plentiful.";}
-  else if(o.how==="playoffs"&&o.promoted){prize=120000;txt="PLAYOFF WINNERS! The most profitable afternoon in club history.";}
-  else if(pos<=G.objectivePos){prize=25000;txt="You finished "+ord(pos)+". The co-owners are satisfied and have bought a new kettle.";}
-  else{prize=10000;txt="You finished "+ord(pos)+". The co-owners 'note the result with interest'. That's owner-speak for: do better.";}
+  let prize=BAL.prize.missed,txt;
+  if(o.how==="champions"){prize=BAL.prize.champions;txt="CHAMPIONS. The town has run out of bunting.";}
+  else if(o.how==="runners-up"){prize=BAL.prize.runnersUp;txt="Promoted as runners-up. The champagne is mid-range but plentiful.";}
+  else if(o.how==="playoffs"&&o.promoted){prize=BAL.prize.playoffs;txt="PLAYOFF WINNERS! The most profitable afternoon in club history.";}
+  else if(pos<=G.objectivePos){prize=BAL.prize.objective;txt="You finished "+ord(pos)+". The co-owners are satisfied and have bought a new kettle.";}
+  else{prize=BAL.prize.missed;txt="You finished "+ord(pos)+". The co-owners 'note the result with interest'. That's owner-speak for: do better.";}
   G.balance+=prize;
   G.history.push({season:G.season,div:G.divNames[G.div],pos,promoted:!!o.promoted});
   const promoted=o.promoted&&G.div>0;
@@ -1076,7 +1123,7 @@ function askCapRaise(){
   if(G.capRaiseUsed||m.capAsked)return;
   m.capAsked=true;G.capRaiseUsed=true;
   if(Math.random()<0.45+G.fanMood/400-(G.fundRaided?0.15:0)){
-    G.wageCap=Math.round(G.wageCap*1.2/100)*100;
+    G.wageCap=Math.round(G.wageCap*BAL.wages.capRaise/100)*100;
     m.capMsg="Trencher sighs, Whitmore shrugs: cap raised to "+kfmt(G.wageCap)+"/w. \"Spend it wisely. Or at all, frankly.\"";
   }else{
     m.capMsg="\"No.\" Trencher didn't even look up from his sausage roll.";
@@ -1099,7 +1146,7 @@ function midwayConfirm(){
    they want to see a direction first, they price a life's work well above fair
    value, only one of them leaves in any season, and a failed talk shuts the
    door for two. */
-const OWNER_GATE_SEASON=3;
+const OWNER_GATE_SEASON=BAL.owners.gateSeason;
 function ownerGate(o){
   if(G.season<OWNER_GATE_SEASON)return {title:"\"Not yet, chairman.\"",
     body:"Whitmore speaks for all three: \"You've had "+(G.season===1?"one season":G.season+" seasons")+". We'd like to see the direction of travel before anyone sells the thing their name is on. Ask us again in season "+OWNER_GATE_SEASON+".\""};
@@ -1115,10 +1162,11 @@ function buyOutOwner(i){
   if(gate){modal={type:"info",title:gate.title,body:gate.body};render();return;}
   const fair=Math.round(clubValuation()*o.share/100/1000)*1000;
   // it's their life's work — they want a serious premium, and mood matters
-  const min=Math.round(fair*(1.35+Math.random()*0.25-(G.fanMood>70?0.05:0))/1000)*1000;
+  const O=BAL.owners;
+  const min=Math.round(fair*(O.floorMin+Math.random()*O.floorSpan-(G.fanMood>70?O.moodDiscount:0))/1000)*1000;
   modal={type:"ownerNego",i,round:0,fair,min,
-    offer:Math.round(fair*1.25/1000)*1000,
-    ask:Math.round(fair*1.8/1000)*1000,
+    offer:Math.round(fair*O.openingOffer/1000)*1000,
+    ask:Math.round(fair*O.openingAsk/1000)*1000,
     line:{"butcher":"\"Twenty-four percent of this club is forty years of Saturdays, chairman. It has a price. It isn't small.\"",
           "solicitor":"\"Everything is for sale, dear boy. The question, as ever, is the consideration.\"",
           "pie magnate":"\"My share? You couldn't afford my pie recipe. But make me an offer.\""}[o.role]||"\"Make me an offer.\""};
@@ -1143,8 +1191,8 @@ function ownerNegoSubmit(){
     modal=null;render();return;
   }
   // only a genuinely insulting number kills it outright — a collapse costs two seasons
-  if(m.round>=3||m.offer<m.min*0.62){
-    o.lockedUntil=G.season+2;
+  if(m.round>=3||m.offer<m.min*BAL.owners.insultBelow){
+    o.lockedUntil=G.season+BAL.owners.lockSeasons;
     modal={type:"info",title:"\"We're done here.\"",body:o.n.split(" ")[0]+" closes the folder. \"Not this season, chairman. Nor the next one.\" The door clicks politely, and stays shut until season "+o.lockedUntil+"."};render();return;
   }
   m.ask=Math.round(((m.min*1.08+m.offer)/2)/1000)*1000;
@@ -1172,10 +1220,10 @@ function openBankUltimatum(){
   render();
 }
 function administration(){
-  G.me.pts=Math.max(0,G.me.pts-6);
-  for(const p of G.squad)p.wage=Math.round(p.wage*0.8/10)*10;
+  G.me.pts=Math.max(0,G.me.pts-BAL.bank.adminPoints);
+  for(const p of G.squad)p.wage=Math.round(p.wage*BAL.wages.adminCut/10)*10;
   G.fanMood=clamp(G.fanMood-10,5,100);
-  G.balance+=40000; // creditors restructure
+  G.balance+=BAL.bank.adminRelief; // creditors restructure
   msg("The administrators","AD","THE CLUB IS IN ADMINISTRATION","Six points deducted. All wages cut 20%. The creditors have restructured the debt — one more collapse like this and the co-owners WILL force a sale. The kettle has been repossessed.",null);
   addNews("CLUB","Administration. −6 points. The town is furious, the pies are smaller, and it is all uphill from here.");
   if(G.md>=G.rounds){startPostSeason();return;}
@@ -1190,8 +1238,8 @@ function resolveBank(sell){
     if(best.traits.includes("localhero")){G.fanMood=clamp(G.fanMood-14,5,100);addNews("FANS","Selling a local hero to pay the bank. The Shed End is composing new songs. They are not kind songs.");}
     addNews("CLUB",best.name+" sold under duress for "+kfmt(Math.round(best.value*0.85))+". The bank manager sends a fruit basket.");
   }else{
-    G.balance+=50000;G.loan={perMD:5500,left:10};
-    addNews("CLUB","Emergency loan taken: +£50,000 now, £5,500 per matchday for 10 matchdays. The interest is 'sporting'.");
+    G.balance+=BAL.bank.loanCash;G.loan={perMD:BAL.bank.loanPerMD,left:BAL.bank.loanTerm};
+    addNews("CLUB","Emergency loan taken: +"+kfmt(BAL.bank.loanCash)+" now, "+kfmt(BAL.bank.loanPerMD)+" per matchday for "+BAL.bank.loanTerm+" matchdays. The interest is 'sporting'.");
   }
   modal=null;
   if(resume){startPostSeason();return;}
@@ -2345,7 +2393,7 @@ function renderModal(){
       <h2>${o.n}</h2>
       <p>${o.role} · holds <b>${o.share}%</b> · fair value ~${kfmt(modal.fair)} — but it's his life's work, and life's work carries a premium well above the ledger.</p>
       <div class="dlg"><div class="iav">CO</div><div class="bubble">${modal.line}</div></div>
-      <div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.07)">Three rounds. Walk away empty-handed — or insult him — and he won't take a meeting until <b>season ${G.season+2}</b>.</div>
+      <div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.07)">Three rounds. Walk away empty-handed — or insult him — and he won't take a meeting until <b>season ${G.season+BAL.owners.lockSeasons}</b>.</div>
       <div class="stepper">
         <button onclick="modal.offer=Math.max(5000,modal.offer-25000);render()" title="−£25k">‹‹</button>
         <button onclick="modal.offer=Math.max(5000,modal.offer-5000);render()" title="−£5k">‹</button>
@@ -2650,7 +2698,7 @@ function renderOnboarding(){
     ${inner}</div></div>`;
 }
 function obNext(){
-  if(obStep===0){const v=document.getElementById("obname").value.trim();obData.name=v||"Ashford Rovers";}
+  if(obStep===0){obData.name=safeName(document.getElementById("obname").value)||"Ashford Rovers";}
   obStep++;renderOnboarding();
 }
 function obHue(h){obData.hue=h;renderOnboarding();}
