@@ -21,7 +21,8 @@
       "PowerShell(node test-harness.js --seeds=4 --seasons=3 2>&1 | Select-Object -Last 8)",
       "PowerShell(node test-harness.js --seeds=5 --seasons=4 2>&1 | Select-Object -Last 9)",
       "PowerShell(node test-harness.js --seeds=6 --seasons=4 2>&1 | Select-Object -Last 10)",
-      "PowerShell(node test-harness.js --seeds=8 --seasons=4 2>&1 | Select-Object -Last 12)"
+      "PowerShell(node test-harness.js --seeds=8 --seasons=4 2>&1 | Select-Object -Last 12)",
+      "PowerShell(node test-harness.js --seeds=12 --seasons=6 2>&1 | Select-Object -Last 15)"
     ]
   }
 }

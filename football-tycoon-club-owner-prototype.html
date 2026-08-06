@@ -407,6 +407,12 @@ let G=null, screen="home", modal=null, obStep=0, obData={name:"Ashford Rovers",h
    be keyed on the name string, which meant the wrong man got the armband. */
 let PID=1;
 function byId(id){return (G&&G.squad.find(p=>p.id===id))||null;}
+/* Every route out of the squad must go through here, or the armband and the
+   mentor pairs are left pointing at a man who no longer plays for the club. */
+function detachPlayer(p){
+  if(p.id===G.captain)G.captain=null;
+  G.mentors=G.mentors.filter(m=>m.vet!==p.id&&m.kid!==p.id);
+}
 function nameOf(id){const p=byId(id);return p?p.name:"";}
 function surnameOf(id){const n=nameOf(id);return n?n.split(" ")[1]:"";}
 function marketById(id){return G.market.findIndex(x=>x.id===id);}
@@ -987,8 +993,7 @@ function finishSeason(o){
       const club=pick(G.teams).name;
       G.soldTo.push({name:p.name,club,pos:p.pos,ovr:ovr(p),bitter:true}); // leaving free always stings a little
       leavers.push(p.name.split(" ")[1]+" → "+club);
-      if(p.id===G.captain)G.captain=null;
-      G.mentors=G.mentors.filter(m=>m.vet!==p.id&&m.kid!==p.id);
+      detachPlayer(p);
     }
   }
   if(leavers.length)msg("Ledger (bookkeeper)","L","GONE FOR NOTHING","Contracts expired, no renewals signed: "+leavers.join(" · ")+". Value walked out the door with its boots under its arm.",null);
@@ -1137,7 +1142,7 @@ function applyRetirements(){
     }else{
       addNews("CLUB",p.name+" retires at "+p.age+". A quiet testimonial, a decent watch, and a season ticket for life.");
     }
-    if(p.id===G.captain)G.captain=null;
+    detachPlayer(p);
   }
 }
 /* ---------- budget & midway meetings, owners ---------- */
@@ -1306,6 +1311,8 @@ function resolveBank(sell){
   if(sell){
     G.balance+=Math.round(best.value*0.85);
     G.squad=G.squad.filter(p=>p!==best);
+    detachPlayer(best);
+    if(!G.captain)pickCaptain();
     if(best.traits.includes("localhero")){G.fanMood=clamp(G.fanMood-14,5,100);addNews("FANS","Selling a local hero to pay the bank. The Shed End is composing new songs. They are not kind songs.");}
     addNews("CLUB",best.name+" sold under duress for "+kfmt(Math.round(best.value*0.85))+". The bank manager sends a fruit basket.");
   }else{
