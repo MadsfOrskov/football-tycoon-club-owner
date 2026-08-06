@@ -724,6 +724,12 @@ function applyPts(h,gh,a,ga){
    does not fill itself: the fanbase grows with the division you reach and with
    the fan-growth work (Family Stand), so a new stand is built ahead of demand
    and pays off as the town grows into it. */
+function ticketPriceFactor(price){
+  // Must reach ZERO, never a floor: a floor would make gate income start rising
+  // again at absurd prices — the same trap the season-ticket curve had.
+  const T=BAL.ticket,d=price-T.sweetSpot;
+  return clamp(1+(d<0?-d*T.bargainLift:-d*T.elasticity),0,1.18);
+}
 function townDemand(){
   const D=BAL.demand;
   return D.base*(1+(3-G.div)*D.perDivision)*(1+G.stands.family*D.familyStand)*(1+(G.fac.basics?D.basics:0));
@@ -731,10 +737,10 @@ function townDemand(){
 function attendance(){
   const pos=myPos();
   const posF=clamp((15-pos)/14,0.15,1);
-  const moodF=0.55+G.fanMood/180;
-  const priceF=clamp(1.25-(G.ticket-10)*0.05,0.4,1.25);
-  // mood and a cheap ticket can fill the town's appetite, never exceed it
-  const want=townDemand()*clamp(0.35+0.55*posF,0.25,1)*clamp(moodF*priceF,0.3,1);
+  const moodF=clamp(0.55+G.fanMood/180,0.4,1.05);  // mood fills the town, never exceeds it
+  // The gate price is a live lever with a knee: cheap draws a few more in,
+  // dear empties the terraces faster than it earns. Gate income peaks ~£14.
+  const want=townDemand()*clamp(0.35+0.55*posF,0.25,1)*moodF*ticketPriceFactor(G.ticket);
   return Math.max(0,Math.min(G.capacity,Math.round(want)));
 }
 function settleFinances(res){
@@ -790,7 +796,7 @@ function updateFormMood(res){
   for(const p of G.squad){
     p.form=clamp(p.form+(w?R(0,2):d?R(-1,1):R(-2,0))+(p.traits.includes("grafter")?0.5:0),-6,6);
   }
-  G.fanMood=clamp(G.fanMood+(w?3:d?0:-4)+(G.ticket>16?-1:0)+G.stands.family*0.5+(G.fac.pub?0.2:0),5,100);
+  G.fanMood=clamp(G.fanMood+(w?3:d?0:-4)+(G.ticket>BAL.ticket.moodPenaltyAbove?-1:0)+G.stands.family*0.5+(G.fac.pub?0.2:0),5,100);
   // bench rust: outside the best ~16, edges dull
   const ranked=[...G.squad].sort((a,b)=>ovr(b)-ovr(a));
   ranked.slice(16).forEach(p=>{p.form=clamp(p.form-0.7,-6,6);p.conf=clamp(p.conf-1.2,10,95);});
@@ -1084,13 +1090,19 @@ function applyRetirements(){
 /* ---------- budget & midway meetings, owners ---------- */
 /* one formula, two callers: the live estimate in the budget wizard and the
    actual sale in budgetConfirm() must never drift apart */
+function homeGames(){return Math.floor(G.rounds/2);}
+function seasonTixFair(){return Math.max(20,Math.round(G.ticket*homeGames()*BAL.seasonTix.discount/5)*5);}
+/* The old curve bottomed out at a floor of 0.2, so above ~£180 the number of
+   holders STOPPED falling while cash = sold × price kept climbing for ever —
+   free money, and the "turnstile money given up" line never shrank either.
+   Demand now falls all the way to zero, so cash has a real peak and then
+   collapses, and both figures move together. */
 function seasonTixEstimate(price){
-  const priceF=clamp(1.6-price/(G.ticket*13),0.2,1.4);
-  // holders are a share of the crowd you can actually draw — empty seats do not
-  // buy season tickets, so concrete alone never prints money
+  const S=BAL.seasonTix,fair=seasonTixFair();
+  const priceF=clamp(S.demandAt0-S.slope*(price/fair),0,S.demandCap);
   const reach=Math.min(G.capacity,townDemand());
-  const sold=Math.round(reach*0.25*priceF*(0.5+G.fanMood/150));
-  return {sold,cash:sold*price};
+  const sold=Math.max(0,Math.round(reach*S.share*priceF*(0.5+G.fanMood/150)));
+  return {sold,cash:sold*price,fair};
 }
 const BUDGET_STEPS=["Season tickets","The kit","Stadium fund","The frame"];
 function openBudgetMeeting(){
@@ -1946,7 +1958,11 @@ function viewClub(){
     <span class="stepper" style="margin:0"><button onclick="G.ticket=Math.max(5,G.ticket-1);render()">‹</button><span class="val" style="font-size:20px;min-width:60px">£${G.ticket}</span><button onclick="G.ticket=Math.min(30,G.ticket+1);render()">›</button></span></div>
     <div class="rowline"><span>Big-match surcharge <small>· derby/playoff · fans tolerate ~£3</small></span>
     <span class="stepper" style="margin:0"><button onclick="G.bigExtra=Math.max(0,G.bigExtra-1);render()">‹</button><span class="val" style="font-size:20px;min-width:50px">+£${G.bigExtra}</span><button onclick="G.bigExtra=Math.min(8,G.bigExtra+1);render()">›</button></span></div>
-    <div class="kick" style="font-size:9px;margin-top:6px">Expected gate at current form: ~${attendance().toLocaleString("en-GB")} of ${G.capacity.toLocaleString("en-GB")}</div></div>
+    ${(()=>{
+      const at=attendance(),paying=Math.max(0,at-G.seasonTix.sold);
+      const now=paying*G.ticket,up=(()=>{const t=G.ticket;G.ticket=t+1;const a=attendance();G.ticket=t;return Math.max(0,a-G.seasonTix.sold)*(t+1);})();
+      return `<div class="kick" style="font-size:9px;margin-top:6px">Expected crowd: ~${at.toLocaleString("en-GB")} of ${G.capacity.toLocaleString("en-GB")} · ${paying.toLocaleString("en-GB")} paying at the gate ≈ <b>${kfmt(now)}</b> per home game${up<=now?` · <span style="color:var(--comm)">a dearer ticket would earn less</span>`:""}</div>`;
+    })()}</div>
   <div class="card"><div class="kick" style="margin-bottom:4px">Ownership · you hold <b>${G.myShare}%</b> · club value ~${kfmt(clubValuation())}</div>
     ${G.owners.map((o,i)=>{
       const fair=Math.round(clubValuation()*o.share/100/1000)*1000;
@@ -2304,16 +2320,23 @@ function renderModal(){
     if(st===0){
       const est=seasonTixEstimate(m.tixPrice);
       const given=est.sold*G.ticket;
+      const cheaper=seasonTixEstimate(Math.max(20,m.tixPrice-10));
+      const dearer=seasonTixEstimate(m.tixPrice+10);
+      const pastPeak=est.sold>0&&dearer.cash<=est.cash&&cheaper.cash>est.cash;
       body=`<div class="kick" style="margin-top:10px">Season ticket price · one payment for the whole season</div>
         <div class="stepper">
-          <button onclick="modal.tixPrice=Math.max(60,modal.tixPrice-10);render()" title="−£10">‹</button>
+          <button onclick="modal.tixPrice=Math.max(20,modal.tixPrice-10);render()" title="−£10">‹</button>
           <span class="val num" style="font-size:26px">£${m.tixPrice}</span>
-          <button onclick="modal.tixPrice=Math.min(600,modal.tixPrice+10);render()" title="+£10">›</button></div>
+          <button onclick="modal.tixPrice=Math.min(400,modal.tixPrice+10);render()" title="+£10">›</button></div>
+        <div class="kick" style="text-align:center;font-size:9px;margin-top:4px">A season at the turnstile costs ${kfmt(G.ticket*homeGames())} · ${homeGames()} home games</div>
         <div class="card" style="margin-top:10px">
-          <div class="rowline"><span>Holders sold <small>· estimate</small></span><span class="amt num">${est.sold.toLocaleString("en-GB")} <small style="color:var(--muted)">of ${G.capacity.toLocaleString("en-GB")}</small></span></div>
+          <div class="rowline"><span>Holders sold <small>· estimate</small></span><span class="amt num">${est.sold.toLocaleString("en-GB")} <small style="color:var(--muted)">of ${Math.min(G.capacity,Math.round(townDemand())).toLocaleString("en-GB")} reachable</small></span></div>
           <div class="rowline"><span>Cash in the bank <b>now</b></span><span class="amt num">+${kfmt(est.cash)}</span></div>
           <div class="rowline"><span>Turnstile money given up <small>· per home game</small></span><span class="num" style="color:#E07A6A">−${kfmt(given)}</span></div></div>
-        <div class="why"><b>Konsekvens:</b> a holder pays once, then walks in free all season. Cheap seats mean money today and a guaranteed crowd for the atmosphere — but every holder is a turnstile that has stopped paying.</div>`;
+        ${est.sold===0?`<div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.08)"><b>Nobody is buying at that price.</b> Not one soul in this town. You will take every penny at the turnstile instead — if they turn up at all.</div>`
+          :pastPeak?`<div class="why" style="border-left-color:rgba(243,179,60,.6);background:rgba(243,179,60,.08)"><b>You are past the top of the curve.</b> Another tenner loses more holders than it gains in cash — you would take <b>${kfmt(dearer.cash)}</b> instead of ${kfmt(est.cash)}, and hand back the crowd as well.</div>`
+          :""}
+        <div class="why"><b>Konsekvens:</b> a holder pays once, then walks in free all season. Cheap seats mean money today and a guaranteed crowd for the atmosphere — but every holder is a turnstile that has stopped paying, and price it too high and they simply stop buying.</div>`;
     }
     if(st===1){
       const j=m.jersey;

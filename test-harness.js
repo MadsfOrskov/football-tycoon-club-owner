@@ -361,6 +361,38 @@ function runSeed(seed) {
     H.call("render");
   }
 
+  /* Priskurver SKAL have ét toppunkt og derefter falde. En bundgrænse i en
+     efterspørgselsformel får indtægten til at stige igen ved absurde priser —
+     dvs. gratis penge ved bare at skrue prisen op. Både sæsonkort og
+     billetpris har haft præcis den fejl. */
+  function assertUnimodal(a, label) {
+    let peak = 0;
+    for (let i = 1; i < a.length; i++) if (a[i] > a[peak]) peak = i;
+    for (let i = peak + 1; i < a.length; i++) {
+      if (a[i] > a[i - 1] + 1) fail(label + ": stiger igen efter toppunktet (" + a[i - 1] + " → " + a[i] + ") — prisen kan skrues op i det uendelige");
+    }
+    return peak;
+  }
+  function assertNonIncreasing(a, label) {
+    for (let i = 1; i < a.length; i++) if (a[i] > a[i - 1]) fail(label + ": stiger ved højere pris (" + a[i - 1] + " → " + a[i] + ")");
+  }
+  function checkPriceCurves() {
+    where = "priskurver";
+    const cash = [], sold = [];
+    for (let p = 20; p <= 400; p += 10) { const e = H.call("seasonTixEstimate", p); cash.push(e.cash); sold.push(e.sold); }
+    assertUnimodal(cash, "sæsonkort: kontant");
+    assertNonIncreasing(sold, "sæsonkort: solgte");
+    if (cash[cash.length - 1] !== 0) fail("sæsonkort: kontant falder ikke til nul ved høj pris (" + cash[cash.length - 1] + ")");
+    if (sold[sold.length - 1] !== 0) fail("sæsonkort: der sælges stadig ved £400 (" + sold[sold.length - 1] + ")");
+
+    const keep = H.G.ticket, rev = [], att = [];
+    for (let t = 5; t <= 30; t++) { H.G.ticket = t; const a = H.call("attendance"); att.push(a); rev.push(Math.max(0, a - H.G.seasonTix.sold) * t); }
+    H.G.ticket = keep;
+    assertUnimodal(rev, "gate-indtægt");
+    assertNonIncreasing(att, "fremmøde ved stigende billetpris");
+    H.call("render");
+  }
+
   function checkInvariants() {
     const G = H.G;
     if (!G) return;
@@ -425,6 +457,30 @@ function runSeed(seed) {
   }
   if (!H.G) fail("newGame blev aldrig kaldt");
   stats.startBalance = H.G.balance;
+
+  /* --curve: dump prisernes kurver, så man kan se at de har et reelt knæk og
+     ikke bare vokser i det uendelige. */
+  if (flag("curve")) {
+    console.log("\n  sæsonkort (fair ~" + fmtGbp(H.call("seasonTixFair")) + ") — pris → solgte → kontant nu → afgivet drejekors/kamp");
+    let best = { cash: -1 };
+    for (let p = 20; p <= 400; p += 20) {
+      const e = H.call("seasonTixEstimate", p);
+      if (e.cash > best.cash) best = { p, cash: e.cash };
+      console.log("      £" + String(p).padStart(3) + " → " + String(e.sold).padStart(5) + " → " +
+        fmtGbp(e.cash).padStart(9) + " → " + fmtGbp(e.sold * H.G.ticket).padStart(8));
+    }
+    console.log("      toppunkt: £" + best.p + " (" + fmtGbp(best.cash) + ")");
+    console.log("\n  billetpris — pris → fremmøde → gate/hjemmekamp");
+    const keep = H.G.ticket; let bestT = { rev: -1 };
+    for (let t = 5; t <= 30; t++) {
+      H.G.ticket = t;
+      const at = H.call("attendance"), rev = Math.max(0, at - H.G.seasonTix.sold) * t;
+      if (rev > bestT.rev) bestT = { t, rev };
+      if (t % 2 === 1 || t === 30) console.log("      £" + String(t).padStart(2) + " → " + String(at).padStart(5) + " → " + fmtGbp(rev).padStart(9));
+    }
+    H.G.ticket = keep;
+    console.log("      toppunkt: £" + bestT.t + " (" + fmtGbp(bestT.rev) + ")\n");
+  }
 
   /* ---------------- bot-handlinger ---------------- */
   function processInbox() {
@@ -756,6 +812,7 @@ function runSeed(seed) {
   where = "slut";
   renderAllScreens();
   checkInvariants();
+  checkPriceCurves();
   checkGroundStates();
   checkOwnerBuyout();
   checkBankCascade();
