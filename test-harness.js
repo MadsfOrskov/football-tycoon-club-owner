@@ -473,6 +473,65 @@ function runSeed(seed) {
     H.screen = "home"; H.call("render");
   }
 
+  /* Pakke 7: TEKST MOD KODE. Fejlklassen er sponsorklausulen -- teksten lovede
+     20%, koden tog intet. Hvert tal i en UI-lovning skal vaere det tal motoren
+     bruger, og den eneste maade at HOLDE det er at maale det: harness'en
+     formaterer sin egen forventning ud fra BAL og kraever at strengen
+     indeholder den. Erstatter nogen en genereret streng med en haandskrevet
+     konstant, fejler det her -- ogsaa naar konstanten er rigtig i dag. */
+  function checkPromisesMatchCode() {
+    where = "tekst mod kode";
+    const C = H.consts, B = C.BAL;
+    const pctOf = n => Math.round(n * 100) + "%";
+    const per = n => "£" + n.toFixed(2);
+    const kOf = n => Math.abs(n) >= 1000
+      ? "£" + (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + "k" : "£" + n;
+    const claim = (what, hay, needle) => {
+      if (String(hay).indexOf(needle) < 0)
+        fail(what + " naevner ikke '" + needle + "' (det tal koden bruger): \"" + String(hay).slice(0, 130) + "\"");
+    };
+    const fx = k => C.FAC_DETAIL[k].fx.join(" | ") + " | " + (C.FAC_DETAIL[k].warn || "");
+
+    claim("shop", fx("shop"), per(B.matchday.shop));
+    claim("shop", fx("shop"), pctOf(B.matchday.shopMerchBoost));
+    claim("pub", fx("pub"), per(B.matchday.pub));
+    claim("basics", fx("basics"), per(B.matchday.basics));
+    claim("basics", fx("basics"), pctOf(B.demand.basics));
+    claim("screen", fx("screen"), pctOf(B.matchday.bigScreenGate));
+    claim("vip", fx("vip"), kOf(B.matchday.vipFlat));
+    claim("clinic", fx("clinic"), pctOf(B.fresh.injBase));
+    claim("clinic", fx("clinic"), pctOf(B.fresh.injClinic));
+    claim("clinic", fx("clinic"), pctOf(B.fresh.clinicScale));
+    claim("training", fx("training"), B.fresh.decay.toFixed(2));
+    claim("training", fx("training"), (B.fresh.decay + B.fresh.trainingRecovery).toFixed(2));
+    claim("FACS.screen", C.FACS.screen.txt, pctOf(B.matchday.bigScreenGate));
+    claim("FACS.vip", C.FACS.vip.txt, kOf(B.matchday.vipFlat));
+    claim("Away End", C.STANDS.away.role, pctOf(B.matchday.awayEndBigGate));
+    claim("Family Stand", C.STANDS.family.role, pctOf(B.demand.familyStand));
+    claim("The Shed End", C.STANDS.shed.role, B.stands.shedHome.toFixed(2));
+
+    /* Main Stand lovede "boardroom gravitas" og roerte intet uden for
+       kapaciteten. Teksten er rettet; spoergsmaalet om den BOER gøre noget
+       staar i DECISIONS-NEEDED.md. Her holdes den bare aerlig. */
+    if (/gravitas|boardroom/i.test(C.STANDS.main.role))
+      fail("Main Stand lover stadig noget i bestyrelsen som koden ikke gør: \"" + C.STANDS.main.role + "\"");
+
+    // og lovningen om at storskaermen KUN virker i store kampe (pakke 5's gating)
+    if (!/big/i.test(C.FAC_DETAIL.screen.fx.join(" ")))
+      fail("storskaermens beskrivelse siger ikke laengere at den kun gaelder store kampe");
+
+    /* Sponsorklausulen selv: procenten i tilbudsteksten skal vaere BAL's. */
+    const G = H.G, snapS = G.sponsor, snapD = G.sponsorDue, snapO = G.sponsorOffered;
+    G.sponsor = null; G.sponsorDue = null;
+    H.call("sponsorRenewal");
+    const dem = (G.sponsorDue.offers || []).map(o => o.demand || "").join(" | ");
+    claim("sponsorklausulen", dem, pctOf(B.sponsor.penalty));
+    G.sponsor = snapS; G.sponsorDue = snapD; G.sponsorOffered = snapO;
+
+    checkInvariants();
+    H.screen = "home"; H.call("render");
+  }
+
   /* Pakke 6: tekstbiblioteket. Tre faelder, og de er alle tre stille:
        (a) en linje gentaget i samme kamp -- man laeser den to gange og
            illusionen falder sammen,
@@ -1635,6 +1694,7 @@ function runSeed(seed) {
   checkBigGate();
   checkBigSources();
   checkTextLibrary();
+  checkPromisesMatchCode();
   checkOwnerBuyout();
   checkBankCascade();
   checkPromotionWithoutSponsor();   // sidst: den rykker sæsonen frem

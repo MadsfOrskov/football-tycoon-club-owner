@@ -396,6 +396,11 @@ const BAL={
     silentHome:0.13,
     boycottCap:0.68          // hard ceiling on townDemand() — empty seats you can see
   },
+  /* The Shed End's contribution to home advantage. It was a bare 0.05 inside
+     homeBonus(), which is exactly the thing BAL exists to prevent: the stand's
+     own description promises "feeds the 12th man" and there was no way to see
+     how much without reading the match engine. */
+  stands:{shedHome:0.05},
   /* Deal structures (GDD): "Ratebetaling (køb over 2-4 rater — køb større end
      kassen, bind fremtiden) og bonusklausuler (+£ ved oprykning / pr. mål —
      flyt risikoen til fremtiden). Rå pris er altid muligt; strukturer er
@@ -970,21 +975,33 @@ function newGame(name,hue,mode){
 }
 function G_DIV_WAGE(div){return {3:1,2:1.8,1:3.2,0:6}[div]||1;}
 /* ---------- stands, facilities, capacity ---------- */
+/* ---------- pakke 7: every promise below is BUILT from BAL ----------
+   The failure class this fixes is the sponsor clause that said 20% while the
+   code took nothing: a number typed into a description drifts away from the
+   number the engine uses, silently, and the player is the last to find out.
+   Nothing here quotes a figure it does not read from BAL. The harness asserts
+   it both ways — the text must still contain the value BAL holds. */
+const pct=n=>Math.round(n*100)+"%";
+const perHead=n=>"£"+n.toFixed(2)+" per spectator, every home game";
 const STANDS={
- shed:{n:"The Shed End",role:"Atmosphere — feeds the 12th man",cap:[0,1000,2000]},
- main:{n:"Main Stand",role:"Seats & boardroom gravitas",cap:[0,1500,3000]},
- family:{n:"Family Stand",role:"Fan growth — mood rises faster",cap:[0,1000,2000]},
- away:{n:"Away End",role:"Bigger gates in big matches",cap:[0,800,1600]}
+ shed:{n:"The Shed End",role:"Atmosphere — home advantage +"+BAL.stands.shedHome.toFixed(2)+" per tier",cap:[0,1000,2000]},
+ /* "Seats & boardroom gravitas" promised something the code never did: the Main
+    Stand touches capacity and nothing else. Whether the boardroom SHOULD care
+    is a design decision, so it is in DECISIONS-NEEDED.md and the text now says
+    what is true. */
+ main:{n:"Main Stand",role:"Seats — the biggest capacity step per tier",cap:[0,1500,3000]},
+ family:{n:"Family Stand",role:"Fan growth: +"+pct(BAL.demand.familyStand)+" town demand, mood +0.5 a matchday per tier",cap:[0,1000,2000]},
+ away:{n:"Away End",role:"Gate +"+pct(BAL.matchday.awayEndBigGate)+" per tier in big matches",cap:[0,800,1600]}
 };
 const STANDCOST=[0,70000,150000];
 const FACS={
  shop:{n:"Club shop",cost:35000,txt:"+merch & matchday income"},
  pub:{n:"The Ground's pub",cost:30000,txt:"+matchday income, +mood drift"},
- screen:{n:"Big screen",cost:25000,txt:"+10% gate in big matches"},
+ screen:{n:"Big screen",cost:25000,txt:"+"+pct(BAL.matchday.bigScreenGate)+" gate in big matches"},
  clinic:{n:"Medical clinic",cost:45000,txt:"shorter, rarer injuries"},
- training:{n:"Training ground",cost:55000,txt:"young players develop faster"},
+ training:{n:"Training ground",cost:55000,txt:"young players develop faster, and recover faster"},
  basics:{n:"The unsexy basics",cost:15000,txt:"parking, loos, lights — small mood & gate lift"},
- vip:{n:"VIP boxes",cost:60000,txt:"+£3k per home game. The fans call it the prawn sandwich brigade"}
+ vip:{n:"VIP boxes",cost:60000,txt:"+"+kfmt(BAL.matchday.vipFlat)+" per home game. The fans call it the prawn sandwich brigade"}
 };
 function recalcCapacity(){
   G.capacity=Object.entries(G.stands).reduce((s,[k,l])=>s+STANDS[k].cap[l],0);
@@ -1183,7 +1200,7 @@ function bigGameBonus(){return G.squad.some(p=>p.traits.includes("biggame"))?2.5
 function homeBonus(){ // dynamic 12th man: crowd × mood × Shed End
   // Rung two is the quiet one, and the quiet one is where the twelfth man goes.
   if(protestLevel()>=2)return BAL.protest.silentHome;
-  return 0.13+0.27*(attendance()/G.capacity)*(G.fanMood/100)+G.stands.shed*0.05;
+  return 0.13+0.27*(attendance()/G.capacity)*(G.fanMood/100)+G.stands.shed*BAL.stands.shedHome;
 }
 function myLambdas(t,home,big,appr,weather){
   const s=myStrength();
@@ -1537,7 +1554,7 @@ function settleFinances(res){
   if(!G.sponsor&&!G.sponsorOffered){G.sponsorOffered=true;
     const a={...SPONSORS[0]},b={...SPONSORS[2]};
     a.per=2800;a.seasonsLeft=2;a.demand=null;
-    b.per=4200;b.seasonsLeft=1;b.demand="top 8 finish or 20% penalty";
+    b.per=4200;b.seasonsLeft=1;b.demand="top 8 finish or "+pct(BAL.sponsor.penalty)+" penalty";
     G.sponsorDue={offers:[a,b],renewal:false};}
   // build progress
   if(G.standBuild){G.standBuild.remain--;if(G.standBuild.remain<=0)finishStand();}
@@ -1766,7 +1783,7 @@ function sponsorRenewal(){
   const rest=SPONSORS.filter(s=>s.n!==first.n);          // never two identical cards
   const offers=[{...first},{...pick(rest.length?rest:SPONSORS)}];
   offers[0].per=Math.round(offers[0].per*(1+(3-G.div)*0.6));offers[0].seasonsLeft=2;offers[0].demand=null;
-  offers[1].per=Math.round(offers[1].per*(1+(3-G.div)*0.6)*1.35);offers[1].seasonsLeft=1;offers[1].demand="top "+Math.max(4,G.objectivePos-2)+" finish or 20% penalty";
+  offers[1].per=Math.round(offers[1].per*(1+(3-G.div)*0.6)*1.35);offers[1].seasonsLeft=1;offers[1].demand="top "+Math.max(4,G.objectivePos-2)+" finish or "+pct(BAL.sponsor.penalty)+" penalty";
   // shown after the budget meeting, not buried in the inbox
   G.sponsorDue={offers,renewal:true};
 }
@@ -2059,8 +2076,8 @@ function administration(){
   for(const p of G.squad)p.wage=Math.round(p.wage*BAL.wages.adminCut/10)*10;
   G.fanMood=clamp(G.fanMood-10,5,100);
   G.balance+=BAL.bank.adminRelief; // creditors restructure
-  msg("The administrators","AD","THE CLUB IS IN ADMINISTRATION","Six points deducted. All wages cut 20%. The creditors have restructured the debt — one more collapse like this and the co-owners WILL force a sale. The kettle has been repossessed.",null);
-  addNews("CLUB","Administration. −6 points. The town is furious, the pies are smaller, and it is all uphill from here.");
+  msg("The administrators","AD","THE CLUB IS IN ADMINISTRATION",BAL.bank.adminPoints+" points deducted. All wages cut "+pct(1-BAL.wages.adminCut)+". The creditors have restructured the debt — one more collapse like this and the co-owners WILL force a sale. The kettle has been repossessed.",null);
+  addNews("CLUB","Administration. −"+BAL.bank.adminPoints+" points. The town is furious, the pies are smaller, and it is all uphill from here.");
   if(G.md>=G.rounds){startPostSeason();return;}
   render();
 }
@@ -2493,7 +2510,7 @@ function startStandBuild(key){ // direct cash build — the impatient way, no fu
   const lvl=G.stands[key]+1;
   if(lvl>2){modal={type:"info",title:"Fully built",body:STANDS[key].n+" is already at its final glory."};render();return;}
   const cost=STANDCOST[lvl];
-  if(G.balance<cost){modal={type:"info",title:"Not enough funds",body:"The builders want "+kfmt(cost)+" up front in cash. They've been burned by football clubs before. (Tip: fund it patiently via the budget meeting — patience earns up to 15%.)"};render();return;}
+  if(G.balance<cost){modal={type:"info",title:"Not enough funds",body:"The builders want "+kfmt(cost)+" up front in cash. They've been burned by football clubs before. (Tip: fund it patiently via the budget meeting — patience earns up to "+pct(BAL.fund.bonusCap)+".)"};render();return;}
   G.balance-=cost;
   G.standBuild={key,remain:5,lvl};
   addNews("CLUB","Construction begins on "+STANDS[key].n+". The seagulls have been served notice.");
@@ -2516,13 +2533,31 @@ function finishStand(){
   G.standBuild=null;
 }
 const FAC_DETAIL={
- shop:{fx:["+£1.20 per spectator, every home game","Merchandise income +50%"],warn:null,md:2},
- pub:{fx:["+£0.80 per spectator, every home game","Fan mood drifts up slightly each matchday"],warn:null,md:2},
- screen:{fx:["+10% gate in BIG matches (derby, cup, playoffs)"],warn:"Does nothing on a wet Tuesday against mid-table.",md:2},
- clinic:{fx:["Injury risk per match: 7% → 5%","Injury length: −1 matchday"],warn:null,md:2},
- training:{fx:["Players under 24 develop +1 extra per season"],warn:"Pays off over YEARS, not weeks.",md:3},
- basics:{fx:["Fan mood +4 on opening","+£0.40 per spectator"],warn:null,md:1},
- vip:{fx:["+£3,000 every home game"],warn:"The Shed End will call it the prawn sandwich brigade. Fan mood −3 on opening.",md:2}
+ shop:{fx:[perHead(BAL.matchday.shop),"Merchandise income +"+pct(BAL.matchday.shopMerchBoost)],warn:null,md:2},
+ pub:{fx:[perHead(BAL.matchday.pub),"Fan mood +0.2 every matchday, and +4 the day it opens"],warn:null,md:2},
+ /* Was "(derby, cup, playoffs)". There is no cup and no derby; after pakke 5 the
+    big afternoons are run-ins, top-of-the-table clashes, six-pointers, the
+    return leg against whoever thrashed you — and playoffs. Naming competitions
+    that do not exist is the same lie as a clause the code never reads. */
+ screen:{fx:["+"+pct(BAL.matchday.bigScreenGate)+" gate in BIG matches — run-ins, six-pointers, top clashes, playoffs"],
+   warn:"Does nothing on a wet Tuesday against mid-table. Roughly 3-5 games a season.",md:2},
+ /* Was "Injury risk per match: 7% → 5%". Those are the BASE rates: real risk is
+    the base times a tiredness multiplier, so a knackered squad is well above
+    either figure — and the clinic ALSO blunts that multiplier, which the old
+    text never mentioned at all. Both stated now. */
+ clinic:{fx:["Base injury risk per match: "+pct(BAL.fresh.injBase)+" → "+pct(BAL.fresh.injClinic),
+   "Tiredness multiplies that risk — the clinic cuts the multiplier to "+pct(BAL.fresh.clinicScale),
+   "Injury length: −1 matchday"],warn:"Tired legs are still the biggest risk. The clinic softens it; depth removes it.",md:2},
+ /* Was "+1 extra per season", flat. The bonus sits inside the bracket that is
+    scaled by games played, so a boy who never plays gets a third of it — and the
+    training ground's second, unadvertised effect is on RECOVERY. */
+ training:{fx:["Players under 24: +1 development a season, scaled by games played",
+   "Freshness decays slower: "+BAL.fresh.decay.toFixed(2)+" → "+(BAL.fresh.decay+BAL.fresh.trainingRecovery).toFixed(2)+" a matchday"],
+   warn:"Pays off over YEARS, not weeks. A boy who never plays gets a third of it.",md:3},
+ basics:{fx:["Fan mood +4 on opening",perHead(BAL.matchday.basics),
+   "Town demand +"+pct(BAL.demand.basics)+" — a few more through the gate every week"],warn:null,md:1},
+ vip:{fx:[kfmt(BAL.matchday.vipFlat)+" flat, every home game"],
+   warn:"The Shed End will call it the prawn sandwich brigade. Fan mood −3 on opening.",md:2}
 };
 function buildFac(key){
   const f=FACS[key];
