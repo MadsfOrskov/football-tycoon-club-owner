@@ -589,6 +589,60 @@ function runSeed(seed, PROFILE) {
     H.screen = "home"; H.call("render");
   }
 
+  /* Pakke 8/10: fondens maal maa ALDRIG pege paa et niveau der er passeret.
+     Saetter man maalet paa en tribune og betaler derefter niveauerne kontant,
+     pegede G.fundTarget paa et forbigaaet niveau: STANDCOST[3] findes ikke (£NaN
+     i budgetmodalen), og naar fonden blev fuld startede den et byggeri paa det
+     foraeldede niveau -- finishStand() saetter G.stands[key]=b.lvl DIREKTE, saa
+     en faerdig tribune blev NEDGRADERET og regningen betalt. Jeg havde udledt
+     nedgraderingen af koden uden at fremkalde den; her fremkaldes den. */
+  function checkStaleFundTarget() {
+    const G = H.G;
+    where = "foraeldet fondsmaal";
+    const snap = { stands: { ...G.stands }, fund: G.fund, bonus: G.fundBonus,
+      target: G.fundTarget, build: G.standBuild, bal: G.balance, cap: G.capacity };
+
+    // 1) saet fondens maal paa Main Stand niveau 1, og betal saa BEGGE niveauer kontant
+    G.stands.main = 0; H.call("recalcCapacity");
+    G.fundTarget = { key: "main", lvl: 1, cost: H.consts.STANDCOST[1] };
+    G.standBuild = null; G.balance = 5000000;
+    H.call("startStandBuild", "main");
+    if (!G.standBuild) fail("kontant byggeri startede ikke i opsaetningen");
+    H.call("finishStand");
+    if (G.fundTarget) fail("kontant byggeri paa SAMME tribune efterlod fondens maal staaende");
+
+    // 2) og hvis maalet alligevel bliver foraeldet, maa fonden ikke bygge paa det
+    G.stands.main = 2; H.call("recalcCapacity");
+    const capBefore = G.capacity;
+    G.fundTarget = { key: "main", lvl: 1, cost: 1000 };   // peger paa et passeret niveau
+    G.fund = 100000; G.fundBonus = 0; G.standBuild = null;
+    H.call("settleFinances", { home: false });
+    H.modal = null;
+    if (G.standBuild && G.standBuild.lvl <= G.stands.main)
+      fail("fonden startede et byggeri paa niveau " + G.standBuild.lvl +
+        " mens tribunen allerede staar paa " + G.stands.main + " -- den ville NEDGRADERE den");
+    if (G.standBuild) { H.call("finishStand"); }
+    if (G.capacity < capBefore)
+      fail("kapaciteten faldt fra " + capBefore + " til " + G.capacity + " efter et byggeri betalt af fonden");
+
+    // 3) og budgetmodalen maa ikke vise £NaN for et umuligt niveau
+    G.stands.main = 2; H.call("recalcCapacity");
+    G.fundTarget = null;
+    H.call("openBudgetMeeting");
+    if (H.modal && H.modal.type === "budget") {
+      H.modal.target = "main"; H.modal.step = 2;
+      H.call("render");
+      checkHtml();
+    }
+    H.modal = null;
+
+    G.stands = { ...snap.stands }; H.call("recalcCapacity");
+    G.fund = snap.fund; G.fundBonus = snap.bonus; G.fundTarget = snap.target;
+    G.standBuild = snap.build; G.balance = snap.bal;
+    checkInvariants();
+    H.screen = "home"; H.call("render");
+  }
+
   /* Pakke 11: EFTER KAMPEN. GDD linje 210 kraever tre ting, og to af dem var
      tomme: en analyselinje der forklarer resultatet ud fra ATTRIBUTTER OG VALG
      ("deres midtbane var 8 point bedre"), 2-3 kampnoegletal, og gafferens citat
@@ -2041,6 +2095,7 @@ function runSeed(seed, PROFILE) {
   checkTextLibrary();
   checkPromisesMatchCode();
   checkPostMatch();
+  checkStaleFundTarget();
   checkOwnerBuyout();
   checkBankCascade();
   checkPromotionWithoutSponsor();   // sidst: den rykker sæsonen frem
