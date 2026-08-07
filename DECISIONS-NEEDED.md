@@ -99,3 +99,39 @@ Administrationer over 100 karrierer: **269** (sane) / 168 (lazy) — altså 3-5 
 3. **Skal der være noget at bygge efter sæson 8?** Køen til de kommende nætter (pokal, rival, museum, stab, ungdom) er alle sammen ting der ville fylde her. Det er værd at vide, at *endgame-tomheden* er den bedste begrundelse for dem — bedre end at de er sjove.
 
 Jeg har ingen anbefaling. Det er tre forskellige spil.
+
+---
+
+*Tilføjet af nat 3 (7/8 2026), samme branch.*
+
+## 6. Byens hviletilstand: `baseline` blev hævet 37 → 44 (pakke 14b)
+
+**Fundet (QA's F4, efterprøvet).** At forlade protesttrin 1 kræver `banners + hysteresis = 43`. `easing` trækker kun stemningen op **mod** `baseline`, aldrig over. Med `baseline: 37` var 37 < 43, og der fandtes derfor ingen mængde tid der kunne løfte en klub af protestbannerne — kun sejre. Målt af QA: **100 % af alle karrierer nåede trin 1**, og byens hviletilstand var altså "protestbannere". `BAL`-kommentaren lovede selv at easing var *"fast enough to be a way out"*; det var den for to trin af tre.
+
+**Valgt imens:** `baseline: 44`, dvs. lige over `banners + hysteresis`. Det er QA's egen første anbefaling og den mindste ændring der gør påstanden i kommentaren sand. Harness'en har nu en invariant der kører **kun** easing fra stemning 5 uden et eneste resultat og kræver at klubben ender helt ude af protesten; med `baseline: 37` fejler den med det samme.
+
+**Spørgsmålet til dig:** den anden vej var at **sænke `banners`** (fx 38 → 31) i stedet. Forskellen er ikke kosmetisk:
+
+- **Hæv `baseline` (valgt):** byen er som udgangspunkt *tilfreds*, og protest er noget man forårsager. Gulvet under stemningsnedturen flyttes op.
+- **Sænk `banners`:** byen bliver ved med at sidde omkring 37, men grænsen for hvornår det tæller som protest rykker væk. Trappen bliver sjældnere, men hviletilstanden er stadig en utilfreds by.
+
+Jeg valgte den første, fordi den flytter hviletilstanden, og det var hviletilstanden QA pegede på. Målt over 60 seeds × 10 sæsoner, kun denne ændring plus 14a:
+
+| | før | efter |
+|---|---|---|
+| kampdage i ro | 77,3 % | **80,3 %** |
+| bannere | 6,6 % | 7,8 % |
+| tavshed | 9,3 % | **7,6 %** |
+| boykot | 6,8 % | **4,3 %** |
+| gns. stemning | 70 | 71 |
+| administrationer | 50 | 46 |
+
+## 7. `silentCrowd` står på 0 — er tavsheden for hård eller for blød? (pakke 14a)
+
+`silentHome` er slettet. Tavsheden er nu en multiplikator på **publikumsleddet alene** (`BAL.protest.silentCrowd`), så den tager den tolvte mand og aldrig banen, sengene eller Shed End. Det gør straffen proportional — man kan kun miste et publikum man havde — og det fjerner den fejl QA fandt, hvor tavshed kunne være en *fordel* for en klub med fuldt hus.
+
+**Vigtigt: QA's vippepunkt på 0,16-0,17 kan ikke overføres.** Det var målt på den gamle, fladt formede knap. Den nye har et andet interval og et andet fortegn: `silentCrowd: 0` er den **hårdeste** indstilling, `1` fjerner straffen helt.
+
+**Valgt imens: 0** — GDD'en kalder tavsheden *"uhyggeligst"*, og at den tager hele den tolvte mand er den mest GDD-konsistente læsning. Den er samtidig mildere end den gamle knap for enhver klub med en Shed End, fordi Shed End-leddet nu overlever protesten (det gjorde det ikke før — se QA's F7, hvor en færdigbygget Shed End til £220.000 var værdiløs på 31 % af kampdagene).
+
+**Spørgsmålet til dig:** skal der være en rest af publikum tilbage i tavsheden (fx `silentCrowd: 0,3`)? Det er nu en ren, monoton skrue: 0 = hårdest, 1 = ingen straf, og alt derimellem er forudsigeligt. Den kan tunes uden at ændre form, hvilket var hele problemet før.

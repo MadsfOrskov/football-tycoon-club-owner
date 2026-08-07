@@ -386,16 +386,31 @@ const BAL={
        ladder. The town drifts back toward `baseline` when you are below it, at
        `easing` of the gap per matchday: ~+1,4 at the very bottom, ~+0,2 near
        the top of the band. Slow enough to hurt, fast enough to be a way out. */
-    easing:0.08, baseline:37,
-    /* Home advantage is 0.13 for simply being at home — the pitch, the beds, no
-       coach trip — plus a crowd term worth up to ~0.3. It is the CROWD term the
-       silence takes away, not the ground itself, so this is the base and not
-       zero. At 0.04 the silent rung cost so many home defeats that clubs went
-       into administration from the knock-on, which is a different mechanic
-       than the one being built. */
-    silentHome:0.13,
+    /* Pakke 14b. `baseline` was 37 against `banners` 38. Leaving rung one needs
+       banners + hysteresis = 43, and easing only ever pulls mood UP TOWARD
+       baseline — so 37 < 43 meant no amount of time could lift a club off the
+       protest banners. Only wins could. Measured by QA: 100 % of careers reach
+       rung one, and 7 % of all matchdays sit there. The town's RESTING STATE was
+       protest, which is also the floor under the monotone mood decline through
+       every career. The comment right here promised easing was "fast enough to
+       be a way out"; it was, for two rungs of three. Now baseline clears
+       banners + hysteresis, so every rung has a way out that is slow but real.
+       The invariant checkProtestLadder() proves it by easing a club up from
+       mood 5 with no results at all. */
+    easing:0.08, baseline:44,
+    /* How much of the CROWD term survives the silence. Not a floor under home
+       advantage — a multiplier on the twelfth man, so the ground, the beds and
+       the Shed End keep paying. 0 = the silence takes the crowd entirely, which
+       is what the GDD's "tavshed (uhyggeligst)" describes. */
+    silentCrowd:0,
     boycottCap:0.68          // hard ceiling on townDemand() — empty seats you can see
   },
+  /* Home advantage, in the open. `base` is simply being at home — the pitch, the
+     beds, no coach trip — and `crowd` is the twelfth man the silence can take.
+     Both were bare constants inside homeBonus(), which is exactly what BAL
+     exists to prevent: the silent rung could not be tuned without reading the
+     match engine. */
+  home:{base:0.13, crowd:0.27},
   /* The Shed End's contribution to home advantage. It was a bare 0.05 inside
      homeBonus(), which is exactly the thing BAL exists to prevent: the stand's
      own description promises "feeds the 12th man" and there was no way to see
@@ -1231,10 +1246,19 @@ function myStrength(){
 function bigGameBonus(){return G.squad.some(p=>p.traits.includes("biggame"))?2.5:0;}
 
 /* ---------- match sim: two halves, weather, approach, atmosphere ---------- */
+/* Pakke 14a. The silence used to REPLACE the whole expression with a flat
+   `silentHome`, which made it a FLOOR and not a punishment: a club with a full
+   ground and a Shed End sits around 0.18-0.28 normally, so anything above that
+   turned a protest into a home advantage. That is why 0.20 made the suite red in
+   7 of 20 runs, and why QA's tipping point of 0.16-0.17 cannot be carried over —
+   it was measured on a knob with the wrong shape.
+   Now the quiet is a MULTIPLIER on the crowd term alone. The silence takes the
+   twelfth man, exactly as the GDD says, and never the ground itself: you can
+   only lose a crowd you had, so the punishment is proportional, and the Shed
+   End keeps paying on every rung. */
 function homeBonus(){ // dynamic 12th man: crowd × mood × Shed End
-  // Rung two is the quiet one, and the quiet one is where the twelfth man goes.
-  if(protestLevel()>=2)return BAL.protest.silentHome;
-  return 0.13+0.27*(attendance()/G.capacity)*(G.fanMood/100)+G.stands.shed*BAL.stands.shedHome;
+  const H=BAL.home,quiet=protestLevel()>=2?BAL.protest.silentCrowd:1;
+  return H.base+H.crowd*(attendance()/G.capacity)*(G.fanMood/100)*quiet+G.stands.shed*BAL.stands.shedHome;
 }
 function myLambdas(t,home,big,appr,weather){
   const s=myStrength();

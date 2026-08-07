@@ -1463,6 +1463,34 @@ function runSeed(seed, PROFILE) {
       return { home: H.call("homeBonus"), town: H.call("townDemand"), svg: H.call("stadiumSvg") }; };
     const e1 = eff(1), e2 = eff(2), e3 = eff(3);
     if (e2.home >= e1.home) fail("12. mand falder ikke bort ved tavshed: " + e2.home + " vs " + e1.home + " (samme stemning)");
+
+    /* Pakke 14a. Kontrollen ovenfor maaler EN klub -- den botten tilfaeldigvis
+       har bygget. Da silentHome var en FLAD erstatning for hele udtrykket, var
+       den derfor sand for en tom bane og falsk for et fuldt hus med en Shed End,
+       og det var praecis det QA fandt: 0,20 gjorde suiten roed i 7 af 20
+       koersler, fordi tavsheden var blevet en hjemmebanefordel. En knap der
+       skifter fortegn med klubbens tilstand er forkert FORMET, ikke forkert
+       indstillet. Herefter kraeves det for HELE tilstandsrummet: tavshed maa
+       aldrig give mere hjemmebanefordel end ro ved samme stemning. */
+    {
+      const keepC = G.capacity, keepS = { ...G.stands }, keepA = G.fanMood;
+      let worst = null;
+      for (const cap of [1500, 3300, 8600, 20000])
+        for (const shed of [0, 1, 2])
+          for (const mood of [5, 20, 25, 40, 70, 100]) {
+            G.capacity = cap; G.stands.shed = shed; G.fanMood = mood;
+            G.protest = 0; const calm = H.call("homeBonus");
+            G.protest = 2; const quiet = H.call("homeBonus");
+            G.protest = 3; const boyc = H.call("homeBonus");
+            if (quiet > calm + 1e-12 || boyc > calm + 1e-12)
+              worst = { cap, shed, mood, calm, quiet, boyc };
+          }
+      G.capacity = keepC; G.stands = keepS; G.fanMood = keepA;
+      if (worst) fail("tavshed/boykot GIVER hjemmebanefordel ved kap " + worst.cap + ", shed " + worst.shed +
+        ", stemning " + worst.mood + ": ro " + worst.calm.toFixed(3) + " mod tavs " + worst.quiet.toFixed(3) +
+        " / boykot " + worst.boyc.toFixed(3) + " -- straffen er formet som et GULV, ikke som en straf");
+    }
+    G.fanMood = P.silence - 1;
     if (e2.svg === e1.svg) fail("stadion tegnes uaendret fra trin 1 til 2 — staar trinnet i stadCache-noeglen?");
     if (e3.town >= e1.town) fail("boykot saenker ikke townDemand(): " + e3.town + " vs " + e1.town + " (samme stemning)");
     if (e3.svg === e2.svg) fail("stadion tegnes uaendret fra trin 2 til 3 — staar trinnet i stadCache-noeglen?");
@@ -1472,6 +1500,31 @@ function runSeed(seed, PROFILE) {
     if (at(P.boycott + 1) !== 3) fail("trinnet forlades allerede ved at roere linjen — hysteresen virker ikke");
     if (at(P.boycott + P.hysteresis + 1) !== 2) fail("man kan ikke komme OP ad trappen igen");
     if (at(95) !== 0) fail("fuld opbakning fjerner ikke protesten");
+
+    /* Pakke 14b. Vejen ud maa findes for ALLE tre trin, ikke kun to. BAL's egen
+       kommentar lovede at easing var "fast enough to be a way out"; med
+       baseline 37 mod banners 38 kunne den matematisk aldrig loefte en klub af
+       trin 1, fordi easing kun traekker OP MOD baseline og aldrig over. Maalt af
+       QA: 100 % af karriererne naaede trin 1, og byens hviletilstand var
+       protestbannere. Her koeres kun easing -- ingen sejre, ingen kampe, intet
+       andet -- fra bunden af skalaen. Naar den staar stille, skal klubben vaere
+       helt ude af protesten. */
+    {
+      G.fanMood = 5; G.protest = 3; H.call("updateProtest");
+      let md = 0;
+      for (; md < 400; md++) {
+        const before = G.fanMood;
+        if (G.fanMood < P.baseline) G.fanMood = Math.max(5, Math.min(100, G.fanMood + (P.baseline - G.fanMood) * P.easing));
+        H.call("updateProtest");
+        if (H.call("protestLevel") === 0) break;
+        if (Math.abs(G.fanMood - before) < 1e-9)
+          fail("kun easing: stemningen staar stille paa " + G.fanMood.toFixed(1) + " og klubben sidder fast paa trin " +
+            H.call("protestLevel") + " for evigt — baseline (" + P.baseline + ") skal ligge over banners+hysteresis (" +
+            (P.banners + P.hysteresis) + ")");
+      }
+      if (md >= 400) fail("kun easing: 400 kampdage uden resultater fik ikke klubben ud af protesten");
+      stats.easeOutMD = md;
+    }
 
     G.fanMood = keep.mood; G.protest = keep.protest; G.inbox = keep.inbox; G.news = keep.news;
     H.screen = keep.screen; H.call("render");
