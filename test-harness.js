@@ -641,6 +641,97 @@ function runSeed(seed, PROFILE) {
     checkInvariants();
   }
 
+  /* Pakke 19. Forventningsmoedet er kun et valg hvis begge veje koster noget.
+     QA's afsnit 7b er hele begrundelsen: kontraktrollen og storkampstillaegget
+     havde begge praecis ET rigtigt svar, og det er GDD'ens forhandlingsmekanik
+     reduceret til en fast indstilling. Her kraeves det maalt at dristighed
+     betaler BEGGE veje, og at forsigtighed har en pris. */
+  function checkObjectiveDeal() {
+    const G = H.G;
+    where = "forventningsmoedet";
+    const O = H.consts.BAL.owners;
+    const keep = { obj: G.objectivePos, bold: G.objectiveBold, trust: G.trust, md: G.md,
+      phase: G.phase, season: G.season, hist: G.history.slice(), inbox: G.inbox.slice(),
+      news: G.news.slice(), bal: G.balance, me: { ...G.me }, teams: G.teams.map(t => ({ ...t })) };
+    const keepModal = H.modal;
+
+    // 1) deres eget krav er DETERMINISTISK: samme moede, samme tal, hver gang
+    const a = H.call("ownerDemandPos"), b = H.call("ownerDemandPos");
+    if (a !== b) fail("medejernes forventning er en terning (" + a + " mod " + b +
+      ") -- saa kan man aabne moedet igen til man faar en mild bestyrelse");
+
+    /* 2) foerste runde er BLIND. Soeges der i HELE markuppen, fejler kontrollen
+          paa en tilfaeldighed: hjemmeskaermen bag overlayet skriver ogsaa
+          "Objective: top N", og det tal er tit det samme. Foerste udgave af den
+          her kontrol gjorde netop det og fejlede paa 8 af 60 seeds -- paa
+          korrekt kode. Der soeges derfor kun i selve arket, og forslaget
+          skubbes vaek fra deres tal, saa et sammenfald hverken kan skjule en
+          laek eller opfinde en. */
+    H.modal = null; H.call("openBudgetMeeting");
+    H.modal.step = 3;
+    H.modal.objProposed = Math.min(G.teams.length + 1, a + 3);
+    H.call("render");
+    const sheetAt = lastHtml.v.lastIndexOf('<div class="overlay">');
+    if (sheetAt < 0) fail("budgetmoedet tegnede intet overlay");
+    const sheet = lastHtml.v.slice(sheetAt);
+    if (sheet.indexOf("top " + a) >= 0)
+      fail("medejernes tal (" + a + ") kan laeses i budgetarket FOER man har budt -- pokerprincippet er brudt");
+    if (H.modal.objTheirs !== null) fail("objTheirs er sat foer der er budt");
+    H.modal.objProposed = G.objectivePos;
+
+    // 3) et bud der er mindst lige saa ambitioest afgoeres i runde 1
+    H.modal.objProposed = Math.max(1, a - 1); H.call("objectivePropose");
+    if (H.modal.objAgreed !== a - 1) fail("et dristigere bud blev ikke accepteret med det samme");
+    const boldDeal = H.modal.objTheirs - H.modal.objAgreed;
+    if (boldDeal <= 0) fail("et dristigere bud gav ikke positiv dristighed");
+
+    // 4) et mildere bud afsloerer deres tal og lader spilleren vaelge
+    H.modal = null; H.call("openBudgetMeeting");
+    H.modal.step = 3; H.modal.objProposed = Math.min(G.teams.length + 1, a + 2);
+    H.call("objectivePropose");
+    if (H.modal.objAgreed !== null) fail("et mildere bud blev afgjort uden at give spilleren valget");
+    if (H.modal.objTheirs !== a) fail("de afsloerede ikke deres eget tal");
+    H.call("render");
+    if (lastHtml.v.indexOf("top " + a) < 0) fail("deres tal blev ikke vist efter afsloeringen");
+    H.call("objectiveSettle", false);                 // bliv staaende paa det milde
+    if (H.modal.objAgreed !== a + 2) fail("at blive staaende virkede ikke");
+
+    /* 5) prisen paa forsigtighed. Samme klub, samme humoer, samme tillid -- kun
+          aftalen skifter. Uden det her er "de noterer det" bare en paastand i
+          en tekst, praecis den fejlklasse sponsorklausulen var. */
+    const owner = G.owners[0];
+    if (owner) {
+      G.objectiveBold = 0; const fair = H.call("ownerPremium", owner);
+      G.objectiveBold = -3; const timid = H.call("ownerPremium", owner);
+      G.objectiveBold = 3; const bold = H.call("ownerPremium", owner);
+      if (!(timid > fair))
+        fail("at presse maalsaetningen ned koster ikke noget paa andelsprisen: " +
+          fair.toFixed(3) + " -> " + timid.toFixed(3) + " -- 'de noterer det' er en tekst uden kode bag");
+      if (bold > fair)
+        fail("at love MERE goer ogsaa andelene dyrere (" + bold.toFixed(3) + ") -- straffen rammer begge veje");
+    }
+
+    /* 6) indsatsen skal gaa begge veje. Rammer man en dristig maalsaetning, skal
+          bestyrelsen betale mere end for en tam; misser man den, skal det koste
+          mere. En indsats der kun betaler opad er ikke en indsats. */
+    const trustAfter = (bold, hit) => {
+      G.objectiveBold = bold; G.trust = 50;
+      const t0 = H.call("trustLevel");
+      H.call("bumpTrust", O.trustPerSeason + (hit ? O.trustObjective + Math.max(0, bold) * O.objectiveStake
+        : O.trustMissed - Math.max(0, bold) * O.objectiveStake) + O.trustFundKept);
+      return H.call("trustLevel") - t0;
+    };
+    if (!(trustAfter(3, true) > trustAfter(0, true)))
+      fail("en dristig maalsaetning der RAMMES betaler ikke mere end en tam");
+    if (!(trustAfter(3, false) < trustAfter(0, false)))
+      fail("en dristig maalsaetning der MISSES koster ikke mere end en tam -- der er ingen indsats");
+
+    G.objectivePos = keep.obj; G.objectiveBold = keep.bold; G.trust = keep.trust;
+    G.inbox = keep.inbox; G.news = keep.news; G.balance = keep.bal;
+    H.modal = keepModal; H.screen = "home"; H.call("render");
+    checkInvariants();
+  }
+
   function checkGroundStates() {
     const G = H.G;
     const keys = Object.keys(H.consts.STANDS);
@@ -2244,6 +2335,27 @@ function runSeed(seed, PROFILE) {
         if (md.fundAdd !== undefined && chance(0.6)) {
           md.fundAdd = Math.min(Math.max(0, H.G.balance), Math.floor(rnd() * 7) * 10000);
         }
+        /* Pakke 19: forventningsmoedet skal FAKTISK spilles, ellers er
+           mekanikken kun naaet af en invariant og aldrig af en karriere.
+           Botten byder skiftevis dristigt, forsigtigt og som huset. */
+        /* hasFn() spoerger den RENDEREDE markup, og de to runder tegner hver
+           sin knap: efter afsloeringen findes objectivePropose( ikke laengere.
+           Foerste udgave brugte hasFn("objectivePropose") som vagt for begge
+           runder, saa botten sprang runde to over hver eneste gang -- og
+           "forsigtig" forekom i NUL af 1.200 saesoner uden at noget fejlede.
+           Det var --stats-linjen der afsloerede det, ikke en invariant. */
+        if (md.step === 3 && md.objAgreed === null) {
+          if (md.objTheirs === null && hasFn("objectivePropose")) {
+            const swing = pick([-2, -1, 0, 0, 1, 2]);
+            md.objProposed = Math.max(1, Math.min(H.G.teams.length + 1, md.objProposed + swing));
+            H.call("objectivePropose");
+            break;
+          }
+          if (md.objTheirs !== null && hasFn("objectiveSettle")) {
+            H.call("objectiveSettle", chance(0.5));
+            break;
+          }
+        }
         if (hasFn("askCapRaise") && !H.G.capRaiseUsed && chance(0.6)) { H.call("askCapRaise"); break; }
         if (hasFn("budgetNext")) { H.call("budgetNext"); break; }
         // Ændring 1 lovede at live-estimatet og det faktiske salg deler formel.
@@ -2484,6 +2596,7 @@ function runSeed(seed, PROFILE) {
   checkMainStandRole();
   checkRelegation();
   checkDivisionScaling();
+  checkObjectiveDeal();
   checkValuationDirection();
   checkBigGate();
   checkBigSources();
@@ -3012,6 +3125,28 @@ function report(runs) {
           " · netto/loen " + (avg(rows.map(e => e.net)) / (avg(rows.map(e => e.wages)) || 1)).toFixed(2);
       console.log(line("League Three, aldrig rykket ned", fresh));
       console.log(line("League Three, efter en nedrykning", crashed));
+    }
+  }
+
+  /* ── Pakke 19: er forventningsmoedet et valg? ──
+     QA's afsnit 7b viste to "valg" med praecis et rigtigt svar (kontraktrollen
+     og storkampstillaegget). En ny forhandling skal ikke blive den tredje, saa
+     dens udfald maales frem for at blive antaget. Er den ene side altid bedst,
+     staar det her. */
+  {
+    const deals = runs.flatMap(r => r.stats.history.filter(h => h.bold !== undefined));
+    if (deals.length) {
+      const grp = { "dristig (lovede mere)": deals.filter(h => h.bold > 0),
+        "som huset": deals.filter(h => h.bold === 0),
+        "forsigtig (lovede mindre)": deals.filter(h => h.bold < 0) };
+      console.log("\n─── FORVENTNINGSMOEDET (pakke 19) ───");
+      for (const [k, v] of Object.entries(grp))
+        console.log("  " + k.padEnd(26) + String(v.length).padStart(5) + " saesoner · rammer maalet " +
+          (v.length ? Math.round(100 * v.filter(h => h.hit).length / v.length) : 0) + "% · gns. maalsaetning top " +
+          (v.length ? (v.reduce((s, h) => s + h.objective, 0) / v.length).toFixed(1) : "—"));
+      const spread = deals.map(h => h.bold);
+      console.log("  dristighed: min " + Math.min(...spread) + " · max " + Math.max(...spread) +
+        " · gns. " + (spread.reduce((a, b) => a + b, 0) / spread.length).toFixed(2));
     }
   }
 

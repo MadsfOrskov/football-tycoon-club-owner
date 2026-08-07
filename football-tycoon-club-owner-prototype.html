@@ -351,7 +351,15 @@ const BAL={
     trustMainStand:4,
     /* Pakke 16. Bigger than trustMissed (−4) and smaller than trustAdmin (−30):
        relegation is worse than a bad season and not as bad as losing the club. */
-    trustRelegation:-14
+    trustRelegation:-14,
+    /* Pakke 19. Forventningsmoedet. `objectiveStake` er hvor meget hver plads'
+       dristighed flytter bestyrelsens dom BEGGE veje -- lover du mere, faar du
+       mere for at levere og mere tilbage i hovedet hvis du ikke goer.
+       `objectiveTimid` er prisen paa at presse maalsaetningen ned: en formand
+       der ikke tror paa klubben faar ikke lov at koebe den billigt.
+       `objectivePrize` er praemiepengenes andel af det samme. */
+    objectiveStake:2.5, objectiveTimid:0.05, objectivePrize:0.18,
+    objectiveMoodStep:1, objectiveTrustAt:60, objectiveTrustStep:1
   },
   fund:{bonusPerMD:0.015, bonusCap:0.15},
   /* Freshness. The game's unit of time is the MATCHDAY — there are no rest
@@ -1052,7 +1060,7 @@ function newGame(name,hue,mode){
     build:null,buildCost:80000,loan:null,warnedNeg:false,bankForced:false,
     sponsor:null,sponsorOffered:false,sponsorDue:null,
     coach:{...pick(COACHES)},
-    fanMood:60,objectivePos:8,
+    fanMood:60,objectivePos:8,objectiveBold:0,
     squad:posPlan.map(p=>genPlayer(p,R(42,58),G_DIV_WAGE(3))),
     market:[],freeAgents:[],scoutPending:0,scoutUsed:false,sponsorBoost:false,
     wageCap:BAL.wages.cap,bids:[],callbacks:[],lastXI:[],
@@ -2039,15 +2047,23 @@ function finishSeason(o){
   else if(o.how==="runners-up"){prize=divPrize(BAL.prize.runnersUp);txt="Promoted as runners-up. The champagne is mid-range but plentiful.";}
   else if(o.how==="playoffs"&&o.promoted){prize=divPrize(BAL.prize.playoffs);txt="PLAYOFF WINNERS! The most profitable afternoon in club history.";}
   else if(o.relegated){prize=divPrize(BAL.prize.missed);txt="RELEGATED. "+ord(pos)+" of "+(G.teams.length+1)+", and down we go. Nobody in the boardroom is looking at anybody.";}
-  else if(pos<=G.objectivePos){prize=divPrize(BAL.prize.objective);txt="You finished "+ord(pos)+". The co-owners are satisfied and have bought a new kettle.";}
+  else if(pos<=G.objectivePos){prize=divPrize(Math.round(BAL.prize.objective*(1+Math.max(0,G.objectiveBold||0)*BAL.owners.objectivePrize)));txt="You finished "+ord(pos)+". The co-owners are satisfied and have bought a new kettle.";}
   else{prize=divPrize(BAL.prize.missed);txt="You finished "+ord(pos)+". The co-owners 'note the result with interest'. That's owner-speak for: do better.";}
   G.balance+=prize;
   sponsorSettleDemand(pos);          // the top-N clause is settled before the deal rolls over
-  G.history.push({season:G.season,div:G.divNames[G.div],pos,promoted:!!o.promoted,relegated:!!o.relegated});
+  G.history.push({season:G.season,div:G.divNames[G.div],pos,promoted:!!o.promoted,relegated:!!o.relegated,
+    objective:G.objectivePos,bold:G.objectiveBold||0,hit:pos<=G.objectivePos});
   /* Trust is time plus delivery. It is why a share costs ~1,9× fair in season 1
      and drifts toward ~1,25× for a chairman they have watched keep his word. */
-  {const O=BAL.owners;
-   bumpTrust(O.trustPerSeason+(pos<=G.objectivePos?O.trustObjective:O.trustMissed)+(G.fundRaided?0:O.trustFundKept));}
+  /* Pakke 19: dristigheden er indsatsen. Lovede du mere end de forventede, er
+     baade belonningen og regningen stoerre -- det er dét, der goer
+     forventningsmoedet til et valg og ikke et opslag. Presser du den ned, er
+     der intet at vinde, og du slipper heller ikke billigere for at misse den:
+     du lovede jo det lette. */
+  {const O=BAL.owners,bold=Math.max(0,G.objectiveBold||0);
+   const hit=pos<=G.objectivePos;
+   bumpTrust(O.trustPerSeason+(hit?O.trustObjective+bold*O.objectiveStake:O.trustMissed-bold*O.objectiveStake)
+     +(G.fundRaided?0:O.trustFundKept));}
   const promoted=o.promoted&&G.div>0;
   const relegated=!!o.relegated&&G.div<BAL.relegation.floorDiv&&!promoted;
   settleCommitments(promoted);   // before the summer wipes p.sg — goal bonuses need it
@@ -2129,6 +2145,10 @@ function finishSeason(o){
   if(!G.captain||!byId(G.captain))pickCaptain();
   // sponsor expiry
   if(G.sponsor){G.sponsor.seasonsLeft--;if(G.sponsor.seasonsLeft<=0){G.sponsor=null;sponsorRenewal();}}
+  /* Pakke 16/19: maalsaetningen hoerer til divisionen og forhandles paa ny hvert
+     aar. Springer man moedet over, staar divisionens egen ramme -- ikke sidste
+     saesons aftale. */
+  G.objectivePos=DIV_OBJECTIVE[G.div];G.objectiveBold=0;
   G.season++;G.md=0;G.phase="season";
   G.me={pts:0,gd:0,pl:0};for(const t of G.teams){t.pts=0;t.gd=0;t.pl=0;}
   G.fixtures=makeFixtures();refreshMarket();
@@ -2275,15 +2295,82 @@ function seasonTixEstimate(price){
   const sold=Math.max(0,Math.round(reach*S.share*priceF*(0.5+G.fanMood/150)));
   return {sold,cash:sold*price,fair};
 }
-const BUDGET_STEPS=["Season tickets","The kit","Stadium fund","The frame"];
+/* Pakke 19. "The objective" ligger foer opsummeringen og ikke sidst, fordi
+   opsummeringen skal kunne vise hvad man gik med til. Arbejdsordren sagde
+   "femte trin"; den er femte i antal og fjerde i raekken, og det er den eneste
+   afvigelse. */
+const BUDGET_STEPS=["Season tickets","The kit","Stadium fund","The objective","The frame"];
+/* Hvad medejerne SELV forventer. Skjult i foerste runde -- samme pokerprincip
+   som kontraktforhandlingen, hvor modpartens krav ikke er synligt foer man har
+   budt. Helt uden terning: aabner man moedet igen, staar det samme tal der, saa
+   man ikke kan rulle om paa en mild bestyrelse. */
+function ownerDemandPos(){
+  const O=BAL.owners,rows=G.teams.length+1;
+  let d=DIV_OBJECTIVE[G.div];
+  /* Personligheden. Slagteren er ambitioes paa klubbens vegne, sagfoereren er
+     forsigtig, tertemagasinet er ligeglad -- vaegtet med deres ejerandel, saa
+     den stoerste aktionaer taler hoejest. */
+  const tot=G.owners.reduce((s,o)=>s+o.share,0);
+  if(tot>0){
+    const push=G.owners.reduce((s,o)=>s+({butcher:-1,solicitor:1,"pie magnate":0}[o.role]||0)*o.share,0)/tot;
+    d+=push;
+  }
+  // og humoeret: en glad by og en formand de stoler paa haever barren
+  if(G.fanMood>=BAL.text.happyAt)d-=O.objectiveMoodStep;
+  if(trustLevel()>=O.objectiveTrustAt)d-=O.objectiveTrustStep;
+  if(protestLevel()>=2)d+=O.objectiveMoodStep;
+  return clamp(Math.round(d),2,rows-1);
+}
 function openBudgetMeeting(){
-  modal={type:"budget",step:0,tixPrice:G.seasonTix.price,fundAdd:0,jersey:null,capAsked:false,capMsg:null,target:G.fundTarget?G.fundTarget.key:null};
+  modal={type:"budget",step:0,tixPrice:G.seasonTix.price,fundAdd:0,jersey:null,capAsked:false,capMsg:null,
+    target:G.fundTarget?G.fundTarget.key:null,
+    /* Forhandlingen starter fra DIVISIONENS ramme, ikke fra sidste saesons
+       aftale. Ellers ratcher den: en dristig aftale saenker G.objectivePos,
+       naeste moede starter derfra, og efter fem saesoner forhandler man om
+       top 2 uden nogensinde at have besluttet det. Maalt paa foerste udgave:
+       "forsigtig" forekom i NUL af 1.200 saesoner, fordi udgangspunktet altid
+       allerede laa under medejernes eget tal. */
+    objProposed:DIV_OBJECTIVE[G.div],objTheirs:null,objAgreed:null,objSaid:null};
+  render();
+}
+/* Runde 1: du byder blindt. Er dit bud mindst lige saa ambitioest som deres
+   (altsaa et LAVERE tal), gaar de med uden at afsloere noget. Er det mildere,
+   laegger de deres eget tal paa bordet -- og saa er det dit valg om du tager
+   det eller bliver staaende. */
+function objectivePropose(){
+  const m=modal;if(!m||m.objAgreed!==null)return;
+  const theirs=ownerDemandPos();
+  m.objTheirs=theirs;
+  if(m.objProposed<=theirs){
+    m.objAgreed=m.objProposed;
+    m.objSaid=m.objProposed<theirs
+      ? "\"Top "+m.objProposed+".\" Whitmore looks up from his pad. \"That is bolder than we had written down. Minuted, chairman -- and remembered.\""
+      : "\"Top "+m.objProposed+". Agreed.\" Trencher nods once. He had the same figure underlined.";
+  }else{
+    m.objSaid="Whitmore turns his pad around. \"We had written top "+theirs+". You are asking us to expect less of you than we already do.\"";
+  }
+  render();
+}
+function objectiveSettle(takeTheirs){
+  const m=modal;if(!m||m.objTheirs===null||m.objAgreed!==null)return;
+  m.objAgreed=takeTheirs?m.objTheirs:m.objProposed;
+  m.objSaid=takeTheirs
+    ? "\"Top "+m.objTheirs+" it is.\" Trencher caps the pen for him. \"Now go and do it.\""
+    : "\"Top "+m.objProposed+", then.\" Nobody says anything else. Whitmore writes it down slowly.";
   render();
 }
 function budgetNext(){modal.step=Math.min(BUDGET_STEPS.length-1,(modal.step||0)+1);render();}
 function budgetBack(){modal.step=Math.max(0,(modal.step||0)-1);render();}
 function budgetConfirm(){
   const m=modal;
+  /* Pakke 19: maalsaetningen. Roerte spilleren aldrig trinnet, staar den som
+     divisionen satte den, og dristigheden er nul -- ingen aftale, ingen indsats. */
+  if(m.objAgreed!==null&&m.objTheirs!==null){
+    G.objectivePos=m.objAgreed;
+    G.objectiveBold=m.objTheirs-m.objAgreed;
+    const b=G.objectiveBold;
+    addNews("CLUB","Season objective agreed: top "+G.objectivePos+"."+(b>0?" The boardroom wanted less. You did not.":b<0?" The boardroom wanted more.":""));
+  }else G.objectiveBold=0;
   // season tickets sell
   G.seasonTix.price=m.tixPrice;
   const est=seasonTixEstimate(m.tixPrice);
@@ -2354,9 +2441,12 @@ function ownerPremium(o){
   const role={butcher:O.roleButcher,solicitor:O.roleSolicitor,"pie magnate":O.rolePie}[o.role]||1;
   const dir=1+valDirection()*BAL.val.dirWeight;    // rising club = they see the upside
   const mood=G.fanMood>70?1-O.moodDiscount:1;
+  /* Pakke 19. Pressede du maalsaetningen ned, noterede de det. De saelger ikke
+     billigt til en formand der selv har skrevet ned at klubben ikke skal noget. */
+  const timid=1+Math.max(0,-(G.objectiveBold||0))*O.objectiveTimid;
   // bounded at BOTH ends: a fast-rising club with a wary board could otherwise
   // ask 2,7x, which stops being a negotiation and becomes a wall again
-  return clamp(base*role*dir*mood,O.premiumFloor,O.premiumCap);
+  return clamp(base*role*dir*mood*timid,O.premiumFloor,O.premiumCap);
 }
 function ownerWhy(o,prem,dir){
   const t=trustLevel();
@@ -3908,6 +3998,29 @@ function renderModal(){
         <div class="why"><b>What this means:</b> money in the fund earns 1.5% a matchday, up to +15%, and building starts by itself when it's full. But it is money you cannot spend on players — and if the bank ever comes calling, the fund is the first thing they take.</div>`;
     }
     if(st===3){
+      /* Pakke 19. Forventningsmoedet. Runde 1 er blind -- deres eget tal er
+         skjult, praecis som modpartens loenkrav i en kontraktforhandling. */
+      const rows=G.teams.length+1;
+      const settled=m.objAgreed!==null;
+      const bold=settled&&m.objTheirs!==null?m.objTheirs-m.objAgreed:0;
+      body=`<div class="kick" style="margin-top:10px">Where do we finish? · ${G.divNames[G.div]}, ${rows} clubs</div>
+        <div class="stepper">
+          <button onclick="if(modal.objAgreed===null){modal.objProposed=Math.max(1,modal.objProposed-1);render()}" ${settled?"disabled style='opacity:.4'":""} title="more ambitious">‹</button>
+          <span class="val num" style="font-size:26px">top ${settled?m.objAgreed:m.objProposed}</span>
+          <button onclick="if(modal.objAgreed===null){modal.objProposed=Math.min(G.teams.length+1,modal.objProposed+1);render()}" ${settled?"disabled style='opacity:.4'":""} title="safer">›</button></div>
+        ${m.objSaid?`<div class="card" style="margin-top:10px"><div class="newsline">${m.objSaid}</div></div>`:""}
+        ${!settled&&m.objTheirs===null?`<button class="glowbtn" style="margin-top:10px" onclick="objectivePropose()">Put it to them ▸</button>
+          <div class="why"><b>What this means:</b> they have a figure of their own, and they are not showing it yet. Promise more than they expect and the boardroom pays you for it — in trust, and in the bonus if you deliver. Promise less and it is easy money, right up until they decide you do not believe in the club either.</div>`:""}
+        ${!settled&&m.objTheirs!==null?`<div style="display:flex;gap:8px;margin-top:10px">
+            <button class="glowbtn" style="flex:1;margin-top:0" onclick="objectiveSettle(true)">Take their top ${m.objTheirs}</button>
+            <button class="abtn ghost" style="flex:1" onclick="objectiveSettle(false)">Hold at top ${m.objProposed}</button></div>
+          <div class="why"><b>What this means:</b> take theirs and the season is harder and worth more. Hold yours and it is the season you asked for — but their shares get dearer, because a chairman who expects little of the club is not one they hand it to cheaply.</div>`:""}
+        ${settled?`<div class="card" style="margin-top:10px">
+            <div class="rowline"><span>Agreed objective</span><span class="amt num">top ${m.objAgreed}</span></div>
+            <div class="rowline"><span>They had written</span><span class="amt num">top ${m.objTheirs}</span></div>
+            <div class="rowline"><span>Board's verdict at season's end</span><span class="num" style="color:${bold>0?"var(--acc)":bold<0?"#E07A6A":"inherit"}">${bold>0?"+"+(bold*BAL.owners.objectiveStake).toFixed(1)+" trust either way · bonus +"+pct(bold*BAL.owners.objectivePrize):bold<0?"their shares cost +"+pct(-bold*BAL.owners.objectiveTimid):"as usual"}</span></div></div>`:""}`;
+    }
+    if(st===4){
       const est=seasonTixEstimate(m.tixPrice);
       const after=G.balance+est.cash-m.fundAdd;
       const wages=G.squad.reduce((s,p)=>s+p.wage,0);
@@ -3928,6 +4041,7 @@ function renderModal(){
       <p style="font-size:12.5px">${st===0?`Trencher pours terrible coffee. Whitmore reads the frame aloud: wage cap <b>${kfmt(G.wageCap)}/w</b> · objective <b>top ${G.objectivePos}</b>. Then all eyes turn to you — one question at a time.`
         :st===1?`Whitmore slides three kit mock-ups across the table. Trencher already has an opinion. Trencher always has an opinion.`
         :st===2?`Marjorie leans in. "The ground, chairman. Nothing gets better here until the ground does."`
+        :st===3?`Trencher puts his cup down. "Right. The bit that matters. Where are we finishing?"`
         :`Whitmore caps his pen. "Then that is the season, agreed and minuted."`}</p>
       ${body}
       <div style="display:flex;gap:8px;margin-top:6px">
