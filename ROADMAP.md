@@ -162,25 +162,77 @@ Formen er en **overfladisk** simulering, ikke en fuld motor:
 
 # Efter pyramiden
 
-## Pokal og rival
+## Pokalen
 
-87 % af alle store kampe kommer i dag fra to tabelafhængige kilder, så jo mere man stabiliserer sig, jo færre får man. **En pokalkamp er uafhængig af tabellen** — netop det, de fire nuværende kilder ikke er. Pakke 17 har allerede lagt røret; pokalen skal kun sætte `big:true` og en etiket.
+**Alle valg besluttet af Mads 7/8.**
 
-**Mads' regel (7/8):** møder du din rival fra en anden division i pokalen, er det en *ekstraordinær* situation og må være sæsonens **sjette** store kamp, uden for båndet på 3-5.
+Det stærkeste argument for pokalen er ikke, at den mangler. Det er, at **den betaler et system tilbage, der allerede er bygget.** Friskhedsmodellen fra nat 1 er rullende belastning: spiller man hver kamp, falder man mod et plateau, og en tynd trup kan ikke rotere. Et cup-run koster rigtige kampe — trættere ben, større skadesrisiko, en liga der lider. **Den klassiske lavere-liga-tragedie er, at pokaleventyret kostede oprykningen**, og den er allerede modelleret. Pokalen giver den bare noget at gøre.
+
+Dertil: 87 % af alle store kampe kommer i dag fra to tabelafhængige kilder, så jo bedre du stabiliserer dig, jo færre får du. **En pokalkamp er ligeglad med tabellen.** Og GDD'ens *"kæmpe gate"* gør den til en økonomisk lotteriseddel for en klub, der er strukturelt fattig fra sæson 9.
+
+| | Valgt |
+|---|---|
+| **Kalender** | **Faste pokaldatoer** — fem reserverede kampdage, uanset om du er med. Ryger du ud i første runde, er de resterende **hviledage**. Spillet har i dag slet ingen hviledage, så friskhedsmodellen får sin første ventil, og et cup-run bliver et valg mellem eventyr og friske ben. Sæsonlængden er konstant, så transfervinduernes kampdagsnumre kan blive stående |
+| **Struktur** | **GDD's model** — du træder ind i runde 1, giganterne først i runde 3. Et run bygger sig op: småklubber → ligarivaler → giganten på dit stadion |
+| **Giant-killing** | **Hele pakken** — kæmpe gate · varig fanstemningsbonus · Maureens forside · spillerværdier stiger (udstillingsvinduet virkede) · mærkedag i Klubmuseet |
+| **Prioritet** | **Du kan fortælle gafferen, hvad pokalen betyder** — resultatmålets skarpeste brug: *"det her er en distraktion, hvil benene"* mod *"vi går efter det her"*. Hans egen ambition farver, om han adlyder |
+
+**Mads' regel om den sjette store kamp:** møder du din rival fra en anden division i pokalen, er det en *ekstraordinær* situation og må være sæsonens sjette store kamp, uden for båndet på 3-5.
 
 Bemærk samtidig at topopgøret (nr. 1 mod nr. 2) fyrer 0,064 gange pr. sæson — én gang hver 16. sæson — og bør enten løsnes eller skrottes, så pokalen ikke bliver den femte kilde ved siden af tre der virker og én der ikke gør.
 
-## Multi-klub
+## Multi-klub og ejerandele i andre klubber
 
-Flere klubber pr. ejer, aldrig to i samme liga. `G` skal have en klub-dimension i roden — en mekanisk refaktorering der rører alt, med harness'en som sikkerhedsnet: 4.000 sæsoner uden et eneste nedbrud er præcis det aktiv, der gør en stor omskrivning forsvarlig.
+**Alle valg besluttet af Mads 7/8 gennem otte spørgsmål.** Systemet blev undervejs større og bedre end det oplæg, det startede som.
 
-**Åbne spørgsmål, der skal besvares før den bygges:**
+`G` skal have en klub-dimension i roden — en mekanisk refaktorering der rører alt, med harness'en som sikkerhedsnet: 4.000 sæsoner uden et eneste nedbrud er præcis det aktiv, der gør en stor omskrivning forsvarlig.
 
-1. **Er kassen fælles?** Det er hele forskellen. Ét holdingselskab med fælles kapital gør klub nummer to til en investering, du kan finansiere med klub nummer et. Adskilte kasser gør dem til to parallelle spil med én ejer. Virkelighedens model — City Football Group — er fælles kapital, adskilt klubøkonomi og myndigheder der holder øje.
-2. **Ejer medejerne klubben eller holdingselskabet?** Det afgør, om tillid er én relation eller én pr. klub.
-3. **Hvad sker der ved kollisionen?** Rykker din ene klub ned i den andens division — eller den anden op — **skal du sælge en af dem.** Det er et ægte formandsdilemma, det opstår organisk af to systemer der ikke er designet til hinanden, og det skal beholdes.
+### Det omvendte medejersystem
 
-Og bemærk: **multi-klub er svaret på endgame-hullet.** Fra sæson 8 er der intet at bruge penge på. At købe klub nummer to er et afløb, der aldrig løber tørt.
+I dag ejer andre mennesker dele af **din** klub. Nu kan du eje dele af **deres** — og det er samme maskineri spejlvendt. Du bliver den irriterende minoritetsaktionær, der skriver breve og ikke bestemmer noget.
+
+**Låst op fra start.** Ingen tærskel, ingen gate. Man kan købe fra ~10 % og opefter.
+
+| | |
+|---|---|
+| **Hvad andelen giver** | Indsigt i regnskab, trup med rigtige tal, og hvem de er ude efter. En scout der aldrig går hjem — du ved hvornår de *skal* sælge, og hvad de har råd til at byde |
+| **Vejen til kontrol** | Køb dig op. Hver post koster mere, jo tættere du kommer på flertal — samme kurve som medejerne i din egen klub, når de kan lugte at du vil have magten |
+| **Markedet går begge veje** | Majoritetsejeren kan tilbyde at **købe dig ud** (fristende når din post er steget) og at **sælge dig mere** — når han kan tjene godt, eller når klubben skranter. Det sidste er billigst og farligst på samme tid |
+| **Gamblet** | Du bestemmer ingenting. Kører majoritetsejeren klubben i sænk, taber du penge på beslutninger, du ikke var med til |
+
+### Kapitalindsprøjtning — med en grænse
+
+Fortynding skal findes, men **må aldrig kunne afslutte en karriere**. Mads (7/8): *"lad os passe på med at det er noget som potentielt kan stoppe en karriere. Det bliver man træt af."*
+
+Frustration kommer af tab, man hverken kunne forudse eller undgå. Derfor tre værn: kapitalforhøjelsen **varsles** i forvejen · du kan altid **følge med**, hvis du har pengene · og den kan skrumpe din post, men **ikke udslette den**. Så er fortynding en regning, du kan se komme, og ikke en dør der smækker.
+
+### Assistenten — ejerskabets scout
+
+Mads' idé (7/8), og den passer på et mønster, spillet allerede bruger. Prisen på en andel er et **spænd** udledt af klubbens værdi. Din personlige assistent kan undersøge de faktiske vilkår — hvor stor en post der er i spil, til hvilken pris, og om ejeren overhovedet vil tale — og **indsnævrer spændet**, præcis som scouten indsnævrer et potentiale-interval i GDD'en (*"kan blive 65-80"*).
+
+Det giver samme form som scout-missionen, der allerede findes: gratis version tager kampdage, og præcisionen er et fair betalingspunkt. **Præcedensen står i GDD'en:** *"Reg Pro (præcise potentiale-intervaller og prisvurderinger fra dag 1 — ren information, aldrig gameplay-fordel i kampene)."* Information må sælges; magt må ikke.
+
+### To klubber
+
+- **Aldrig to i samme liga.** Rykker den ene op i den andens division — eller ned i den — **skal du sælge en af dem.** Dilemmaet opstår organisk af to systemer, der ikke er designet til hinanden, og det skal beholdes. Har du siddet tre sæsoner som formand for den, du nu skal af med, gør det ondt på den rigtige måde.
+- **Kassen:** fælles holdingkasse, adskilt klubregnskab. Du kan flytte penge, men det står i regnskabet, medejerne ser det, og fansene i den klub der bliver malket, har en mening.
+- **Bestyrelserne er pr. klub.** Hver klub sine medejere med egne personligheder, humør og tillid til dig. To bestyrelser kan være uenige om dig samtidig — og fortyndingstrappen fra nat 4 kan tage den ene klub fra dig uden at røre den anden.
+
+### To tilstande pr. klub — spillerens valg
+
+**Mads (7/8): begge dele, og man vælger selv.** Hver klub kører enten i **fuld tilstand**, hvor du er formand og træffer alle beslutninger, eller **delegeret**, hvor du ansætter en **sportsdirektør**, der udfører tingene for dig.
+
+Det er bedre end at vælge én model for alle, fordi spilleren selv bestemmer, hvor meget spil han vil have: to klubber i fuld tilstand fordobler sæsonen fra 26 til 52 beslutninger, og det skal være et tilvalg, ikke en konsekvens af at have købt noget.
+
+Sportsdirektøren hentes fra **stabssystemet i nat 5** — samme 1-99-talsprog, samme kontrakt, samme krav. Hans tal afgør, hvor godt den delegerede klub drives, og en billig direktør træffer beslutninger, du må leve med. Det binder de to systemer sammen uden at bygge noget nyt.
+
+### Åbent spørgsmål
+
+**Hvad koster det at eje en bid af din rival?** Mads har ikke svaret endnu. Muligheder: hemmeligt indtil Maureen graver det frem (tikkende bombe, kobler til udtalelses-systemet — har du benægtet det offentligt, koster det dobbelt) · offentligt fra dag ét med en fast stemningspris · eller ingen særlig konsekvens.
+
+### Hvorfor det betyder mere end det lyder
+
+**Multi-klub er svaret på endgame-hullet.** Fra sæson 8 er der intet at bruge penge på, og den ene botprofil ender med £4,7 mio. den ikke kan bruge. Et minoritetskøb er et afløb allerede fra sæson 2, og klub nummer to er et, der aldrig løber tørt.
 
 ## Byen lever
 
