@@ -2951,10 +2951,16 @@ function formDots(){
 /* Every kind handleAction() understands MUST be drawable here. Half of them
    weren't, which made the whole formal-bid track a dead end you could not even
    back out of. The harness now fails if a live message renders no button. */
+/* data-act er knappens IDENTITET og skal staa paa BEGGE varianter. Den spaerrede
+   udgave har intet onclick, saa en audit der noegler paa onclick-maalet falder
+   tilbage paa etiketten -- og etiketten indeholder beloebet ("Accept £56k"), saa
+   hvert beloeb blev talt som sin egen knap der aldrig var set aktiv. Ved 200
+   seeds gav det 13 falske "altid deaktiverede" knapper, alle sammen den samme
+   indbakkeknap. */
 function ibtn(id,choice,label,cls,blockedWhy){
   return blockedWhy
-    ? `<button class="abtn ${cls}" disabled style="opacity:.4" title="${blockedWhy}">${label}</button>`
-    : `<button class="abtn ${cls}" onclick="actMsg(${id},'${choice}')">${label}</button>`;
+    ? `<button class="abtn ${cls}" data-act="actMsg:${choice}" disabled style="opacity:.4" title="${blockedWhy}">${label}</button>`
+    : `<button class="abtn ${cls}" data-act="actMsg:${choice}" onclick="actMsg(${id},'${choice}')">${label}</button>`;
 }
 function shortWhy(amount){return G.balance<amount?"Only "+kfmt(Math.max(0,G.balance))+" in the account":null;}
 function inboxActions(m){

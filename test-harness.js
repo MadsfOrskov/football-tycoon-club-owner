@@ -323,6 +323,13 @@ function runSeed(seed, PROFILE) {
   ctx.settleFinances = function (res) {
     const before = H.G.balance;
     const out = origSettle(res);
+    /* Pakke 12a: naar maalingen er forseglet (dvs. gennemspilningen er slut og
+       de tvungne scenarier koerer), foejes der ikke mere til stats.md. Uden det
+       her lander scenariernes syntetiske kampdage i statistikken -- praecis den
+       fejl QA fandt: en enkelt tvungen kampdag i en syntetisk saeson 6 trak
+       "store kampe pr. saeson" fra 3,4 til 2,9 og opfandt 10 "saesoner uden en
+       eneste stor kamp" som aldrig blev spillet. */
+    if (stats.sealed) return out;
     stats.md.push({
       season: H.G.season, md: H.G.md, home: !!res.home,
       net: H.G.balance - before, gate: res.gate || 0, wages: res.wages || 0,
@@ -379,8 +386,20 @@ function runSeed(seed, PROFILE) {
          tilstand blev talt som sin egen knap. Foerste udgave rapporterede
          derfor tre knapper som "altid deaktiverede", som i virkeligheden var
          den samme knap i sin graa tilstand. */
+      /* Pakke 12b: noeglerne i prioriteret orden.
+         1. data-act -- knappens erklaerede identitet. Det er den ENESTE noegle
+            der overlever at knappen mister sit onclick i sin graa tilstand,
+            og derfor den eneste der kan sammenligne de to tilstande.
+         2. onclick-maalet (pakke 8).
+         3. etiketten -- men med TAL normaliseret. Uden det bliver
+            "Accept £56k" og "Accept £42k" to forskellige knapper der hver
+            isaer aldrig er set aktiv; det var praecis fejlen, og den skal ikke
+            kunne opstaa igen naar en fremtidig nat glemmer data-act. */
+      const da = /data-act="([^"]+)"/.exec(attrs);
       const t = /on(?:click|change)="\s*([A-Za-z_$][\w$]*)/.exec(attrs);
-      const key = t ? t[1] + "()" : "«" + label.slice(0, 30) + "»";
+      const key = da ? "[" + da[1] + "]"
+        : t ? t[1] + "()"
+        : "«" + label.slice(0, 30).replace(/[\d][\d,.]*/g, "N") + "»";
       const off = /\bdisabled\b/.test(attrs);
       const rec = stats.buttons.get(key) || { on: 0, off: 0, label: label.slice(0, 34) };
       rec[off ? "off" : "on"]++;
@@ -1281,6 +1300,14 @@ function runSeed(seed, PROFILE) {
         G.inbox = [];
         H.call("msg", "Test", "T", "Test " + action.kind, "body", { ...action });
         H.screen = "inbox"; H.call("render");
+        /* Pakke 12b: knapskanneren sad KUN paa checkHtml(), og den blev aldrig
+           kaldt her -- saa indbakkens spaerrede knapper naaede kun auditten naar
+           botten tilfaeldigvis ramte dem i spil. Derfor skulle der 200 seeds til
+           foer QA saa de 13 falske "altid deaktiverede". Nu tegnes hver af de
+           otte beskedtyper med tom kasse i HVER koersel, og skanneren ser dem.
+           Faar en spaerret knap ikke sin data-act, falder den igennem paa 10
+           seeds i stedet for at gemme sig til 200. */
+        checkHtml();
         const m = G.inbox[0];
         if (!lastHtml.v.includes("actMsg(" + m.id + ",")) {
           fail("beskedtypen '" + action.kind + "' kan ikke besvares fra indbakken ved kasse " +
@@ -2046,8 +2073,18 @@ function runSeed(seed, PROFILE) {
        harness'en selv laver -- spillets interne kald (resolveBank ->
        administration) blev aldrig talt med, saa tallet har altid vaeret for
        lavt. Snapshottet tages her, FOER de tvungne scenarier. */
-    admins: H.G.admins || 0
+    admins: H.G.admins || 0,
+    titles: H.G.titles || 0
   };
+  /* Pakke 12a: G.history og stats.md skal forsegles i SAMME oejeblik som
+     stats.final, ellers maaler de to forskellige spil. QA viste det med to tal
+     for "oprykninger i alt" i EN koersel: 19 fra fremdriftstabellen (som
+     slice'er paa stats.final.seasons) og 29 fra pakke 9-tabellen (som ikke
+     gjorde) -- forskellen var praecis 10, en tvungen oprykning pr. seed.
+     Herefter laeser ALLE forbrugere stats.history, aldrig r.G.history. */
+  stats.history = H.G.history.map(h => Object.assign({}, h));
+  stats.sealed = true;
+  const sealedMdLen = stats.md.length;
   /* Pakke 5's frekvenskrav er 3-5 pr. saeson af 26. Et haardt krav PR. SAESON
      ville vaere forkert: en klub der ender 14. med alt afgjort og uden en
      oedelaeggende nederlag i efteraaret SKAL kunne have en saeson uden en
@@ -2100,6 +2137,23 @@ function runSeed(seed, PROFILE) {
   checkBankCascade();
   checkPromotionWithoutSponsor();   // sidst: den rykker sæsonen frem
 
+  /* Pakke 12a, seglets selvtjek. Den her invariant maaler instrumentet, ikke
+     spillet: er der loebet EN kampdag eller EN saeson ind i statistikken efter
+     forseglingen, er hvert eneste tal i --stats maalt paa et andet spil end det
+     botten spillede. Den skal koere ALLERSIDST, efter samtlige tvungne
+     scenarier -- ogsaa dem en fremtidig nat tilfoejer. */
+  {
+    const played = stats.md.length, seasons = stats.history.length;
+    if (played !== sealedMdLen)
+      fail("seglet holdt ikke: stats.md voksede fra " + sealedMdLen + " til " + played +
+        " kampdage under de tvungne scenarier -- statistikken maaler et andet spil end botten spillede");
+    if (seasons !== stats.final.seasons)
+      fail("seglet holdt ikke: stats.history har " + seasons + " saesoner mod stats.final.seasons=" +
+        stats.final.seasons);
+    if (H.G.history.length < seasons)
+      fail("stats.history er laengere end spillets egen historik (" + seasons + " > " + H.G.history.length + ")");
+  }
+
   return { seed, stats, G: H.G, steps, consts: H.consts, profile: PROFILE };
 }
 
@@ -2117,7 +2171,7 @@ function compareProfiles(runs) {
     ["slutkapacitet", r => avg(r.map(x => x.stats.final.capacity)), v => Math.round(v).toLocaleString("en-GB")],
     ["administrationer i alt", r => r.reduce((s, x) => s + (x.stats.final.admins || 0), 0), v => String(v)],
     ["bank-ultimatummer", r => r.reduce((s, x) => s + x.stats.bank, 0), v => String(v)],
-    ["oprykninger i alt", r => r.reduce((s, x) => s + x.G.history.filter(h => h.promoted).length, 0), v => String(v)],
+    ["oprykninger i alt", r => r.reduce((s, x) => s + x.stats.history.filter(h => h.promoted).length, 0), v => String(v)],
     ["koeb paa rater", r => r.reduce((s, x) => s + (x.stats.deals ? x.stats.deals.inst : 0), 0), v => String(v)],
     ["kampdage under 11 friske", r => 100 * avg(r.flatMap(x => x.stats.md.map(e => e.fresh < 11 ? 1 : 0))), v => v.toFixed(0) + "%"],
     ["store kampe pr. saeson", r => {
@@ -2415,7 +2469,7 @@ function report(runs) {
           "% af saesonerne · eneejer " + Math.round(100 * soleOwner) + "%");
         console.log("  mesterskaber i alt: " + runs.reduce((a, r) => a + (r.G.titles || 0), 0) +
           " · administrationer i alt: " + runs.reduce((a, r) => a + (r.stats.final.admins || 0), 0));
-        const promoLate = runs.reduce((a, r) => a + r.G.history.filter(h => h.promoted && h.season >= 6).length, 0);
+        const promoLate = runs.reduce((a, r) => a + r.stats.history.filter(h => h.promoted && h.season >= 6).length, 0);
         const atTop = late.filter(e => e.div === 0).length / late.length;
         console.log("  i oeverste raekke sent i karrieren: " + Math.round(100 * atTop) +
           "% af saesonerne · oprykninger fra saeson 6 og frem: " + promoLate);
@@ -2478,6 +2532,21 @@ function report(runs) {
     for (const [k, v] of all) if (v.on === 0 && v.off > 0) dead.push(k + " \"" + v.label + "\" (" + v.off + "×)");
     console.log("  knapper set: " + all.size + " · deaktiverede i ALLE tilstande: " +
       (dead.length ? dead.join(" · ") : "ingen"));
+
+    /* Pakke 12b, auditten auditerer sig selv. En knap der KUN nogensinde er set
+       spaerret, og som ikke har en stabil identitet (data-act eller et
+       onclick-maal), kan ikke afgoeres: enten er den doed, eller ogsaa er den
+       den graa tvilling til en knap vi allerede har set aktiv -- og vi kan ikke
+       se forskel. Det var praecis den blindhed QA fandt: 13 «Accept £NNk»-poster
+       der alle var den samme indbakkeknap. Kravet er derfor haardt: skal en
+       knap kunne vaere graa, skal den erklaere hvem den er. */
+    const nameless = dead.filter(d => d.startsWith("«"));
+    if (nameless.length) {
+      statsFailures++;
+      console.error("  FEJL: " + nameless.length + " altid-deaktiveret knap(per) uden stabil identitet — " +
+        "tilfoej data-act=\"funktion:variant\" paa BEGGE varianter, ellers er auditten blind for dem:\n    " +
+        nameless.join("\n    "));
+    }
   }
 
   /* ── Pakke 6: tekstbiblioteket ── */
@@ -2529,12 +2598,12 @@ function report(runs) {
   const byS = new Map();
   let promos = 0, titles = 0;
   for (const r of runs) {
-    for (const h of r.G.history.slice(0, r.stats.final.seasons)) {
+    for (const h of r.stats.history) {
       if (!byS.has(h.season)) byS.set(h.season, []);
       byS.get(h.season).push(h);
       if (h.promoted) promos++;
     }
-    titles += r.G.titles || 0;
+    titles += r.stats.final.titles || 0;
   }
   console.log("\n─── SPORTSLIG FREMDRIFT ───");
   for (const s of [...byS.keys()].sort((a, b) => a - b)) {
@@ -2574,6 +2643,7 @@ for (const profile of PROFILES) {
   }
 }
 
+let statsFailures = 0;
 if (SHOW_STATS && runs.length) {
   if (PROFILES.length > 1) {
     for (const p of PROFILES) {
@@ -2586,8 +2656,9 @@ if (SHOW_STATS && runs.length) {
   } else report(runs);
 }
 
-if (failed) {
-  console.error("\nREGRESSION_FAILED — " + failed + " af " + (SEEDS * PROFILES.length) + " koersler fejlede");
+if (failed || statsFailures) {
+  console.error("\nREGRESSION_FAILED — " + failed + " af " + (SEEDS * PROFILES.length) + " koersler fejlede" +
+    (statsFailures ? " · " + statsFailures + " audit-fejl i --stats" : ""));
   process.exit(1);
 }
 console.log("\nREGRESSION_OK");
