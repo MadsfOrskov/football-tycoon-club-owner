@@ -3132,7 +3132,12 @@ function startRenewal(id){
 }
 function roleRefused(){
   const n=nego;
-  if(n.role==="pro"&&n.p.age>=26)return "\""+n.p.name.split(" ")[1]+" is "+n.p.age+". Calling him a PROSPECT is an insult. Try again.\"";
+  /* Afvisningen brugte et hardkodet 26, men udviklingsbonussen giver kun noget
+     under proAgeMax (24) -- saa en 24-25-aarig kunne signes som PROSPECT, betale
+     de 18 % ekstra og aldrig udvikle sig. Nu er graensen samme tal, bygget af
+     BAL, saa doedzonen er lukket og UI-teksten ("kun for en dreng under X")
+     passer med hvad koden faktisk goer. */
+  if(n.role==="pro"&&n.p.age>=BAL.role.proAgeMax)return "\""+n.p.name.split(" ")[1]+" is "+n.p.age+". Calling him a PROSPECT — that's only for a boy under "+BAL.role.proAgeMax+". Try again.\"";
   if(n.role==="key"&&ovr(n.p)<48)return "\"Even HE knows he's not a key player. He blushed. Pick something honest.\"";
   return null;
 }
