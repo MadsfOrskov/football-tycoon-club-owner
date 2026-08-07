@@ -470,7 +470,14 @@ function runSeed(seed, PROFILE) {
     G.stands.main = 1; const withMain = H.call("gateReceipts", res).extras;
     if (withMain <= without)
       fail("VIP-boksene betaler det samme med og uden hovedtribune (" + withMain + " mod " + without + ")");
-    if (Math.round(withMain - without) !== Math.round(H.consts.BAL.matchday.vipFlat))
+    /* En pund-tolerance, og grunden er ikke sjusk. `extras` er EN Math.round()
+       over en sum, og at laegge 3000 til inde i den sum kan flytte en vaerdi som
+       1402.4999999999998 op paa en eksakt 4402.5, fordi flydende tal har
+       grovere oploesning ved stoerre stoerrelser -- og saa runder den op i
+       stedet for ned. Forskellen bliver 3001. Det er ikke tekst og kasse der er
+       uenige; det er sidste oere. Kravet er stadig skarpt nok til at fange et
+       forkert beloeb, som altid vil afvige med mere end en krone. */
+    if (Math.abs((withMain - without) - H.consts.BAL.matchday.vipFlat) > 1)
       fail("VIP-forskellen er " + Math.round(withMain - without) + ", men BAL.matchday.vipFlat er " +
         H.consts.BAL.matchday.vipFlat + " -- teksten og kassen er uenige");
 
@@ -1185,7 +1192,7 @@ function runSeed(seed, PROFILE) {
     const G = H.G;
     where = "store kampe flytter gate";
     const snap = { screen: G.fac.screen, away: G.stands.away, extra: G.bigExtra,
-      sold: G.seasonTix.sold, ticket: G.ticket };
+      sold: G.seasonTix.sold, ticket: G.ticket, cap: G.capacity };
     // saesonkortholdere betaler ikke ved laagen -- med et solgt hus er gate 0
     // og alle tre forhold ville vaere 1:1 uden at noget virkede.
     G.seasonTix.sold = 0; G.bigExtra = 3; G.ticket = 10;
@@ -1214,8 +1221,57 @@ function runSeed(seed, PROFILE) {
     if (plainAway !== plainNoScreen)
       fail("Away End virker paa ALMINDELIGE kampe -- den er ikke gated paa big");
 
+    /* 4) Pakke 17a: en stor kamp traekker FLERE tilskuere. Foer denne pakke kom
+          der ikke en eneste ekstra sjael til en sekser -- attendance() vidste
+          ikke at kampen var stor. Maales ved samme pris, saa det er kampen og
+          ikke billetten der flytter folk. */
+    G.fac.screen = 0; G.stands.away = 0; G.bigExtra = 0;
+    G.capacity = 20000;                      // loftet maa ikke spise virkningen
+    const attPlain = H.call("attendance", false), attBig = H.call("attendance", true);
+    if (!(attBig > attPlain))
+      fail("en stor kamp traekker ikke flere tilskuere ved samme pris: " + attPlain + " -> " + attBig);
+    if (Math.abs(attBig / attPlain - H.consts.BAL.big.demandBoost) > 0.03)
+      fail("storkampsboostet er x" + (attBig / attPlain).toFixed(3) + ", BAL.big.demandBoost lover x" +
+        H.consts.BAL.big.demandBoost);
+
+    /* 5) Pakke 17b, QA's F2. Tillaegget SKAL koste noget. QA maalte +£0 og +£8
+          til nøjagtig samme 2.670 tilskuere og nul stemningsstraf: et valg med
+          ét rigtigt svar er ikke et valg, og det var ~£25.000 gratis om aaret.
+          Her kraeves BEGGE modvaegte -- faerre gennem laagen, og en graense
+          hvorover byen brokker sig -- og at gate-kurven har et TOPPUNKT, saa
+          det dyreste tillaeg ikke bare er det bedste. */
+    const crowdAt = x => { G.bigExtra = x; return H.call("attendance", true); };
+    const gateAt = x => { G.bigExtra = x; return gate(true); };
+    const crowds = [], gates = [];
+    for (let x = 0; x <= 8; x++) { crowds.push(crowdAt(x)); gates.push(gateAt(x)); }
+    if (!(crowds[8] < crowds[0]))
+      fail("storkampstillaegget koster ikke en eneste tilskuer: +£0 gav " + crowds[0] +
+        ", +£8 gav " + crowds[8] + " -- tillaegget er gratis penge og dermed ikke et valg");
+    for (let x = 1; x <= 8; x++)
+      if (crowds[x] > crowds[x - 1]) fail("fremmoedet STIGER naar tillaegget stiger fra +£" + (x - 1) + " til +£" + x);
+    const best = gates.indexOf(Math.max(...gates));
+    if (best >= 8)
+      fail("gate-indtaegten er stadig hoejest ved det dyreste tillaeg (+£8) -- der er stadig kun et rigtigt svar");
+    stats.bigExtraBest = best;
+    if (process.env.DBGX) console.log('  DBGX bedste tillaeg +£' + best + ' · fremmoede ' + crowds.join(',') + ' · gate ' + gates.join(','));
+    /* ... og stemningen skal maerke det. moodPenaltyAbove laeses nu af den fulde
+       pris, ikke kun grundprisen. */
+    {
+      const T = H.consts.BAL.ticket, keepT = G.ticket, keepMood = G.fanMood;
+      G.ticket = T.moodPenaltyAbove;         // lige under graensen uden tillaeg
+      const moodAfter = big => { G.fanMood = 60; G.lastXI = [];
+        H.call("updateFormMood", { gf: 1, ga: 1, big: big }); return G.fanMood; };
+      G.bigExtra = 0; const mCalm = moodAfter(true);
+      G.bigExtra = 5; const mDear = moodAfter(true);
+      if (!(mDear < mCalm))
+        fail("tillaegget koster ingen stemning: " + mCalm + " mod " + mDear +
+          " ved grundpris £" + T.moodPenaltyAbove + " -- updateFormMood laeser stadig kun G.ticket");
+      G.ticket = keepT; G.fanMood = keepMood;
+    }
+
     G.fac.screen = snap.screen; G.stands.away = snap.away; G.bigExtra = snap.extra;
-    G.seasonTix.sold = snap.sold; G.ticket = snap.ticket;
+    G.seasonTix.sold = snap.sold; G.ticket = snap.ticket; G.capacity = snap.cap;
+    H.call("recalcCapacity");
     checkInvariants();
     H.screen = "home"; H.call("render");
   }
@@ -1280,11 +1336,24 @@ function runSeed(seed, PROFILE) {
     G.teams[2].pts = 40 + B.rivalPts + 3;       // samme plads, men uden for pointvinduet
     if (reason(3)) fail("sekseren ignorerer pointafstanden: " + reason(3));
 
-    // 6) samme opstilling, men hos en klub uden for raekkevidde: rivalTop
+    /* 6) bunden. Denne kontrol sagde indtil pakke 16 det MODSATTE: et bundopgoer
+          maatte ALDRIG vaere stort, "der er ingen nedrykning at spille om". Det
+          var sandt da den blev skrevet. Nu findes nedrykningen, og saa er
+          bundstriden praecis den kilde QA efterlyste -- den der virker naar de
+          tre andre toerrer ud, fordi de alle tre kraever en oprykningskamp.
+          Kravet er derfor vendt om, og gulvet er stadig undtagelsen. */
     flat(); G.md = B.lateFrom + 1;
-    G.me.pts = 5; G.teams[0].pts = 6;           // vi er nr. 13 og 14 -- betyder intet
+    G.me.pts = 5; G.teams[0].pts = 6;           // vi er nr. 13 og 14 -- nu er det nedrykningsstriden
     G.teams.slice(1).forEach(t => { t.pts = 60; });
-    if (reason(1)) fail("bundopgoer blev stort (" + reason(1) + ") -- der er ingen nedrykning at spille om");
+    const keepDiv = G.div;
+    G.div = 1;                                   // en division med noget under sig
+    if (String(reason(1)).indexOf("RELEGATION SCRAP") !== 0)
+      fail("bundopgoeret sent i saesonen gav ingen nedrykningsstrid: " + reason(1));
+    G.div = H.consts.BAL.relegation.floorDiv;    // verdens gulv: intet at spille om
+    if (reason(1))
+      fail("bundopgoer blev stort i " + G.divNames[G.div] + " (" + reason(1) +
+        ") -- der er ingen nedrykning under gulvet at spille om");
+    G.div = keepDiv;
 
     /* 7) returopgoeret. Tabellen skal vaere tavs her, ellers maaler man en af de
           tre andre regler: alle 13 modstandere langt over mig, saa jeg er nr. 14
@@ -2655,14 +2724,25 @@ function report(runs) {
       const why = new Map();
       for (const r of runs) for (const e of r.stats.md)
         if (e.bigWhy) {
-          const k = e.bigWhy.indexOf("FINAL DAY") === 0 ? "sidste spilledag"
-            : e.bigWhy.indexOf("TOP OF") === 0 ? "nr. 1 mod nr. 2"
+          const k = e.bigWhy.indexOf("FINAL DAY · SURVIVAL") === 0 ? "sidste spilledag (overlevelse)"
+            : e.bigWhy.indexOf("FINAL DAY") === 0 ? "sidste spilledag"
+            : e.bigWhy.indexOf("TOP OF") === 0 ? "topopgoer"
             : e.bigWhy.indexOf("SIX-POINTER") === 0 ? "sekser (naboen)"
+            : e.bigWhy.indexOf("RELEGATION SCRAP") === 0 ? "bundstrid (pakke 17c)"
             : e.bigWhy.indexOf("THE RETURN") === 0 ? "returopgoer" : e.bigWhy;
           why.set(k, (why.get(k) || 0) + 1);
         }
-      console.log("  kilder: " + ["sidste spilledag", "nr. 1 mod nr. 2", "sekser (naboen)", "returopgoer"]
-        .map(k => k + " " + (why.get(k) || 0)).join(" · "));
+      const SRC = ["sidste spilledag", "sidste spilledag (overlevelse)", "topopgoer",
+        "sekser (naboen)", "bundstrid (pakke 17c)", "returopgoer"];
+      console.log("  kilder: " + SRC.map(k => k + " " + (why.get(k) || 0)).join(" · "));
+      /* En kilde der aldrig fyrer er doed kode -- praecis den fejlklasse pakke 5
+         selv rettede. Rapporteres, saa en kilde der toerrer ud kan SES frem for
+         at skulle udledes af en samlet frekvens der stadig ser fin ud. */
+      const dead = SRC.filter(k => !why.get(k));
+      if (dead.length) console.log("  KILDER DER ALDRIG FYREDE: " + dead.join(" · "));
+      const srcTot = SRC.reduce((a, k) => a + (why.get(k) || 0), 0) || 1;
+      console.log("  andel pr. kilde: " + SRC.map(k => k.split(" ")[0] + " " +
+        Math.round(100 * (why.get(k) || 0) / srcTot) + "%").join(" · "));
     }
   }
 

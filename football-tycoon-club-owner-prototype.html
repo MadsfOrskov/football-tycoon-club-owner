@@ -462,9 +462,23 @@ const BAL={
     cuts:[2,6],         // automatic promotion, and the playoff cut
     cutGap:4,           // within a win-and-a-draw of a cut = still undecided
     rivalTop:8,         // a six-pointer only counts if you are in the race
+    /* Pakke 17c. The mirror of rivalTop at the other end: how many places above
+       the drop zone still count as being in the scrap. This is the source that
+       does NOT dry up -- QA measured that three of the four old sources need a
+       promotion race, so a club that settles mid-table in the top division ran
+       out of big afternoons entirely from season 9. */
+    rivalBottom:4,
+    /* How far down the table a clash can still be "top of the table". Strictly
+       1st-v-2nd fired 0,064 times a season -- once every sixteenth season. */
+    topClash:3,
     rivalGap:3,         // places between you: "the club just above or below"
     rivalPts:6,         // and points between you: two wins is still catchable
-    revengeMargin:2     // beaten by this many = a debt the return leg collects
+    revengeMargin:2,    // beaten by this many = a debt the return leg collects
+    /* Pakke 17a. A big afternoon draws people who do not come otherwise. The
+       GDD promises "ekstra tilskuere" and "udsolgt uanset form"; before this
+       not one extra soul turned up for a six-pointer. Capped by the concrete
+       like every other crowd. */
+    demandBoost:1.1
   },
   /* The text library's own thresholds (pakke 6). They decide which CONTEXT a
      line is written for, so they belong here and not inside matchCtx(). */
@@ -1285,16 +1299,16 @@ function bigGameBonus(){return G.squad.some(p=>p.traits.includes("biggame"))?2.5
    twelfth man, exactly as the GDD says, and never the ground itself: you can
    only lose a crowd you had, so the punishment is proportional, and the Shed
    End keeps paying on every rung. */
-function homeBonus(){ // dynamic 12th man: crowd × mood × Shed End
+function homeBonus(big){ // dynamic 12th man: crowd × mood × Shed End
   const H=BAL.home,quiet=protestLevel()>=2?BAL.protest.silentCrowd:1;
-  return H.base+H.crowd*(attendance()/G.capacity)*(G.fanMood/100)*quiet+G.stands.shed*BAL.stands.shedHome;
+  return H.base+H.crowd*(attendance(big)/G.capacity)*(G.fanMood/100)*quiet+G.stands.shed*BAL.stands.shedHome;
 }
 function myLambdas(t,home,big,appr,weather){
   const s=myStrength();
   const phyEdge=weather.phys*((myPhy()-(t.phy||50))/28);
   const bg=big?bigGameBonus()/24:0;
   const reunion=G.squad.some(p=>p.from===t.name)?0.1:0; // something to prove
-  const lm=clamp(1.05+(s.att-t.def)/24+(home?homeBonus():0)+appr.own+phyEdge+bg+reunion,0.15,3.6);
+  const lm=clamp(1.05+(s.att-t.def)/24+(home?homeBonus(big):0)+appr.own+phyEdge+bg+reunion,0.15,3.6);
   const lo=clamp(1.05+(t.att-s.def)/24+(home?0:0.28)+appr.opp-phyEdge*0.6,0.15,3.6);
   return [lm,lo];
 }
@@ -1311,24 +1325,45 @@ function bigMatchReason(oppIdx){
   const pos=t.findIndex(r=>r.i===0)+1, me=t[pos-1];
   const oi=t.findIndex(r=>r.i===oppIdx); if(oi<0||!me)return null;
   const oppPos=oi+1;
-  // 1. Final day with the promotion picture still open — either cut, either way
+  /* Pakke 16/17c. The drop zone: the last `spots` places, and only where there
+     IS a drop. League Three has nothing below it, so its bottom is just a bad
+     season — which is exactly why relegation had to exist before the bottom
+     could produce a big afternoon. */
+  const dropFrom=G.div<BAL.relegation.floorDiv?t.length-BAL.relegation.spots+1:null;
+  // 1. Final day with something still open — promotion, the playoff cut, or the drop
   if(G.md===G.rounds-1){
     for(const c of B.cuts){
       const row=t[c-1];
       if(row&&Math.abs(me.pts-row.pts)<=B.cutGap)
         return c===2?"FINAL DAY · PROMOTION AT STAKE":"FINAL DAY · PLAYOFF PLACE AT STAKE";
     }
+    if(dropFrom){
+      const row=t[dropFrom-1];
+      if(row&&Math.abs(me.pts-row.pts)<=B.cutGap)return "FINAL DAY · SURVIVAL AT STAKE";
+    }
   }
-  // 2. First against second, once the table has earned the right to say so
-  if(G.md>=B.lateFrom&&((pos===1&&oppPos===2)||(pos===2&&oppPos===1)))return "TOP OF THE TABLE";
+  /* 2. The top of the table. Was strictly 1st against 2nd, which QA measured at
+     0,064 times a season — once every sixteenth season, i.e. decoration. The
+     requirement was never that the two clubs be exactly first and second, but
+     that the afternoon decide the top of the table: both inside `topClash` and
+     level enough on points for it to matter. */
+  if(G.md>=B.lateFrom&&pos<=B.topClash&&oppPos<=B.topClash&&Math.abs(me.pts-t[oi].pts)<=B.rivalPts)
+    return pos<=2&&oppPos<=2?"TOP OF THE TABLE":"TOP OF THE TABLE · AND THEY CAN CATCH YOU";
   /* 3. The club just above or below you, late on and inside the race. Both
      tests have to pass: near you in the table AND near you on points. Position
      alone would make a 9-point gap a six-pointer whenever the table happened to
      be strung out; points alone would pair you with a club eleven places away
-     on an even afternoon. Neither is a six-pointer. */
-  if(G.md>=B.lateFrom&&Math.abs(pos-oppPos)<=B.rivalGap&&pos<=B.rivalTop
+     on an even afternoon. Neither is a six-pointer.
+     Pakke 17c: the race can now be at either end. `rivalTop` is the promotion
+     race; `rivalBottom` is the scrap above the drop — and that one does NOT dry
+     up when the club settles into mid-table at the top of the pyramid, which is
+     precisely when the other three sources stop firing. */
+  const inRace=pos<=B.rivalTop, inScrap=dropFrom&&pos>=dropFrom-B.rivalBottom;
+  if(G.md>=B.lateFrom&&Math.abs(pos-oppPos)<=B.rivalGap&&(inRace||inScrap)
      &&Math.abs(me.pts-t[oi].pts)<=B.rivalPts)
-    return oppPos<pos?"SIX-POINTER · THEY'RE ABOVE YOU":"SIX-POINTER · THEY'RE BREATHING DOWN YOUR NECK";
+    return inScrap&&!inRace
+      ? (oppPos<pos?"RELEGATION SCRAP · THEY'RE ABOVE YOU":"RELEGATION SCRAP · AND THEY'RE COMING FOR YOU")
+      : (oppPos<pos?"SIX-POINTER · THEY'RE ABOVE YOU":"SIX-POINTER · THEY'RE BREATHING DOWN YOUR NECK");
   // 4. The return leg against whoever humiliated you before Christmas
   if(G.revenge&&G.revenge.opp===oppIdx&&G.md>G.revenge.md)return "THE RETURN · THEY PUT "+G.revenge.by+" PAST YOU";
   return null;
@@ -1573,7 +1608,7 @@ function matchFactors(match,gf,ga){
   // 5. den tolvte mand — eller fraværet af ham
   if(match.home){
     if(protestLevel()>=2)f.push({w:7,good:false,txt:"the ground was silent, and the players could hear it"});
-    else if(G.stands.shed>=1&&attendance()/G.capacity>0.75)
+    else if(G.stands.shed>=1&&attendance(match.big)/G.capacity>0.75)
       f.push({w:5,good:true,txt:"the Shed End was full and loud, and it showed"});
   }
   // 6. han vil bevise noget mod sin gamle klub
@@ -1618,7 +1653,7 @@ function keyStats(match,gf,ga){
     {k:"Attack v their defence",v:(s.att>=(t.def||50)?"+":"")+Math.round(s.att-(t.def||50)),hint:""},
     {k:"Defence v their attack",v:(s.def>=(t.att||50)?"+":"")+Math.round(s.def-(t.att||50)),hint:""}
   ];
-  if(match.home)out.push({k:"Crowd",v:Math.round(100*attendance()/G.capacity)+"% full",
+  if(match.home)out.push({k:"Crowd",v:Math.round(100*attendance(match.big)/G.capacity)+"% full",
     hint:protestLevel()>=2?"Silent. That is worth a goal to them.":""});
   return out;
 }
@@ -1744,13 +1779,25 @@ function townDemand(){
   // a boycott is a hard ceiling on the town, not a nudge to the mood factor
   return protestLevel()>=3?d*BAL.protest.boycottCap:d;
 }
-function attendance(){
+/* Pakke 17. The whole price of a ticket on the day — base plus the big-match
+   surcharge. It was ONLY ever read in gateReceipts(), which is why QA measured
+   the surcharge as free money: +£0 and +£8 drew the identical 2.670 spectators
+   and cost nothing in mood, so there was exactly one right answer (+£8, always)
+   and therefore no choice at all. Now attendance() and updateFormMood() read
+   the same number the turnstile charges. */
+function gatePrice(big){return G.ticket+(big?G.bigExtra:0);}
+function attendance(big){
   const pos=myPos();
   const posF=clamp((15-pos)/14,0.15,1);
   const moodF=clamp(0.55+G.fanMood/180,0.4,1.05);  // mood fills the town, never exceeds it
+  /* A big afternoon brings people who do not come otherwise — the GDD's "extra
+     spectators", capped by the concrete like every other crowd. This has to
+     come BEFORE the surcharge has a price: if the surcharge is to cost you
+     spectators, the crowd must first react to the match being big at all. */
+  const bigF=big?BAL.big.demandBoost:1;
   // The gate price is a live lever with a knee: cheap draws a few more in,
   // dear empties the terraces faster than it earns. Gate income peaks ~£14.
-  const want=townDemand()*clamp(0.35+0.55*posF,0.25,1)*moodF*ticketPriceFactor(G.ticket);
+  const want=townDemand()*clamp(0.35+0.55*posF,0.25,1)*moodF*ticketPriceFactor(gatePrice(big))*bigF;
   return Math.max(0,Math.min(G.capacity,Math.round(want)));
 }
 /* Split out of settleFinances so the big-match promises (screen, Away End,
@@ -1758,10 +1805,10 @@ function attendance(){
    verified by reading the source. Pure: it reads G and res, writes nothing. */
 function gateReceipts(res){
   if(!res.home)return {att:0,gate:0,extras:0};
-  const att=Math.max(attendance(),G.seasonTix.sold);
+  const att=Math.max(attendance(res.big),G.seasonTix.sold);
   const paying=Math.max(0,att-G.seasonTix.sold);
   const bigMult=(res.big&&G.fac.screen?1+BAL.matchday.bigScreenGate:1)*(res.big?1+G.stands.away*BAL.matchday.awayEndBigGate:1);
-  const gate=Math.round(paying*(G.ticket+(res.big?G.bigExtra:0))*bigMult);
+  const gate=Math.round(paying*gatePrice(res.big)*bigMult);
   const M=BAL.matchday;
   const extras=Math.round(att*(M.kiosk+G.fac.shop*M.shop+G.fac.pub*M.pub+(G.fac.basics?M.basics:0))
         +att*M.merch*G.jerseyFactor*(1+G.fac.shop*M.shopMerchBoost)
@@ -1834,7 +1881,7 @@ function updateFormMood(res){
     if(played.has(p.id))p.form=clamp(p.form+(w?R(0,2):d?R(-1,1):R(-2,0))+(p.traits.includes("grafter")?0.5:0),-6,6);
     else{p.form=clamp(p.form-BAL.fresh.benchForm,-6,6);p.conf=clamp(p.conf-BAL.fresh.benchConf,10,95);}
   }
-  G.fanMood=clamp(G.fanMood+(w?3:d?0:-4)+(G.ticket>BAL.ticket.moodPenaltyAbove?-1:0)+G.stands.family*0.5+(G.fac.pub?0.2:0),5,100);
+  G.fanMood=clamp(G.fanMood+(w?3:d?0:-4)+(gatePrice(res.big)>BAL.ticket.moodPenaltyAbove?-1:0)+G.stands.family*0.5+(G.fac.pub?0.2:0),5,100);
   // the way back: anger cools toward a baseline, never inflates a happy ground
   {const P=BAL.protest;
    if(G.fanMood<P.baseline)G.fanMood=clamp(G.fanMood+(P.baseline-G.fanMood)*P.easing,5,100);}
@@ -3035,6 +3082,9 @@ function viewHome(){
     const mine=round.find(([a,b])=>a===0||b===0);
     const home=mine[0]===0;const opp=teamName(home?mine[1]:mine[0]);
     const dl=(G.md===5&&!G.deadlineDone.summer)||(G.md===14&&!G.deadlineDone.winter);
+    // pakke 17: the estimate on the home screen must be the crowd for THIS
+    // afternoon, surcharge and all — the number the player is about to see.
+    const bigNow=!!bigMatchReason(home?mine[1]:mine[0]);
     h+=`<div class="hero"><div class="inner">
       <div class="kick" style="display:flex;justify-content:space-between"><span>Matchday <b>${G.md+1}</b>/${G.rounds}</span><span>${home?"Home":"Away"}</span></div>
       <div class="matchup">
@@ -3042,7 +3092,7 @@ function viewHome(){
         <div class="vs">VS</div>
         <div class="club">${svgShield(initials(home?opp:G.club),!home,50)}<div class="cname">${home?opp:G.club}</div><div class="csub">${home?"Away":"Home"}</div></div>
       </div>
-      <div class="venue">${home?`<span>Expected gate ~${attendance().toLocaleString("en-GB")}</span>·<b>Under the lights</b>`:`<span>Away day</span>·<b>The minibus leaves at nine</b>`}</div>
+      <div class="venue">${home?`<span>Expected gate ~${attendance(bigNow).toLocaleString("en-GB")}</span>${bigNow?"·<b style=\"color:var(--comm)\">BIG</b>":""}·<b>Under the lights</b>`:`<span>Away day</span>·<b>The minibus leaves at nine</b>`}</div>
       <button class="glowbtn" onclick="playMatchday()">${dl?"⚡ Deadline Day":"▶&nbsp; Play Matchday"}</button>
       ${G.quickMode?`<div class="kick" style="text-align:center;margin-top:8px;font-size:9px;cursor:pointer" onclick="G.quickMode=false;render()">Quick results: ON — tap to watch matches in full</div>`:""}
     </div></div>`;
@@ -3315,12 +3365,24 @@ function viewClub(){
   <div class="card"><div class="kick" style="margin-bottom:4px">Matchday tickets · season tickets: <b>${G.seasonTix.sold.toLocaleString("en-GB")}</b> holders</div>
     <div class="rowline"><span>Ticket price</span>
     <span class="stepper" style="margin:0"><button onclick="G.ticket=Math.max(5,G.ticket-1);render()">‹</button><span class="val" style="font-size:20px;min-width:60px">£${G.ticket}</span><button onclick="G.ticket=Math.min(30,G.ticket+1);render()">›</button></span></div>
-    <div class="rowline"><span>Big-match surcharge <small>· six-pointers, run-ins, playoffs · 3-5 games a season · fans tolerate ~£3</small></span>
+    <div class="rowline"><span>Big-match surcharge <small>· six-pointers, run-ins, relegation scraps, playoffs · every £1 over £${BAL.ticket.sweetSpot} costs about ${pct(BAL.ticket.elasticity)} of the crowd</small></span>
     <span class="stepper" style="margin:0"><button onclick="G.bigExtra=Math.max(0,G.bigExtra-1);render()">‹</button><span class="val" style="font-size:20px;min-width:50px">+£${G.bigExtra}</span><button onclick="G.bigExtra=Math.min(8,G.bigExtra+1);render()">›</button></span></div>
     ${(()=>{
       const at=attendance(),paying=Math.max(0,at-G.seasonTix.sold);
       const now=paying*G.ticket,up=(()=>{const t=G.ticket;G.ticket=t+1;const a=attendance();G.ticket=t;return Math.max(0,a-G.seasonTix.sold)*(t+1);})();
-      return `<div class="kick" style="font-size:9px;margin-top:6px">Expected crowd: ~${at.toLocaleString("en-GB")} of ${G.capacity.toLocaleString("en-GB")} · ${paying.toLocaleString("en-GB")} paying at the gate ≈ <b>${kfmt(now)}</b> per home game${up<=now?` · <span style="color:var(--comm)">a dearer ticket would earn less</span>`:""}</div>`;
+      /* Pakke 17b: the surcharge line is now a live before/after, because the
+         surcharge finally HAS an after. It used to be free money — same crowd,
+         same mood, more gate — so there was one right answer and no choice. */
+      /* Pakke 17b: the surcharge line is now a live before/after, because the
+         surcharge finally HAS an after. It used to be free money -- same crowd,
+         same mood, more gate -- so there was one right answer and no choice.
+         Now the player can see what he is trading: heads at the turnstile
+         against pounds per head. */
+      const atBig=attendance(true),payBig=Math.max(0,atBig-G.seasonTix.sold);
+      const keepX=G.bigExtra;G.bigExtra=0;const atFree=attendance(true);G.bigExtra=keepX;
+      const cost=Math.max(0,atFree-atBig);
+      return `<div class="kick" style="font-size:9px;margin-top:6px">Expected crowd: ~${at.toLocaleString("en-GB")} of ${G.capacity.toLocaleString("en-GB")} · ${paying.toLocaleString("en-GB")} paying at the gate ≈ <b>${kfmt(now)}</b> per home game${up<=now?` · <span style="color:var(--comm)">a dearer ticket would earn less</span>`:""}</div>
+      <div class="kick" style="font-size:9px;margin-top:3px">Big afternoon at +£${G.bigExtra}: ~${atBig.toLocaleString("en-GB")} in ≈ <b>${kfmt(payBig*gatePrice(true))}</b> at the gate${G.bigExtra>0?` · the surcharge keeps ~<b>${cost.toLocaleString("en-GB")}</b> of them at home`:""}</div>`;
     })()}</div>
   ${(()=>{
     const V=valuationParts(),dir=valDirection();
