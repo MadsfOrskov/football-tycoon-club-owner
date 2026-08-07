@@ -362,6 +362,14 @@ const BAL={
     objectiveMoodStep:1, objectiveTrustAt:60, objectiveTrustStep:1
   },
   fund:{bonusPerMD:0.015, bonusCap:0.15},
+  /* Pakke 21b. Stemningens smaa tal. De var alle sammen korrekte i teksten --
+     og alle sammen SKREVET AF frem for bygget, hvilket er den fejlklasse
+     Claude.md siger vi ikke laver mere. En lovning der er rigtig i dag, og som
+     ingen invariant holder oeje med, er sponsorklausulens 20 % der venter paa
+     at blive forkert. */
+  mood:{win:3, draw:0, loss:-4, dearTicket:-1,
+        familyPerTier:0.5, pubDrift:0.2,
+        standOpens:6, basicsOpens:4, pubOpens:4, vipOpens:-3},
   /* Freshness. The game's unit of time is the MATCHDAY — there are no rest
      days — so a battery that empties and refills does not work. Instead a
      rolling load with exponential decay, which converges on a plateau:
@@ -379,7 +387,7 @@ const BAL={
     phyFloor:0.72,           // phyMult = phyFloor + (1-phyFloor)*min(1, fresh/softFrom)
     softFrom:80,             // above 80 nothing is felt
     skillShare:0.5,          // att/def suffer half as much as phy
-    injBase:0.07, injClinic:0.05,
+    injBase:0.07, injClinic:0.05, clinicInjDays:1,
     injuryScale:1.3,         // risk × (1 + (100-fresh)/100 × this)
     clinicScale:0.6,         // the medical room blunts that multiplier too
     /* Gaffer's rotation weight: restBase + MAN/restManDiv, applied to the
@@ -397,6 +405,10 @@ const BAL={
   // A fax nobody answers used to hang forever, and the player stayed flagged
   // BID PENDING for the rest of the career. Bids now have a shelf life.
   bids:{replyMD:2},
+  /* Pakke 21c. Tre kampdagstal der stod i teksten og i logikken hver for sig.
+     De var rigtige; de var bare skrevet af to steder, og det er den fejlklasse
+     talscanneren findes for. */
+  clock:{promiseMD:5, scoutMD:2, reportMD:6},
   // A season's honest work should pay for roughly one stand — matchdays are
   // near break-even by design, so the building money comes from here.
   /* Pakke 18. The figures below are LEAGUE THREE money and are scaled up by
@@ -421,7 +433,9 @@ const BAL={
   /* penalty: of a season's income if the clause is missed. onPromotion /
      onRelegation: what the shirt is worth in the new division — both were bare
      constants (1.6 up, nothing down) inside finishSeason. */
-  sponsor:{penalty:0.2, stuntFee:6000, perDivision:0.6, onPromotion:1.6, onRelegation:0.66},
+  sponsor:{penalty:0.2, stuntFee:6000, perDivision:0.6, onPromotion:1.6, onRelegation:0.66,
+    // pakke 21a: the window the collapse day is drawn from, once a season
+    riskFrom:8, riskTo:20, stuntMD:11, boost:8000},
   /* The protest ladder (GDD): "først bannere, så tavshed (uhyggeligst), så
      boykot med økonomisk konsekvens. Vrede har trin, ikke bare et tal."
      `hysteresis` is what makes the way back possible but slow: you slip down a
@@ -1051,7 +1065,7 @@ function newGame(name,hue,mode){
     fac:{shop:0,pub:0,screen:0,clinic:0,training:0,basics:0,vip:0},facBuild:null,
     fund:0,fundBonus:0,fundTarget:null,fundRaided:false,seasonTix:{price:150,sold:0},bigExtra:2,jerseyFactor:1,jerseyName:null,
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
-    myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,
+    myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,sponsorRiskMD:null,
     netEwma:0,trust:BAL.owners.trustStart,admins:0,valHistory:[],commitments:[],protest:0,flavourSeen:[],
     /* Whose return leg is a big match. Stored as {opp,md,by} — an INDEX and two
        numbers, never a team reference: G must stay a tree. Cleared every summer,
@@ -1103,7 +1117,7 @@ const STANDS={
     The stand now unlocks the VIP boxes (which the stadium drawing has always
     hung off it) and pays a small, honest amount of board trust per tier. */
  main:{n:"Main Stand",role:"Seats — the biggest capacity step per tier · unlocks the VIP boxes · +"+BAL.owners.trustMainStand+" board trust per tier",cap:[0,1500,3000]},
- family:{n:"Family Stand",role:"Fan growth: +"+pct(BAL.demand.familyStand)+" town demand, mood +0.5 a matchday per tier",cap:[0,1000,2000]},
+ family:{n:"Family Stand",role:"Fan growth: +"+pct(BAL.demand.familyStand)+" town demand, mood +"+BAL.mood.familyPerTier+" a matchday per tier",cap:[0,1000,2000]},
  away:{n:"Away End",role:"Gate +"+pct(BAL.matchday.awayEndBigGate)+" per tier in big matches",cap:[0,800,1600]}
 };
 const STANDCOST=[0,70000,150000];
@@ -1466,7 +1480,7 @@ function matchIncidents(match){ // red cards & injuries with consequences
       const scale=F.injuryScale*(G.fac.clinic?F.clinicScale:1);
       const risk=(G.fac.clinic?F.injClinic:F.injBase)*(1+(100-freshOf(p))/100*scale);
       if(Math.random()<risk){
-        p.inj=Math.max(1,R(2,4)-(G.fac.clinic?1:0));
+        p.inj=Math.max(1,R(2,4)-(G.fac.clinic?BAL.fresh.clinicInjDays:0));
         out.push({m:R(10,80),txt:"Injury: "+p.name.split(" ")[1]+" pulls up. The physio's sponge is out.",
           sub:"Out for "+p.inj+" matchdays."+(freshOf(p)<F.bandUsed?" He was running on empty.":"")});
       }
@@ -1588,7 +1602,7 @@ function finalizeMatch(match){
   if(motm){motm.smotm++;motm.conf=clamp(motm.conf+3,10,95);}
   // broken playing-time promises come home to roost
   for(const p of G.squad){
-    if(p.promiseMD!==null&&G.md-p.promiseMD>=5){
+    if(p.promiseMD!==null&&G.md-p.promiseMD>=BAL.clock.promiseMD){
       if(p.sapps-(p.appsAtPromise||0)<3){p.conf=clamp(p.conf-10,10,95);bumpTrust(BAL.owners.trustPromise);
         msg(pick(AGENTS).n,"A","\"About that promise…\"","You promised "+p.name.split(" ")[1]+" football. He's had "+p.sapps+" games. His agent's tone has cooled considerably.",null);}
       p.promiseMD=null;
@@ -1885,7 +1899,7 @@ function settleFinances(res){
      freshness in pakke 1, so there is one technique in the codebase, not two. */
   G.netEwma=(G.netEwma||0)*(1-BAL.val.ewmaAlpha)+net*BAL.val.ewmaAlpha;
   G.periodNet+=net;G.periodMD++;
-  if(G.periodMD>=6)bookkeeperReport();
+  if(G.periodMD>=BAL.clock.reportMD)bookkeeperReport();
   sponsorLifeEvents();
   // first sponsor offers arrive after MD 1 — as a decision you cannot walk past
   if(!G.sponsor&&!G.sponsorOffered){G.sponsorOffered=true;
@@ -1933,7 +1947,9 @@ function updateFormMood(res){
     if(played.has(p.id))p.form=clamp(p.form+(w?R(0,2):d?R(-1,1):R(-2,0))+(p.traits.includes("grafter")?0.5:0),-6,6);
     else{p.form=clamp(p.form-BAL.fresh.benchForm,-6,6);p.conf=clamp(p.conf-BAL.fresh.benchConf,10,95);}
   }
-  G.fanMood=clamp(G.fanMood+(w?3:d?0:-4)+(gatePrice(res.big)>BAL.ticket.moodPenaltyAbove?-1:0)+G.stands.family*0.5+(G.fac.pub?0.2:0),5,100);
+  {const MO=BAL.mood;
+   G.fanMood=clamp(G.fanMood+(w?MO.win:d?MO.draw:MO.loss)+(gatePrice(res.big)>BAL.ticket.moodPenaltyAbove?MO.dearTicket:0)
+     +G.stands.family*MO.familyPerTier+(G.fac.pub?MO.pubDrift:0),5,100);}
   // the way back: anger cools toward a baseline, never inflates a happy ground
   {const P=BAL.protest;
    if(G.fanMood<P.baseline)G.fanMood=clamp(G.fanMood+(P.baseline-G.fanMood)*P.easing,5,100);}
@@ -2182,7 +2198,7 @@ function finishSeason(o){
   G.me={pts:0,gd:0,pl:0};for(const t of G.teams){t.pts=0;t.gd=0;t.pl=0;}
   G.fixtures=makeFixtures();refreshMarket();
   G.scoutUsed=false;G.sponsorBoost=false;G.coachAsked=false;G.deadlineDone={};G.playoff=null;
-  G.bids=[];G.callbacks=[];G.midwayDone=false;G.stuntDone=false;G.sponsorChecked=false;G.capRaiseUsed=false;G.fundRaided=false;G.lastXI=[];
+  G.bids=[];G.callbacks=[];G.midwayDone=false;G.stuntDone=false;G.sponsorChecked=false;G.sponsorRiskMD=null;G.capRaiseUsed=false;G.fundRaided=false;G.lastXI=[];
   G.seasonTix.sold=0;G.jerseyFactor=1;
   G.revenge=null;   // last year's grudge died with last year's fixture list
   // the curve the boardroom reads: one point per season, kept for the career
@@ -2265,7 +2281,7 @@ function doChat(kind){
   }
   if(kind==="promise"){
     p.conf=clamp(p.conf+5,10,95);p.promiseMD=G.md;p.appsAtPromise=p.sapps;
-    out="\"You'll get your football.\" He believes you. Deliver within 5 matchdays — or his agent calls. (Confidence +5)";
+    out="\"You'll get your football.\" He believes you. Deliver within "+BAL.clock.promiseMD+" matchdays — or his agent calls. (Confidence +5)";
   }
   modal={type:"info",title:"The office door closes",body:out};render();
 }
@@ -2978,8 +2994,8 @@ function startScout(){modal={type:"rewarded",reward:"scout"};render();}
 function sponsorBoost(){modal={type:"rewarded",reward:"sponsor"};render();}
 function buildBoost(){modal={type:"rewarded",reward:"build"};render();}
 function grantReward(kind){
-  if(kind==="scout"){G.scoutUsed=true;G.scoutPending=2;addNews("SCOUT","Reg has packed his flask and left on a mission. Report expected in 2 matchdays.");}
-  if(kind==="sponsor"){G.sponsorBoost=true;G.balance+=8000;addNews("CLUB","Sponsor top-up: +£8,000. Their logo is now also on the corner flags.");}
+  if(kind==="scout"){G.scoutUsed=true;G.scoutPending=BAL.clock.scoutMD;addNews("SCOUT","Reg has packed his flask and left on a mission. Report expected in "+BAL.clock.scoutMD+" matchdays.");}
+  if(kind==="sponsor"){G.sponsorBoost=true;G.balance+=BAL.sponsor.boost;addNews("CLUB","Sponsor top-up: +"+kfmt(BAL.sponsor.boost)+". Their logo is now also on the corner flags.");}
   if(kind==="build"&&G.standBuild){G.standBuild.remain=Math.max(0,G.standBuild.remain-1);if(G.standBuild.remain===0)finishStand();addNews("CLUB","The builders found an extra crew. The stand grows visibly.");}
   modal=null;render();
 }
@@ -3028,7 +3044,7 @@ function finishStand(){
   const b=G.standBuild;
   G.stands[b.key]=b.lvl;recalcCapacity();
   msg("Site foreman","SF",STANDS[b.key].n.toUpperCase()+" IS OPEN","Capacity is now "+G.capacity.toLocaleString("en-GB")+". Cut the ribbon, chairman — and mind the wet paint.",null);
-  G.fanMood=clamp(G.fanMood+6,5,100);
+  G.fanMood=clamp(G.fanMood+BAL.mood.standOpens,5,100);
   /* Pakke 15b. The Main Stand's second role. Deliberately small: against
      trustAdmin −30 it is a nod, not a shortcut. Trust is still earned by
      conduct — this is the one board-facing thing you can BUILD. */
@@ -3040,7 +3056,7 @@ function finishStand(){
 }
 const FAC_DETAIL={
  shop:{fx:[perHead(BAL.matchday.shop),"Merchandise income +"+pct(BAL.matchday.shopMerchBoost)],warn:null,md:2},
- pub:{fx:[perHead(BAL.matchday.pub),"Fan mood +0.2 every matchday, and +4 the day it opens"],warn:null,md:2},
+ pub:{fx:[perHead(BAL.matchday.pub),"Fan mood +"+BAL.mood.pubDrift+" every matchday, and +"+BAL.mood.pubOpens+" the day it opens"],warn:null,md:2},
  /* Was "(derby, cup, playoffs)". There is no cup and no derby; after pakke 5 the
     big afternoons are run-ins, top-of-the-table clashes, six-pointers, the
     return leg against whoever thrashed you — and playoffs. Naming competitions
@@ -3053,18 +3069,18 @@ const FAC_DETAIL={
     text never mentioned at all. Both stated now. */
  clinic:{fx:["Base injury risk per match: "+pct(BAL.fresh.injBase)+" → "+pct(BAL.fresh.injClinic),
    "Tiredness multiplies that risk — the clinic cuts the multiplier to "+pct(BAL.fresh.clinicScale),
-   "Injury length: −1 matchday"],warn:"Tired legs are still the biggest risk. The clinic softens it; depth removes it.",md:2},
+   "Injury length: −"+BAL.fresh.clinicInjDays+" matchday"],warn:"Tired legs are still the biggest risk. The clinic softens it; depth removes it.",md:2},
  /* Was "+1 extra per season", flat. The bonus sits inside the bracket that is
     scaled by games played, so a boy who never plays gets a third of it — and the
     training ground's second, unadvertised effect is on RECOVERY. */
  training:{fx:["Players under 24: +1 development a season, scaled by games played",
    "Freshness decays slower: "+BAL.fresh.decay.toFixed(2)+" → "+(BAL.fresh.decay+BAL.fresh.trainingRecovery).toFixed(2)+" a matchday"],
    warn:"Pays off over YEARS, not weeks. A boy who never plays gets a third of it.",md:3},
- basics:{fx:["Fan mood +4 on opening",perHead(BAL.matchday.basics),
+ basics:{fx:["Fan mood +"+BAL.mood.basicsOpens+" on opening",perHead(BAL.matchday.basics),
    "Town demand +"+pct(BAL.demand.basics)+" — a few more through the gate every week"],warn:null,md:1},
  vip:{fx:[kfmt(BAL.matchday.vipFlat)+" flat, every home game",
    "Requires the "+STANDS[FAC_REQ.vip.stand].n+" — the boxes hang off it"],
-   warn:"The Shed End will call it the prawn sandwich brigade. Fan mood −3 on opening.",md:2}
+   warn:"The Shed End will call it the prawn sandwich brigade. Fan mood "+BAL.mood.vipOpens+" on opening.",md:2}
 };
 /* Pakke 15a. The VIP boxes paid their flat fee whether or not a Main Stand
    existed, but stadiumSvg() has always drawn them only when G.stands.main>=1 —
@@ -3100,8 +3116,9 @@ function facConfirm(){
 function finishFac(){
   const key=G.facBuild.key;
   G.fac[key]=1;G.facBuild=null;
-  if(key==="vip")G.fanMood=clamp(G.fanMood-3,5,100);
-  if(key==="basics"||key==="pub")G.fanMood=clamp(G.fanMood+4,5,100);
+  if(key==="vip")G.fanMood=clamp(G.fanMood+BAL.mood.vipOpens,5,100);
+  if(key==="basics")G.fanMood=clamp(G.fanMood+BAL.mood.basicsOpens,5,100);
+  if(key==="pub")G.fanMood=clamp(G.fanMood+BAL.mood.pubOpens,5,100);
   msg("Site foreman","SF",FACS[key].n.toUpperCase()+" IS OPEN",(key==="vip"?"The boxes gleam. The Shed End mutters about prawn sandwiches. The till doesn't care.":key==="basics"?"New loos. Genuine scenes of celebration in the queue.":"Doors open, town approves, money flows."),null);
 }
 /* ---------- bookkeeper & sponsor life ---------- */
@@ -3109,7 +3126,7 @@ function bookkeeperReport(){
   const net=G.periodNet;
   const img=net>=0?"I have enclosed a small drawing of a sunrise.":"I have enclosed a drawing of a sinking ship.";
   msg("Ledger (bookkeeper)","L","Monthly report: "+(net>=0?"+":"")+kfmt(net).replace("£",net>=0?"£":"−£").replace("−£−","−£"),
-    "Net over the last 6 matchdays: "+(net>=0?"+":"")+kfmt(Math.abs(net))+". Biggest cost: wages ("+kfmt(G.squad.reduce((s,p)=>s+p.wage,0))+"/w). "+img,null);
+    "Net over the last "+BAL.clock.reportMD+" matchdays: "+(net>=0?"+":"")+kfmt(Math.abs(net))+". Biggest cost: wages ("+kfmt(G.squad.reduce((s,p)=>s+p.wage,0))+"/w). "+img,null);
   G.periodNet=0;G.periodMD=0;
 }
 function sponsorTarget(s){return parseInt((String(s.demand||"").match(/top (\d+)/)||[])[1]||8);}
@@ -3142,14 +3159,23 @@ function sponsorLifeEvents(){
      sponsors. With ten in the pool that meant six of them were decoration, so
      both behaviours are fields on the sponsor now (`risk`, `stunt`) and any
      sponsor written with them behaves. Same code path, more characters. */
-  if(G.sponsor.risk&&G.md===R(8,20)&&Math.random()<G.sponsor.risk){
+  /* Pakke 21a, QA's F8. R(8,20) blev trukket PAA NY hver kampdag. Laest som
+     skrevet ligner det "en tilfaeldig kampdag mellem 8 og 20"; hvad det gjorde
+     var et lotteri hver kampdag med 1/13 chance for at ramme, saa den effektive
+     saesonsandsynlighed var ca. 0,64 x risk og ikke risk. Det virkede -- lige
+     indtil nogen aendrede vinduet eller G.rounds, og vi har roert baade saeson-
+     og divisionsstrukturen i nat. Dagen trakkes nu EN gang pr. saeson og ligger
+     i G, saa den kan laeses, gemmes og efterproeves. */
+  if(G.sponsorRiskMD===null||G.sponsorRiskMD===undefined)
+    G.sponsorRiskMD=R(BAL.sponsor.riskFrom,BAL.sponsor.riskTo);
+  if(G.sponsor.risk&&G.md===G.sponsorRiskMD&&Math.random()<G.sponsor.risk){
     msg(G.sponsor.n+" (liquidators)",G.sponsor.av,"SPONSOR COLLAPSE",G.sponsor.n+" has ceased to exist. So has your sponsorship income. The small print, chairman. The small print.",null);
     addNews("CLUB",G.sponsor.n+" implodes spectacularly. The shirt is naked again.");
     G.sponsor=null;G.sponsorOffered=false;
     return;
   }
   {const def=sponsorDef(G.sponsor.n);
-   if(def&&def.stunt&&G.md===11&&!G.stuntDone){
+   if(def&&def.stunt&&G.md===BAL.sponsor.stuntMD&&!G.stuntDone){
      G.stuntDone=true;
      msg(G.sponsor.n,G.sponsor.av,def.stunt.title,def.stunt.txt+" "+kfmt(BAL.sponsor.stuntFee)+".",{kind:"stunt",who:G.sponsor.n});
    }}
@@ -3493,7 +3519,7 @@ function viewClub(){
     <div class="bar"><i style="width:${clamp(Math.round(100*(G.fund+G.fundBonus)/G.fundTarget.cost),2,100)}%"></i></div>
     <div class="kick" style="font-size:9px;margin-top:6px">Construction starts automatically when full · raiding kills the bonus and the co-owners' patience</div></div>`
   :G.fund>0?`<div class="card"><div class="rowline"><span>Stadium fund <small>· no project chosen — earning ${kfmt(Math.round(G.fundBonus))} bonus</small></span><span class="amt num">${kfmt(Math.round(G.fund))}</span></div></div>`:""}
-  <div class="card"><div class="kick" style="margin-bottom:4px">The four stands <span style="font-size:9px">· cash builds pay full price — fund the project instead and patience pays up to 15%</span></div>
+  <div class="card"><div class="kick" style="margin-bottom:4px">The four stands <span style="font-size:9px">· cash builds pay full price — fund the project instead and patience pays up to ${pct(BAL.fund.bonusCap)}</span></div>
     ${Object.entries(STANDS).map(([k,s])=>{
       const lvl=G.stands[k];
       return `<div class="rowline"><span>${s.n} <small>· lvl ${lvl} · ${s.role}</small></span>
@@ -3551,7 +3577,7 @@ function viewClub(){
     ${G.owners.length?`<div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">There is no locked door — only a price. Strangers pay the most; a chairman they have watched keep his word pays least, and a club heading downhill is the cheapest of all. One chair empties per season, and a collapsed talk shuts that one for two.</div>`:""}</div>
   <div class="card"><div class="kick" style="margin-bottom:4px">Partners & staff</div>
     ${G.sponsor?`<div class="rowline"><span>${G.sponsor.n} <small>· main · ${G.sponsor.seasonsLeft} season${G.sponsor.seasonsLeft===1?"":"s"} left${G.sponsor.demand?" · "+G.sponsor.demand:""}</small></span><span class="amt num">${kfmt(G.sponsor.per)}/W</span></div>
-    <div class="rowline"><span>Sponsor bonus <small>· hear out their 'big idea'</small></span><button class="abtn comm" onclick="sponsorBoost()" ${G.sponsorBoost?"disabled style='opacity:.4'":""}>▶ +£8,000 <span style="font-size:8px">AD</span></button></div>`
+    <div class="rowline"><span>Sponsor bonus <small>· hear out their 'big idea'</small></span><button class="abtn comm" onclick="sponsorBoost()" ${G.sponsorBoost?"disabled style='opacity:.4'":""}>▶ +${kfmt(BAL.sponsor.boost)} <span style="font-size:8px">AD</span></button></div>`
     :`<div class="rowline"><span>No main sponsor <small>· the shirt is naked — offers arrive in your inbox</small></span><span class="amt num" style="color:var(--muted)">£0/W</span></div>`}
     <div class="rowline"><span>${G.coach.n} <small>· gaffer · ${G.coach.style}</small></span></div>
     <div class="statchips" style="margin-top:2px"><span class="sc">TAC <b>${G.coach.tac}</b></span><span class="sc">MAN <b>${G.coach.man}</b></span><span class="sc">DEV <b>${G.coach.dev}</b></span><span class="sc">OVR <b>${coachOvr(G.coach)}</b></span></div>
@@ -3830,11 +3856,11 @@ function renderModal(){
       body=`<button class="abtn ghost" onclick="negoFinish()">Walk away</button>`;
     }else if(n.stage==="fee"){
       body=`<div class="stepper">
-          <button onclick="nego.fee=Math.max(1000,nego.fee-10000);render()" title="−£10k">‹‹</button>
-          <button onclick="nego.fee=Math.max(1000,nego.fee-1000);render()" title="−£1k">‹</button>
+          <button onclick="nego.fee=Math.max(1000,nego.fee-10000);render()" title="−${kfmt(10000)}">‹‹</button>
+          <button onclick="nego.fee=Math.max(1000,nego.fee-1000);render()" title="−${kfmt(1000)}">‹</button>
           <span class="val num">${kfmt(n.fee)}</span>
-          <button onclick="nego.fee+=1000;render()" title="+£1k">›</button>
-          <button onclick="nego.fee+=10000;render()" title="+£10k">››</button></div>
+          <button onclick="nego.fee+=1000;render()" title="+${kfmt(1000)}">›</button>
+          <button onclick="nego.fee+=10000;render()" title="+${kfmt(10000)}">››</button></div>
         <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £1,000 · ‹‹ ›› = £10,000</div>
         <button class="glowbtn" onclick="negoSubmit()">Offer ${kfmt(n.fee)}</button>
         ${!n.finalUsed?`<button class="abtn comm" onclick="negoSubmit(true)">⚡ FINAL OFFER · ${kfmt(n.fee)} — instant yes/no</button>`:""}
@@ -3848,11 +3874,11 @@ function renderModal(){
         <div class="modes" style="margin-top:8px">${Object.entries(ROLES).map(([k,r])=>`<button class="${n.role===k?'on':''}" onclick="nego.role='${k}';render()">${r.n}${sub(wageDemandFor(n.years,k))}</button>`).join("")}</div>
         <div class="kick" style="margin-top:12px">Weekly wage</div>
         <div class="stepper">
-          <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-500);render()" title="−£500">‹‹</button>
-          <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-50);render()" title="−£50">‹</button>
+          <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-500);render()" title="−${kfmt(500)}">‹‹</button>
+          <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-50);render()" title="−${kfmt(50)}">‹</button>
           <span class="val num" style="font-size:24px">${kfmt(n.wageOffer)}/w</span>
-          <button onclick="nego.wageOffer+=50;render()" title="+£50">›</button>
-          <button onclick="nego.wageOffer+=500;render()" title="+£500">››</button></div>
+          <button onclick="nego.wageOffer+=50;render()" title="+${kfmt(50)}">›</button>
+          <button onclick="nego.wageOffer+=500;render()" title="+${kfmt(500)}">››</button></div>
         <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £50 · ‹‹ ›› = £500</div>
         ${(()=>{
           if(!seen)return `<div class="why"><b>He hasn't named his number.</b> Contract length and the role you promise both move it — make an offer and his agent will tell you how far off you are.</div>`;
@@ -3901,11 +3927,11 @@ function renderModal(){
       <p>${p.pos} · ATT ${p.att} · DEF ${p.def} · PHY ${p.phy} · age ${p.age} · est. ~${kfmt(Math.round(p.value*1.15))}</p>
       <p>Cheaper than quick talks — but the fax is public. Rival clubs can counter-bid, and you might lose him.</p>
       <div class="stepper">
-        <button onclick="modal.amount=Math.max(1000,modal.amount-10000);render()" title="−£10k">‹‹</button>
-        <button onclick="modal.amount=Math.max(1000,modal.amount-1000);render()" title="−£1k">‹</button>
+        <button onclick="modal.amount=Math.max(1000,modal.amount-10000);render()" title="−${kfmt(10000)}">‹‹</button>
+        <button onclick="modal.amount=Math.max(1000,modal.amount-1000);render()" title="−${kfmt(1000)}">‹</button>
         <span class="val num">${kfmt(modal.amount)}</span>
-        <button onclick="modal.amount+=1000;render()" title="+£1k">›</button>
-        <button onclick="modal.amount+=10000;render()" title="+£10k">››</button></div>
+        <button onclick="modal.amount+=1000;render()" title="+${kfmt(1000)}">›</button>
+        <button onclick="modal.amount+=10000;render()" title="+${kfmt(10000)}">››</button></div>
       <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £1,000 · ‹‹ ›› = £10,000</div>
       <button class="glowbtn" onclick="sendFormalBid()">Fax the bid ▸</button>
       <button class="abtn ghost" onclick="modal=null;render()">Not today</button>
@@ -3932,7 +3958,7 @@ function renderModal(){
       <h2>−${kfmt(Math.abs(G.balance)).slice(1)} in the red</h2>
       <p>"We adore football, chairman. We adore repayments more." ${modal.canSell&&modal.canLoan?"Two ways out — pick one now:":"One way out:"}</p>
       ${modal.canSell?`<button class="glowbtn" onclick="resolveBank(true)">Force-sell ${modal.best.name.split(" ")[1]} · ${kfmt(Math.round(modal.best.value*0.85))}</button>`:`<p><b>The squad is too thin to sell from.</b> The gaffer guards the door.</p>`}
-      ${modal.canLoan?`<button class="abtn comm" onclick="resolveBank(false)">Emergency loan · +£50,000 now, £5,500/MD × 10</button>`:`<p><b>The loan line is spent.</b> One loan at a time, chairman.</p>`}
+      ${modal.canLoan?`<button class="abtn comm" onclick="resolveBank(false)">Emergency loan · +${kfmt(BAL.bank.loanCash)} now, ${kfmt(BAL.bank.loanPerMD)}/MD × ${BAL.bank.loanTerm}</button>`:`<p><b>The loan line is spent.</b> One loan at a time, chairman.</p>`}
     </div></div>`;
   }
   if(modal.type==="interstitial"){
@@ -3943,7 +3969,7 @@ function renderModal(){
   }
   if(modal.type==="rewarded"){
     const k=modal.reward;
-    const txt=k==="scout"?"Belønning: Reg sendes på mission (rapport om 2 kampdage).":k==="sponsor"?"Belønning: +£8,000 fra sponsoren.":"Belønning: −1 kampdag på byggeriet.";
+    const txt=k==="scout"?"Belønning: Reg sendes på mission (rapport om 2 kampdage).":k==="sponsor"?"Belønning: +"+kfmt(BAL.sponsor.boost)+" fra sponsoren.":"Belønning: −1 kampdag på byggeriet.";
     return `<div class="overlay"><div class="sheet">
       <div class="kick">Monetisation placeholder</div>
       <div class="adbox"><b>REWARDED VIDEO</b>30 sek. frivillig video ville afspilles her</div>
@@ -3984,9 +4010,9 @@ function renderModal(){
       const pastPeak=est.sold>0&&dearer.cash<=est.cash&&cheaper.cash>est.cash;
       body=`<div class="kick" style="margin-top:10px">Season ticket price · one payment for the whole season</div>
         <div class="stepper">
-          <button onclick="modal.tixPrice=Math.max(20,modal.tixPrice-10);render()" title="−£10">‹</button>
+          <button onclick="modal.tixPrice=Math.max(20,modal.tixPrice-10);render()" title="−${gbp(10)}">‹</button>
           <span class="val num" style="font-size:26px">£${m.tixPrice}</span>
-          <button onclick="modal.tixPrice=Math.min(400,modal.tixPrice+10);render()" title="+£10">›</button></div>
+          <button onclick="modal.tixPrice=Math.min(400,modal.tixPrice+10);render()" title="+${gbp(10)}">›</button></div>
         <div class="kick" style="text-align:center;font-size:9px;margin-top:4px">A season at the turnstile costs ${kfmt(G.ticket*homeGames())} · ${homeGames()} home games</div>
         <div class="card" style="margin-top:10px">
           <div class="rowline"><span>Holders sold <small>· estimate</small></span><span class="amt num">${est.sold.toLocaleString("en-GB")} <small style="color:var(--muted)">of ${Math.min(G.capacity,Math.round(townDemand())).toLocaleString("en-GB")} reachable</small></span></div>
@@ -4018,9 +4044,9 @@ function renderModal(){
           }).join("")||'<div class="newsline">Every stand is at its final glory. Nothing left to save for.</div>'}</div>
         <div class="kick" style="margin-top:10px">Deposit from the bank <small style="text-transform:none">· you hold ${kfmt(G.balance)}</small></div>
         <div class="stepper">
-          <button onclick="modal.fundAdd=Math.max(0,modal.fundAdd-10000);render()" title="−£10k">‹</button>
+          <button onclick="modal.fundAdd=Math.max(0,modal.fundAdd-10000);render()" title="−${kfmt(10000)}">‹</button>
           <span class="val num" style="font-size:26px">${kfmt(m.fundAdd)}</span>
-          <button onclick="modal.fundAdd=Math.min(Math.max(0,G.balance),modal.fundAdd+10000);render()" title="+£10k">›</button></div>
+          <button onclick="modal.fundAdd=Math.min(Math.max(0,G.balance),modal.fundAdd+10000);render()" title="+${kfmt(10000)}">›</button></div>
         ${tgt?`<div class="card" style="margin-top:10px"><div class="rowline"><span>${STANDS[tgt.key].n} lvl ${tgt.lvl}</span><span class="amt num">${kfmt(STANDCOST[tgt.lvl])}</span></div>
           <div class="rowline"><span>In the fund after tonight</span><span class="num">${kfmt(G.fund+m.fundAdd)}</span></div>
           <div class="bar"><i style="width:${clamp(Math.round(100*(G.fund+m.fundAdd)/STANDCOST[tgt.lvl]),2,100)}%"></i></div></div>`:""}
@@ -4087,9 +4113,9 @@ function renderModal(){
       <div class="dlg"><div class="iav">CO</div><div class="bubble">${modal.verdict}</div></div>
       <div class="kick" style="margin-top:12px">Top up the stadium fund?</div>
       <div class="stepper">
-        <button onclick="modal.fundAdd=Math.max(0,modal.fundAdd-10000);render()" title="−£10k">‹</button>
+        <button onclick="modal.fundAdd=Math.max(0,modal.fundAdd-10000);render()" title="−${kfmt(10000)}">‹</button>
         <span class="val num" style="font-size:24px">${kfmt(modal.fundAdd)}</span>
-        <button onclick="modal.fundAdd=Math.min(Math.max(0,G.balance),modal.fundAdd+10000);render()" title="+£10k">›</button></div>
+        <button onclick="modal.fundAdd=Math.min(Math.max(0,G.balance),modal.fundAdd+10000);render()" title="+${kfmt(10000)}">›</button></div>
       ${G.myShare<100&&!G.capRaiseUsed?`<button class="abtn comm" onclick="askCapRaise()">Request wage-cap raise</button>`:""}
       ${modal.capMsg?`<p style="margin-top:10px"><b>${modal.capMsg}</b></p>`:""}
       <button class="glowbtn" onclick="midwayConfirm()">Back to work ▸</button>
@@ -4131,11 +4157,11 @@ function renderModal(){
       <div class="why">${modal.why}</div>
       <div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.07)">Three rounds. Walk away empty-handed — or insult him — and he won't take a meeting until <b>season ${G.season+BAL.owners.lockSeasons}</b>.</div>
       <div class="stepper">
-        <button onclick="modal.offer=Math.max(5000,modal.offer-25000);render()" title="−£25k">‹‹</button>
-        <button onclick="modal.offer=Math.max(5000,modal.offer-5000);render()" title="−£5k">‹</button>
+        <button onclick="modal.offer=Math.max(5000,modal.offer-25000);render()" title="−${kfmt(25000)}">‹‹</button>
+        <button onclick="modal.offer=Math.max(5000,modal.offer-5000);render()" title="−${kfmt(5000)}">‹</button>
         <span class="val num">${kfmt(modal.offer)}</span>
-        <button onclick="modal.offer+=5000;render()" title="+£5k">›</button>
-        <button onclick="modal.offer+=25000;render()" title="+£25k">››</button></div>
+        <button onclick="modal.offer+=5000;render()" title="+${kfmt(5000)}">›</button>
+        <button onclick="modal.offer+=25000;render()" title="+${kfmt(25000)}">››</button></div>
       <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £5,000 · ‹‹ ›› = £25,000</div>
       <button class="glowbtn" onclick="ownerNegoSubmit()">Offer ${kfmt(modal.offer)}</button>
       <button class="abtn ghost" onclick="modal=null;render()">Another day</button>
