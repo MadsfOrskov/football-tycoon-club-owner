@@ -166,3 +166,39 @@ Jeg valgte den første, fordi den flytter hviletilstanden, og det var hviletilst
 2. **Accepter det:** en lower league chairman sim, hvor klubben *hører til* i League Three og hvor de fem sæsoner i Premier Division er karrierens højdepunkt frem for dens hviletilstand, er ikke åbenlyst forkert. GDD'ens kernefantasi er "bygge klubben op fra bunden", ikke "blive der".
 
 Det er et spørgsmål om hvilket spil det skal være, og derfor ikke mit.
+
+## 9. Pengene virker nu — og der er stadig intet at bruge dem på (pakke 18)
+
+**Målt over 60 seeds × 20 sæsoner, kun pakke 18 til forskel.** TV-pengene er gjort geometriske (`BAL.tv`, `base × (perDivision^(3−div) − 1)`) i stedet for to hårdkodede spring, og præmiepengene skalerer nu med divisionen (`BAL.prize.perDivision`) i stedet for at være League Three-penge i alle fire rækker.
+
+| | før 18 | efter 18 |
+|---|---|---|
+| netto/kampdag ÷ lønsum, Premier | −0,04 | **−0,00** |
+| spænd/lønsum, Premier mod League Three | 0,95 mod 0,88 | 0,95 mod 0,90 |
+| sene sæsoner der slutter i minus | 43 % | **23 %** |
+| administrationer | 249 | **147** |
+| slutdivision Premier · L1 · L2 · L3 | 4 · 9 · 10 · 37 | **12 · 14 · 5 · 29** |
+| slutkasse, snit | £191.353 | **£706.809** |
+
+Måltallet for pakke 18 var en *fordeling*: samme spredning i division 0 som i division 3. Det er ramt (0,95 mod 0,90), og toppen er gået fra at være en fælde til at gå i nul.
+
+**Det jeg ikke kan tune væk, og som ikke er et balanceproblem:** pengene betyder nu mere, og der er mindre at bruge dem på.
+
+| | før 18 | efter 18 |
+|---|---|---|
+| sene sæsoner hvor ALT er bygget | 65 % | **79 %** |
+| sene sæsoner som eneejer | 21 % | **36 %** |
+| største slutkasse | £3,1 mio | **£5,4 mio** |
+
+Det er præcis den anden af QA's to endgame-fejlmåder: *"den ene bot køber sig ihjel, den anden ender med £4,7 millioner den ikke kan bruge på noget."* Pakke 18 har flyttet klubben fra den første til den anden. **Det er efter min vurdering en forbedring** — at have råd og mangle noget at købe er et bedre problem end at blive kvalt — men det er ikke løst, og det kan ikke løses med et tal. QA skrev det selv: køen af indhold (pokal, stab, ungdom, museum) *"giver noget at lave, ikke noget at leve af"*. Nu er det omvendte tilfældet.
+
+**Spørgsmålet til dig:** skal `BAL.prize.perDivision` (0,55) ned igen, når der kommer noget at bruge pengene på? Jeg har valgt at lade den stå, fordi at gøre spilleren fattigere ikke gør endgame mindre tomt — det gør ham bare fattig *og* uden noget at lave.
+
+**Og et fund jeg vil fremhæve, fordi det ligner en fejl og ikke er det.** League Three har det dårligste netto pr. lønkrone af alle fire divisioner (−0,23). Det er ikke bundens økonomi. Splittet ad:
+
+| League Three | kampdage | gns. netto | lønsum | netto/løn |
+|---|---|---|---|---|
+| aldrig rykket ned | 3.458 | −£1.464 | £11.171 | **−0,13** |
+| efter en nedrykning | 8.996 | −£4.268 | £16.330 | **−0,26** |
+
+En klub der *starter* i League Three har en normal økonomi. En klub der *lander* der efter en nedrykning bærer en lønsum på £16.330 hvor divisionen betaler for £11.171 — og det er pakke 16's krise, der virker efter hensigten. Havde jeg kun set totalen, ville jeg have tunet bunden op og dermed fjernet nedrykningens konsekvens uden at opdage det.

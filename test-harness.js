@@ -338,6 +338,7 @@ function runSeed(seed, PROFILE) {
       squad: H.G.squad.length, fresh: H.call("freshCount"),
       avail: H.call("available").length,
       protest: H.G.protest || 0, mood: Math.round(H.G.fanMood),   // pakke 2
+      div: H.G.div, tv: H.call("tvMoney"),                       // pakke 18
       big: !!res.big, bigWhy: res.big ? String(res.label || "?") : null   // pakke 5
     });
     return out;
@@ -587,6 +588,57 @@ function runSeed(seed, PROFILE) {
 
     Object.assign(G, keep); H.modal = keepModal; H.screen = keepScreen;
     H.call("render"); checkHtml(); checkInvariants();
+  }
+
+  /* Pakke 18. Mads' princip: stiger noget, skal alt andet stige med, saa
+     presset i Premier Division med 20.000 tilskuere foeles som League Three med
+     1.400 -- bare med flere nuller. Her maales de fire indtaegtskilder mod
+     loenstigningen. Det er en STRUKTUR-kontrol, ikke en balancekontrol: den
+     siger ikke hvad tallene skal vaere, kun at ingen af dem maa staa stille
+     mens loennen firdobles. Fordelingen selv staar i --stats. */
+  function checkDivisionScaling() {
+    const G = H.G;
+    where = "skalering pr. division";
+    const B = H.consts.BAL;
+    const keep = { div: G.div, obj: G.objectivePos };
+    const tv = [], prize = [], sponsor = [], wage = [], town = [];
+    for (let d = 3; d >= 0; d--) {
+      G.div = d;
+      tv.push(H.call("tvMoney"));
+      prize.push(H.call("divPrize", B.prize.champions));
+      sponsor.push(1 + (3 - d) * B.sponsor.perDivision);
+      wage.push(H.call("G_DIV_WAGE", d));
+      town.push(H.call("townDemand"));
+    }
+    G.div = keep.div; G.objectivePos = keep.obj;
+
+    const rises = { "TV-penge": tv, "praemier": prize, "sponsor": sponsor, "byen": town };
+    for (const [name, arr] of Object.entries(rises))
+      for (let i = 1; i < arr.length; i++)
+        if (!(arr[i] > arr[i - 1]))
+          fail(name + " stiger ikke fra div " + (4 - i) + " til div " + (3 - i) + ": " +
+            arr[i - 1] + " -> " + arr[i] + " -- en indtaegtskilde der staar stille mens loennen " +
+            "firdobles er praecis den asymmetri pakke 18 findes for");
+
+    /* TV-pengene er den ENESTE indtaegt der ikke er loftet af byen og den eneste
+       der betaler paa en UDEKAMP. Udedagene er ren loen, og de blev vaerre og
+       vaerre gennem en karriere (-£7.135 i saeson 1 mod -£20.210 i saeson 20)
+       fordi loennen tredobledes mens udeindtaegten stod stille.
+       Kravet er derfor TV-penge PR. LOENKRONE, og at det tal ikke maa falde
+       naar man klatrer. Mit foerste forsoeg sammenlignede i stedet spaendet
+       tv[0]/tv[2] med loenskalaens spaend -- og det bestod min egen sabotage,
+       fordi ethvert geometrisk TV-forloeb har spaendet p^2+p+1 >= 3 og
+       loenskalaens spaend er 3,33. Den maalte altsaa naesten ingenting.
+       Sabotagen var rigtig; assertionen var forkert. */
+    const perWage = tv.map((v, i) => v / wage[i]);
+    for (let i = 2; i < perWage.length; i++)
+      if (perWage[i] < perWage[i - 1])
+        fail("TV-penge pr. loenkrone FALDER fra div " + (4 - i) + " til div " + (3 - i) + ": " +
+          perWage[i - 1].toFixed(0) + " -> " + perWage[i].toFixed(0) +
+          " -- udedagene bliver dyrere, jo hoejere man kommer");
+    if (tv[0] !== 0) fail("League Three har TV-penge (" + tv[0] + ") -- ingen televiserer League Three");
+    stats.scaling = { tv, prize };
+    checkInvariants();
   }
 
   function checkGroundStates() {
@@ -2431,6 +2483,7 @@ function runSeed(seed, PROFILE) {
   checkGroundStates();
   checkMainStandRole();
   checkRelegation();
+  checkDivisionScaling();
   checkValuationDirection();
   checkBigGate();
   checkBigSources();
@@ -2906,6 +2959,59 @@ function report(runs) {
         console.log("    " + String(i + " " + names[i]).padEnd(12) +
           String(rung[i]).padStart(5) + "  " + (100 * rung[i] / tot).toFixed(1) + "%");
       }
+    }
+  }
+
+  /* ── Pakke 18: skalerer indtaegtssiden med loensiden? ──
+     Maaltallet er en FORDELING, ikke et tal. Mads' princip: stiger noget, skal
+     alt andet stige med, saa presset i Premier Division med 20.000 tilskuere
+     foeles som League Three med 1.400 -- bare med flere nuller. Derfor maales
+     nettoet pr. kampdag PR. DIVISION med sin spredning: en klub i oeverste
+     raekke skal have omtrent samme spaend om nul som en i bunden. Er medianen
+     dybt negativ i division 0 og positiv i division 3, er toppen en faelde og
+     ikke en belastning. */
+  {
+    console.log("\n─── SKALERING PR. DIVISION (pakke 18) ───");
+    const names = ["Premier Division", "League One", "League Two", "League Three"];
+    const q = (a, p) => a.length ? a[Math.min(a.length - 1, Math.floor(p * a.length))] : 0;
+    console.log("  div                 kampdage   GNS.netto   25% · median · 75%      loen/MD   gate/MD    TV/MD");
+    for (let d = 3; d >= 0; d--) {
+      const rows = runs.flatMap(r => r.stats.md.filter(e => e.div === d));
+      if (!rows.length) { console.log("  " + names[d].padEnd(18) + "  — ingen kampdage"); continue; }
+      const nets = rows.map(e => e.net).sort((a, b) => a - b);
+      const wages = avg(rows.map(e => e.wages)), gate = avg(rows.filter(e => e.home).map(e => e.gate));
+      console.log("  " + names[d].padEnd(18) + String(rows.length).padStart(8) + "  " +
+        fmtGbp(avg(rows.map(e => e.net))).padStart(10) + "  " +
+        fmtGbp(q(nets, 0.25)).padStart(9) + " · " + fmtGbp(q(nets, 0.5)).padStart(8) + " · " +
+        fmtGbp(q(nets, 0.75)).padStart(8) + "  " + fmtGbp(wages).padStart(9) + " " +
+        fmtGbp(gate || 0).padStart(9) + " " + fmtGbp(avg(rows.map(e => e.tv || 0))).padStart(8));
+    }
+    /* Spredningen selv: er udfordringen den samme stoerrelse, eller vokser den
+       bare i kroner? Interkvartilbredden divideret med divisionens loensum er
+       det tal der skal vaere nogenlunde konstant. */
+    const shape = [];
+    for (let d = 3; d >= 0; d--) {
+      const rows = runs.flatMap(r => r.stats.md.filter(e => e.div === d));
+      if (rows.length < 50) { shape.push(names[d] + " —"); continue; }
+      const nets = rows.map(e => e.net).sort((a, b) => a - b);
+      const iqr = q(nets, 0.75) - q(nets, 0.25), w = avg(rows.map(e => e.wages)) || 1;
+      shape.push(names[d].split(" ")[0] + " gns/loen " + (avg(rows.map(e => e.net)) / w).toFixed(2) +
+        " · spaend/loen " + (iqr / w).toFixed(2));
+    }
+    console.log("  form (skal vaere ens paa tvaers): " + shape.join(" | "));
+    /* League Three er to helt forskellige klubber i samme tal: den man starter
+       med, og den man lander i efter en nedrykning med en loensum divisionen
+       ikke kan betale. Uden det her split ligner bunden en balancefejl, mens
+       den i virkeligheden er pakke 16's krise der virker efter hensigten. */
+    for (const d of [3]) {
+      const fresh = runs.flatMap(r => r.stats.md.filter(e => e.div === d && !r.stats.history.some(h => h.relegated && h.season < e.season)));
+      const crashed = runs.flatMap(r => r.stats.md.filter(e => e.div === d && r.stats.history.some(h => h.relegated && h.season < e.season)));
+      const line = (lbl, rows) => rows.length < 50 ? "  " + lbl + ": for faa kampdage"
+        : "  " + lbl + ": " + rows.length + " kampdage · gns. netto " + fmtGbp(avg(rows.map(e => e.net))) +
+          " · loen " + fmtGbp(avg(rows.map(e => e.wages))) +
+          " · netto/loen " + (avg(rows.map(e => e.net)) / (avg(rows.map(e => e.wages)) || 1)).toFixed(2);
+      console.log(line("League Three, aldrig rykket ned", fresh));
+      console.log(line("League Three, efter en nedrykning", crashed));
     }
   }
 
