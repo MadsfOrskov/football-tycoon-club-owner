@@ -765,44 +765,102 @@ function runSeed(seed, PROFILE) {
           Modalen gemmes bevidst ikke, saa et resultat der kun findes paa
           modalen er ikke gemt. */
     const saved = JSON.parse(readSaveRaw() || "null");
+
+    /* 1) kampen SKAL ligge i det gemte spil nu -- ikke naar tickeren er faerdig.
+          Modalen gemmes bevidst ikke, saa et resultat der kun findes paa
+          modalen er ikke gemt. */
     if (!saved || !saved.G || !saved.G.pendingMatch)
       fail("kampen er afgjort, men den gemte tilstand kender den ikke -- lukker spilleren appen nu, " +
         "spilles kampen om med et nyt udfald");
-    if (beforeSave && beforeSave.G && beforeSave.G.md !== saved.G.md - 0)
-      { /* md flyttes foerst i finalizeMatch; ingen antagelse her */ }
 
     // 2) G er stadig et TRAE med en kamp i sig -- ingen funktioner, ingen delte referencer
     assertSerialisable(G0);
 
+    /* Sammenligningen tages mod det der ligger PAA DISKEN, ikke mod den levende
+       tilstand. Foerste udgave sammenlignede med G efter choosePrematch og
+       fejlede paa 29 af 60 seeds ved 20 saesoner -- fordi den levende tilstand
+       kan naa videre (tickeren kan loebe faerdig i samme kald), mens
+       gemmepunktet ligger stille. Paastanden er praecis: det der blev gemt midt
+       i tickeren, er det man faar tilbage. */
     const fingerprint = m => JSON.stringify({
       h1: m.h1, h2: m.h2, opp: m.opp, home: m.home, big: m.big, label: m.label,
       ev: (m.events || []).map(e => [e.m, e.txt, e.sub || ""]),
       ev2: (m.h2events || []).map(e => [e.m, e.txt, e.sub || ""])
     });
-    const want = fingerprint(decided);
-    const tableWant = JSON.stringify(H.call("table"));
+    const want = fingerprint(saved.G.pendingMatch);
+    const leagueWant = JSON.stringify({ me: saved.G.me, teams: saved.G.teams, md: saved.G.md });
 
-    /* 3) luk appen. loadGame() erstatter G helt -- praecis som en kold start --
-          og resumePendingMatch() skal rulle NOEJAGTIG samme kamp igen. */
-    /* Gaa gennem continueCareer() -- den vej spilleren FAKTISK tager naar han
-       aabner appen igen. Foerste udgave kaldte resumePendingMatch() direkte, og
-       bestod derfor en sabotage hvor genoptagelsen var fjernet fra
-       continueCareer: funktionen virkede, men ingen kaldte den. */
+    /* 3) luk appen og aabn den igen. Foerst indlaesningen alene: det der laa paa
+          disken skal komme tilbage uroert -- baade kampen OG resten af
+          divisionens runde, som blev simuleret i samme aandedrag. */
     H.modal = null;
-    H.call("continueCareer");
-    if (!H.G || !H.G.squad) fail("continueCareer kunne ikke indlaese det spil der lige blev gemt midt i tickeren");
-    if (!H.modal || H.modal.type !== "ticker")
-      fail("den afgjorte kamp blev ikke genoptaget da appen blev aabnet igen -- spilleren faar kampdagen forfra " +
-        "og et nyt udfald (modal: " + (H.modal ? H.modal.type : "ingen") + ")");
-    const got = fingerprint(H.modal.match);
+    if (!H.call("loadGame")) fail("kunne ikke indlaese det spil der blev gemt midt i tickeren");
+    const leagueGot = JSON.stringify({ me: H.G.me, teams: H.G.teams, md: H.G.md });
+    if (leagueGot !== leagueWant) {
+      let i = 0; while (i < leagueWant.length && leagueWant[i] === leagueGot[i]) i++;
+      fail("ligaen kom ikke uroert tilbage -- resten af runden er en anden\n" +
+        "      gemt:  …" + leagueWant.slice(Math.max(0, i - 80), i + 100) +
+        "\n      efter: …" + leagueGot.slice(Math.max(0, i - 80), i + 100));
+    }
+    if (!H.G.pendingMatch) fail("den afgjorte kamp overlevede ikke indlaesningen");
+    const got = fingerprint(H.G.pendingMatch);
     if (got !== want) {
       let i = 0; while (i < want.length && want[i] === got[i]) i++;
       fail("kampen blev rullet om ved genindlaesning -- foerste forskel ved tegn " + i +
-        ":\n      foer:  …" + want.slice(Math.max(0, i - 70), i + 90) +
-        "\n      efter:…" + got.slice(Math.max(0, i - 70), i + 90));
+        ":\n      gemt:  …" + want.slice(Math.max(0, i - 70), i + 90) +
+        "\n      efter: …" + got.slice(Math.max(0, i - 70), i + 90));
     }
-    if (JSON.stringify(H.call("table")) !== tableWant)
-      fail("resten af divisionens runde blev simuleret om ved genindlaesning -- tabellen er en anden");
+    const savedMd = saved.G.md;
+
+    /* 4) og saa den vej spilleren FAKTISK tager. continueCareer() skal genoptage
+          kampen -- ikke bare kunne. Foerste udgave kaldte resumePendingMatch()
+          direkte og bestod derfor en sabotage hvor kaldet var fjernet fra
+          continueCareer: funktionen virkede, mens ingen kaldte den.
+          I hurtigtilstand loeber tickeren faerdig i samme kald (runTicker
+          springer den over for en almindelig kamp), saa BEGGE udfald er
+          lovlige -- men et af dem skal indtraeffe, og resultatet skal vaere
+          det gemte. */
+    H.modal = null;
+    H.call("continueCareer");
+    const resumedTicker = H.modal && H.modal.type === "ticker";
+    const booked = !H.G.pendingMatch && H.G.md !== savedMd;
+    if (!resumedTicker && !booked)
+      fail("den afgjorte kamp blev hverken genoptaget eller bogfoert da appen blev aabnet igen -- " +
+        "spilleren faar kampdagen forfra og et nyt udfald (modal: " +
+        (H.modal ? H.modal.type : "ingen") + ", md " + savedMd + " -> " + H.G.md + ")");
+    if (resumedTicker && fingerprint(H.modal.match) !== want)
+      fail("tickeren blev genoptaget med en ANDEN kamp end den gemte");
+    /* Og resten af divisionen maa ikke spille igen. Sammenligningen ovenfor
+       ligger FOER genoptagelsen og kan derfor ikke se en runde der simuleres om
+       INDE i den -- en sabotage der gjorde netop det slap forbi foerste udgave.
+       Summen af spillede kampe hos modstanderne stiger med hoejst en (min egen
+       modstander, naar kampen bogfoeres); en runde mere ville laegge tolv til. */
+    {
+      const plOf = g => (g.teams || []).reduce((a, t) => a + (t.pl || 0), 0);
+      const dPl = plOf(H.G) - plOf(saved.G);
+      /* Graensen er en HALV runde, ikke en enkelt kamp, og det er med vilje.
+         Bogfoeres kampen med det samme (hurtigtilstand), rykker min egen
+         modstander en frem, og efterspillet kan naa en enkelt mere -- maalt
+         2 paa seed 48514. En runde MERE ville laegge tolv til, og det er den
+         forskel kontrollen findes for. At kraeve hoejst en ville vaere at
+         paastaa en praecision jeg ikke har. */
+      const roundSize = 2 * ((H.G.fixtures[savedMd] || []).length - 1);
+      if (roundSize > 2 && dPl >= roundSize / 2)
+        fail("resten af divisionens runde blev simuleret om ved genindlaesning: " + dPl +
+          " ekstra kampe hos modstanderne, en hel runde er " + roundSize);
+    }
+    if (!resumedTicker && !saved.G.pendingMatch.isPlayoff) {
+      /* Blev kampen bogfoert med det samme, er det ikke nok at DEN blev
+         bogfoert -- det skal vaere det GEMTE resultat der landede i tabellen.
+         Ellers kunne kampen sagtens vaere rullet om og alligevel bestaa. */
+      const gf = saved.G.pendingMatch.h1.gf + saved.G.pendingMatch.h2.gf;
+      const ga = saved.G.pendingMatch.h1.ga + saved.G.pendingMatch.h2.ga;
+      const wantPts = gf > ga ? 3 : gf === ga ? 1 : 0;
+      const dPts = H.G.me.pts - saved.G.me.pts, dGd = H.G.me.gd - saved.G.me.gd;
+      if (dPts !== wantPts || dGd !== gf - ga)
+        fail("det bogfoerte resultat er ikke det gemte: gemt " + gf + "-" + ga + " (" + wantPts +
+          " point, maalforskel " + (gf - ga) + "), bogfoert " + dPts + " point og maalforskel " + dGd);
+    }
 
     // og saa tilbage til noejagtig den tilstand kontrollen fandt
     sandbox.localStorage.setItem("ftco.save.v1",
