@@ -1060,7 +1060,7 @@ function newGame(name,hue,mode){
     build:null,buildCost:80000,loan:null,warnedNeg:false,bankForced:false,
     sponsor:null,sponsorOffered:false,sponsorDue:null,
     coach:{...pick(COACHES)},
-    fanMood:60,objectivePos:8,objectiveBold:0,
+    fanMood:60,objectivePos:8,objectiveBold:0,pendingMatch:null,
     squad:posPlan.map(p=>genPlayer(p,R(42,58),G_DIV_WAGE(3))),
     market:[],freeAgents:[],scoutPending:0,scoutUsed:false,sponsorBoost:false,
     wageCap:BAL.wages.cap,bids:[],callbacks:[],lastXI:[],
@@ -1424,7 +1424,12 @@ function halfEvents(match,half,gf,ga){
     const p=pick(scorers.length?scorers:xiList());
     const pen=Math.random()<0.12;
     const m=mkMin(),ctx=at(m);
-    ev.push({m,goal:"me",scorer:p,txt:(pen?"PENALTY! ":"GOAL! ")+surname(p).toUpperCase()+"!",
+    /* Pakke 20: maalscoreren gemmes paa ID, ikke som objektreference. Kampen
+       ligger nu i G, og G skal forblive et TRAE -- en delt objektreference
+       overlever ikke en JSON-runde, saa manden der scorede ville blive en kopi
+       af sig selv efter en genindlaesning. Claude.md siger det samme om alt
+       andet: spillere noegles paa id, aldrig paa objektet. */
+    ev.push({m,goal:"me",scorerId:p.id,txt:(pen?"PENALTY! ":"GOAL! ")+surname(p).toUpperCase()+"!",
       sub:pen?fillName(pickLine(PENDESC,ctx,match.used),surname(p))
              :p.name+" "+pickLine(GOALDESC,ctx,match.used)+"."});
     if(Math.random()<0.4){const m2=Math.min(hi,m+R(2,5));ev.push({m:m2,txt:pickLine(MOMENTUM,at(m2),match.used)});}
@@ -1522,7 +1527,19 @@ function choosePrematch(appr){
   const inc=matchIncidents(match);
   match.inc2=inc.filter(e=>e.m>45);
   match.events=[...halfEvents(match,1,match.h1.gf,match.h1.ga),...inc.filter(e=>e.m<=45)].sort((a,b)=>a.m-b.m);
-  match.h2events=[...halfEvents(match,2,match.h2.gf,match.h2.ga),...match.inc2].sort((a,b)=>a.m-b.m);
+  // kopier: samme haendelsesobjekt maa ikke ligge i baade inc2 og h2events --
+  // G er et traee, og htChoice() bygger h2events op igen fra inc2
+  match.h2events=[...halfEvents(match,2,match.h2.gf,match.h2.ga),...match.inc2.map(e=>({...e}))].sort((a,b)=>a.m-b.m);
+  /* Pakke 20. Resultatet staar fast. Fra dette oejeblik ER kampen spillet --
+     baade halvlege, alle haendelser og resten af divisionens runde er
+     beregnet. saveGame() blev foerst kaldt i afterMatchday(), altsaa EFTER
+     tickeren, saa lukkede man appen midt i den, laa den gemte tilstand stadig
+     foer kampdagen, og kampen blev spillet om med et nyt udfald.
+     Kampen gemmes derfor i G, ikke paa modalen: modal gemmes bevidst ikke, og
+     et resultat der kun findes i en modal er ikke gemt. Det er ogsaa derfor
+     playoff-grenen maatte holde op med at vaere en closure -- G er et TRAE. */
+  G.pendingMatch=match;
+  saveGame();
   openTicker(match,null);
 }
 function htChoice(c){
@@ -1531,10 +1548,15 @@ function htChoice(c){
   if(c==="steady")match.h2=simHalf(match,{own:0.85,opp:0.72});
   if(c==="fury")match.h2=simHalf(match,{own:1.35,opp:1.25});
   if(c&&(match.h1.gf<match.h1.ga)&&Math.random()<0.5)match.h2.gf++; // trailing desperation push
-  match.h2events=[...halfEvents(match,2,match.h2.gf,match.h2.ga),...(match.inc2||[])].sort((a,b)=>a.m-b.m);
+  match.h2events=[...halfEvents(match,2,match.h2.gf,match.h2.ga),...(match.inc2||[]).map(e=>({...e}))].sort((a,b)=>a.m-b.m);
+  // pakke 20: pausetalen ER en ny beslutning, saa den anden halvleg rulles om
+  // her -- og skal derfor staa fast fra netop dette oejeblik og ikke foer.
+  G.pendingMatch=match;
+  saveGame();
   resumeTicker();
 }
 function finalizeMatch(match){
+  G.pendingMatch=null;                 // pakke 20: kampen er bogfoert nu
   const gf=match.h1.gf+match.h2.gf, ga=match.h1.ga+match.h2.ga;
   const res={gf,ga,opp:match.opp,home:match.home,big:match.big,label:match.label,weather:{...match.weather}};
   if(!match.isPlayoff){
@@ -1559,7 +1581,8 @@ function finalizeMatch(match){
   for(const p of xi)p.conf=clamp(p.conf+(w?2:l?-2:0),10,95);
   const allEv=[...match.events,...match.h2events];
   const ratings=new Map(xi.map(p=>[p,6+Math.random()*1.2+(gf>ga?0.5:gf===ga?0:-0.4)]));
-  for(const e of allEv)if(e.scorer){e.scorer.sg++;e.scorer.conf=clamp(e.scorer.conf+4,10,95);ratings.set(e.scorer,(ratings.get(e.scorer)||6.5)+1.1);}
+  for(const e of allEv){const sc=e.scorerId?byId(e.scorerId):null;
+    if(sc){sc.sg++;sc.conf=clamp(sc.conf+4,10,95);ratings.set(sc,(ratings.get(sc)||6.5)+1.1);}}
   let motm=xi[0],best=0;
   for(const [p,r] of ratings)if(r>best){best=r;motm=p;}
   if(motm){motm.smotm++;motm.conf=clamp(motm.conf+3,10,95);}
@@ -2018,24 +2041,30 @@ function playPlayoff(){
   const opp=semi?G.playoff.oppSemi:G.playoff.finalOpp;
   const match=buildMatch(opp.i,semi,true,semi?"PLAYOFF SEMI-FINAL":"PLAYOFF FINAL · WEMBLEY FIELDS");
   match.isPlayoff=true;
-  match.post=(res)=>{
-    let {gf,ga}=res;
-    const gate=semi?Math.min(G.capacity,G.capacity)*(G.ticket+5):Math.round(18000*(G.ticket+5)*0.4);
-    G.balance+=gate;
-    if(semi){
-      const [o1,o2]=G.playoff.otherSemi;
-      G.playoff.finalOpp=Math.random()<0.5?o1:o2;
-      if(gf>ga){G.phase="playoff_final";
-        msg("The FA (fictional)","FA","YOU'RE IN THE FINAL","One match against "+G.playoff.finalOpp.n+" for a place in "+G.divNames[G.div-1]+". Gate receipts alone will be biblical.",null);
-      }else{addNews("LEAGUE","Playoff heartbreak against "+res.opp+". The minibus ride home lasts nine years.");finishSeason({promoted:false,how:"semis"});}
-    }else{
-      if(gf>ga)finishSeason({promoted:true,how:"playoffs"});
-      else{addNews("LEAGUE","Beaten at Wembley Fields. The banner still says WE ARE "+G.club.split(" ")[0].toUpperCase()+". It's soggy now.");finishSeason({promoted:false,how:"final"});}
-    }
-    render();
-  };
+  /* Pakke 20. Var en closure paa match-objektet. Den kunne den ikke blive ved
+     med at vaere: for at et afgjort resultat kan STAA fast skal kampen kunne
+     gemmes, og G skal forblive et TRAE -- ingen funktioner. Grenen vaelges nu
+     paa et maerkat, og playoffPost() er en almindelig funktion. */
+  match.postKind=semi?"semi":"final";
   match.noDraw=true;
   modal={type:"prematch",match};
+  render();
+}
+function playoffPost(match,res){
+  const semi=match.postKind==="semi";
+  const {gf,ga}=res;
+  const gate=semi?Math.min(G.capacity,G.capacity)*(G.ticket+5):Math.round(18000*(G.ticket+5)*0.4);
+  G.balance+=gate;
+  if(semi){
+    const [o1,o2]=G.playoff.otherSemi;
+    G.playoff.finalOpp=Math.random()<0.5?o1:o2;
+    if(gf>ga){G.phase="playoff_final";
+      msg("The FA (fictional)","FA","YOU'RE IN THE FINAL","One match against "+G.playoff.finalOpp.n+" for a place in "+G.divNames[G.div-1]+". Gate receipts alone will be biblical.",null);
+    }else{addNews("LEAGUE","Playoff heartbreak against "+res.opp+". The minibus ride home lasts nine years.");finishSeason({promoted:false,how:"semis"});}
+  }else{
+    if(gf>ga)finishSeason({promoted:true,how:"playoffs"});
+    else{addNews("LEAGUE","Beaten at Wembley Fields. The banner still says WE ARE "+G.club.split(" ")[0].toUpperCase()+". It's soggy now.");finishSeason({promoted:false,how:"final"});}
+  }
   render();
 }
 function finishSeason(o){
@@ -4324,7 +4353,7 @@ function showFT(){
     const s=myStrength();const t=G.teams[M.oppIdx-1];
     const winMe=Math.random()<0.5+((s.att-t.att)/60);
     const p=pick(xiList().filter(x=>x.pos==="FW"||x.pos==="MF"));
-    if(winMe){M.h2.gf++;pushEv({m:"ET",goal:"me",scorer:p,txt:"EXTRA TIME — "+p.name.split(" ")[1].toUpperCase()+"!!",sub:"The golden moment. Grown adults are crying into their pies."});}
+    if(winMe){M.h2.gf++;pushEv({m:"ET",goal:"me",scorerId:p.id,txt:"EXTRA TIME — "+p.name.split(" ")[1].toUpperCase()+"!!",sub:"The golden moment. Grown adults are crying into their pies."});}
     else{M.h2.ga++;pushEv({m:"ET",goal:"them",txt:"Extra time — "+M.opp+" break your hearts.",sub:"Football is a cruel sport played in the rain."});}
   }
   modal.ft=true;
@@ -4361,7 +4390,7 @@ function closeTicker(){
     G.quickOffered=true;
     modal={type:"quickOffer"};render();return;
   }
-  if(M.isPlayoff&&M.post){M.post({gf:M.h1.gf+M.h2.gf,ga:M.h1.ga+M.h2.ga,opp:M.opp});return;}
+  if(M.isPlayoff&&M.postKind){playoffPost(M,{gf:M.h1.gf+M.h2.gf,ga:M.h1.ga+M.h2.ga,opp:M.opp});return;}
   afterMatchday();
 }
 
@@ -4382,8 +4411,18 @@ function renderTitle(){
   </div></div>`;
 }
 function continueCareer(){
-  if(loadGame()){bootSave=null;render();}
+  if(loadGame()){bootSave=null;resumePendingMatch();render();}
   else{bootSave=null;renderOnboarding();}
+}
+/* Pakke 20. Blev appen lukket midt i tickeren, ligger den afgjorte kamp i G.
+   Den spilles ikke om -- den rulles videre fra begyndelsen med NOEJAGTIG samme
+   maal, samme haendelser og samme runde i resten af divisionen. */
+function resumePendingMatch(){
+  if(!G||!G.pendingMatch)return false;
+  const m=G.pendingMatch;
+  if(!m.h1||!m.h2||!Array.isArray(m.events)){G.pendingMatch=null;return false;}
+  openTicker(m,null);
+  return true;
 }
 function newCareer(){
   deleteSave();bootSave=null;obStep=0;renderOnboarding();
@@ -4424,6 +4463,7 @@ function renderOnboarding(){
       <div class="truth"><span class="n">1</span><span>The squad is <b>honest but limited</b>. Two of them are good. I won't say which two in front of the others.</span></div>
       <div class="truth"><span class="n">2</span><span>We have <b>no sponsor</b>, and the ground holds <b>1,500 souls</b> on a good day. Everything must be built. By you.</span></div>
       <div class="truth"><span class="n">3</span><span>The bank balance is <b>£150,000</b> — the inheritance, minus Whitmore's fee. Spend it like it's the last money on earth. It might be.</span></div>
+      <div class="why" style="margin-top:12px"><b>One promise from us.</b> A match is saved the moment it is played. Close the app halfway through if you like — the result will be waiting for you, exactly as it was. This club is not one you can reload your way out of, and that is what makes it yours.</div>
       <button class="glowbtn" style="margin-top:16px" onclick="obFinish()">Take over the club ▸</button>`;
   }
   app().innerHTML=`<div class="ob"><div class="box">

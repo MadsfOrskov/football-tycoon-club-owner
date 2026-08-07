@@ -732,6 +732,88 @@ function runSeed(seed, PROFILE) {
     checkInvariants();
   }
 
+  /* Pakke 20. Risiko uden permanens er teater. Bygger vi et spil hvor man kan
+     rykke ned og miste klubben, skal man ikke kunne lukke appen midt i tickeren
+     og spille kampen om med et nyt udfald. Her lukkes appen praecis der: midt i
+     tickeren, efter at resultatet er afgjort og foer det er bogfoert. */
+  function checkResultStands() {
+    const G0 = H.G;
+    where = "resultatet staar fast";
+    const keepModal = H.modal, keepScreen = H.screen;
+    /* Spol frem til en kampdag der kan spilles. Botten kan staa hvor som helst,
+       saa vi tvinger en ren tilstand frem for at haabe. */
+    if (G0.phase !== "season" || G0.md >= G0.rounds) { H.modal = keepModal; return; }
+    H.modal = null;
+    H.call("playMatchday");
+    if (!H.modal || H.modal.type !== "prematch") { H.modal = keepModal; return; }
+
+    const readSaveRaw = () => sandbox.localStorage.getItem("ftco.save.v1");
+    /* Kontrollen ruller spillet tilbage til gemmepunktet -- det er hele dens
+       pointe -- saa den skal ogsaa rulle det praecist FREM igen bagefter. Uden
+       det arver de foelgende scenarier en halvspillet kampdag, og
+       checkBankCascade fejlede paa en klub der havde mistet sine point to
+       gange. Snapshottet skrives tilbage gennem selve gemmesystemet, saa
+       gendannelsen bruger den samme vej som spillet. */
+    const snapshot = JSON.stringify(G0);
+    const savedSlot = readSaveRaw();
+    const beforeSave = JSON.parse(savedSlot || "null");
+    H.call("choosePrematch", "bal");
+    if (!H.modal || H.modal.type !== "ticker") fail("choosePrematch aabnede ingen ticker");
+    const decided = H.modal.match;
+
+    /* 1) kampen SKAL ligge i det gemte spil nu -- ikke naar tickeren er faerdig.
+          Modalen gemmes bevidst ikke, saa et resultat der kun findes paa
+          modalen er ikke gemt. */
+    const saved = JSON.parse(readSaveRaw() || "null");
+    if (!saved || !saved.G || !saved.G.pendingMatch)
+      fail("kampen er afgjort, men den gemte tilstand kender den ikke -- lukker spilleren appen nu, " +
+        "spilles kampen om med et nyt udfald");
+    if (beforeSave && beforeSave.G && beforeSave.G.md !== saved.G.md - 0)
+      { /* md flyttes foerst i finalizeMatch; ingen antagelse her */ }
+
+    // 2) G er stadig et TRAE med en kamp i sig -- ingen funktioner, ingen delte referencer
+    assertSerialisable(G0);
+
+    const fingerprint = m => JSON.stringify({
+      h1: m.h1, h2: m.h2, opp: m.opp, home: m.home, big: m.big, label: m.label,
+      ev: (m.events || []).map(e => [e.m, e.txt, e.sub || ""]),
+      ev2: (m.h2events || []).map(e => [e.m, e.txt, e.sub || ""])
+    });
+    const want = fingerprint(decided);
+    const tableWant = JSON.stringify(H.call("table"));
+
+    /* 3) luk appen. loadGame() erstatter G helt -- praecis som en kold start --
+          og resumePendingMatch() skal rulle NOEJAGTIG samme kamp igen. */
+    /* Gaa gennem continueCareer() -- den vej spilleren FAKTISK tager naar han
+       aabner appen igen. Foerste udgave kaldte resumePendingMatch() direkte, og
+       bestod derfor en sabotage hvor genoptagelsen var fjernet fra
+       continueCareer: funktionen virkede, men ingen kaldte den. */
+    H.modal = null;
+    H.call("continueCareer");
+    if (!H.G || !H.G.squad) fail("continueCareer kunne ikke indlaese det spil der lige blev gemt midt i tickeren");
+    if (!H.modal || H.modal.type !== "ticker")
+      fail("den afgjorte kamp blev ikke genoptaget da appen blev aabnet igen -- spilleren faar kampdagen forfra " +
+        "og et nyt udfald (modal: " + (H.modal ? H.modal.type : "ingen") + ")");
+    const got = fingerprint(H.modal.match);
+    if (got !== want) {
+      let i = 0; while (i < want.length && want[i] === got[i]) i++;
+      fail("kampen blev rullet om ved genindlaesning -- foerste forskel ved tegn " + i +
+        ":\n      foer:  …" + want.slice(Math.max(0, i - 70), i + 90) +
+        "\n      efter:…" + got.slice(Math.max(0, i - 70), i + 90));
+    }
+    if (JSON.stringify(H.call("table")) !== tableWant)
+      fail("resten af divisionens runde blev simuleret om ved genindlaesning -- tabellen er en anden");
+
+    // og saa tilbage til noejagtig den tilstand kontrollen fandt
+    sandbox.localStorage.setItem("ftco.save.v1",
+      JSON.stringify({ v: 1, club: "restore", season: 0, div: 0, G: JSON.parse(snapshot) }));
+    if (!H.call("loadGame")) fail("kunne ikke gendanne tilstanden efter kontrollen");
+    if (savedSlot !== null) sandbox.localStorage.setItem("ftco.save.v1", savedSlot);
+    H.G.pendingMatch = null;
+    H.modal = keepModal; H.screen = keepScreen;
+    H.call("render"); checkInvariants();
+  }
+
   function checkGroundStates() {
     const G = H.G;
     const keys = Object.keys(H.consts.STANDS);
@@ -2597,6 +2679,7 @@ function runSeed(seed, PROFILE) {
   checkRelegation();
   checkDivisionScaling();
   checkObjectiveDeal();
+  checkResultStands();
   checkValuationDirection();
   checkBigGate();
   checkBigSources();
