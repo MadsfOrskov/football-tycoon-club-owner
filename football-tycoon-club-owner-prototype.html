@@ -494,6 +494,9 @@ const BAL={
     rateDivision:-0.022,      // per step up the pyramid
     rateOverdrawn:0.10,       // if the account is already in the red
     rateExposure:0.30,        // × how much of a season's income you already owe
+    rateValue:-0.03,          // × the club's valuation in millions — an asset the bank can lean on
+    rateValueCap:0.05,        // kept below rateBase+rateDivision-rateFloor so value alone
+                              // never floors a mid-table club and masks the division signal
     rateFloor:0.05, rateCap:0.65,
     maxTermMD:26, minTermMD:5,
     exposureCap:0.40,         // the bank says no beyond this share of a season's income
@@ -2826,11 +2829,17 @@ function loansOwed(){return (G.loans||[]).reduce((s,l)=>s+l.perMD*l.left,0);}
 function bankExposure(){const inc=seasonIncome()||1;return loansOwed()/inc;}
 function loanRate(amount){
   const B=BAL.bank,inc=seasonIncome()||1;
+  /* Klubvaerdien er en faktor -- kommentaren paa bank-blokken lovede det, men
+     koden gjorde det ikke: en klub med et stadion og en trup er en bank mindre
+     bange for. Fortegnet er negativt (mere vaerd = billigere), og bidraget er
+     clampet, saa en Premier-klub ikke laaner gratis. */
+  const valDrop=clamp(clubValuation()/1000000*(-B.rateValue),0,B.rateValueCap);
   const r=B.rateBase
     +(G.admins||0)*B.rateAdmin
     +(3-G.div)*B.rateDivision
     +(G.balance<0?B.rateOverdrawn:0)
-    +((loansOwed()+amount)/inc)*B.rateExposure;
+    +((loansOwed()+amount)/inc)*B.rateExposure
+    -valDrop;
   return clamp(r,B.rateFloor,B.rateCap);
 }
 /* Hvad banken vil laane dig oveni det du allerede skylder. Nul betyder nej --
@@ -4349,7 +4358,16 @@ function renderModal(){
       <h2>−${kfmt(Math.abs(G.balance)).slice(1)} in the red</h2>
       <p>"We adore football, chairman. We adore repayments more." ${modal.canSell&&modal.canLoan?"Two ways out — pick one now:":"One way out:"}</p>
       ${modal.canSell?`<button class="glowbtn" onclick="resolveBank(true)">Force-sell ${modal.best.name.split(" ")[1]} · ${kfmt(Math.round(modal.best.value*0.85))}</button>`:`<p><b>The squad is too thin to sell from.</b> The gaffer guards the door.</p>`}
-      ${modal.canLoan?`<button class="abtn comm" onclick="resolveBank(false)">Emergency loan · +${kfmt(BAL.bank.loanCash)} now, ${kfmt(BAL.bank.loanPerMD)}/MD × ${BAL.bank.loanTerm}</button>`:`<p><b>The loan line is spent.</b> One loan at a time, chairman.</p>`}
+      ${modal.canLoan?(()=>{
+        /* Knappen viste EN fast pakke -- +£50k, £5.5k/MD x 10 -- men
+           resolveBank(false) tager reelt max(minLoan,min(room,loanCash)) til den
+           rente banken naevner. Naar rummet er mindre end £50k, eller renten
+           ikke er basis, loej knappen om baade beloeb og afdrag. Nu bygges de tre
+           tal af de samme kald som selve laanet, saa knappen taler sandt. */
+        const amt=Math.max(BAL.bank.minLoan,Math.min(loanHeadroom(),BAL.bank.loanCash));
+        const t=loanTerms(amt,BAL.bank.loanTerm);
+        return `<button class="abtn comm" onclick="resolveBank(false)">Emergency loan · +${kfmt(amt)} now, ${kfmt(t.perMD)}/MD × ${t.term} at ${pct(t.rate)}</button>`;
+      })():`<p><b>The loan line is spent.</b> One loan at a time, chairman.</p>`}
     </div></div>`;
   }
   /* Trin 4: den eneste beslutning der findes naar der ikke er flere. Tallene
