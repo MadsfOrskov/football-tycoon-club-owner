@@ -226,3 +226,25 @@ Femtrins-trappen er bygget. Trin 4 er redningskapital mod andele; trin 5 er at m
 | karrierer der når trin 5 | — | **20 %** | 5-15 % |
 
 Administrationstallet rammer plet. **Game over-tallet ligger over båndet**, og jeg vil gerne være tydelig om hvorfor jeg ikke bare har skruet på det: botten tager imod redningen i **85 %** af tilfældene i `sane`-profilen, også når modalen udtrykkeligt advarer om at den er fatal. Det er en botpolitik, ikke en spillerbeslutning — et menneske der læser *"This one ends it"* ville formentlig sige nej og tage administrationen. Tallet er altså et **loft** for hvor tit det sker, ikke et estimat. Skal det ned uanset, er knappen `BAL.ladder.rescueShare` (mindre skive) eller `controlAt` (lavere grænse).
+
+## 11. Banken gør klubben skrøbeligere — og det trækker trappens måltal ud af båndet (nat 4, pakke 23)
+
+Den rigtige bank er bygget: du vælger beløb og løbetid, banken vælger renten ud fra division, klubværdi, kassestilling, hvor meget du allerede skylder og hver administration på papiret. Lån er en **liste**, så du kan bygge på kredit og stadig have en nødlinje — og trin 2 i trappen bliver ægte, fordi banken siger nej *fordi du allerede skylder*.
+
+**Prisen, målt over 20 seeds × 20 sæsoner:**
+
+| | efter pakke 22 | efter pakke 23 | mål |
+|---|---|---|---|
+| administrationer pr. karriere | 1,05 | **1,95** | ~1 |
+| trin 4 tilbudt pr. karriere | 0,30 | **1,70** | — |
+| karrierer hvor trin 5 er inden for rækkevidde | — | **35 %** | 5-15 % |
+
+Gæld gør klubben skrøbelig. Det er ikke en fejl — det er hele meningen med et lån — men det flytter to af nat 4's egne måltal ud af båndet, og **jeg har ikke tunet det væk i stilhed.**
+
+**Hvad jeg prøvede:** `BAL.bank.exposureCap` fra 0,40 ned til 0,26. Det flyttede ingenting (1,70 → 1,90 trin 4-tilbud, dvs. støj). Loftet er altså ikke det, der driver tallet — det er, at en klub med en trup på 13 og et åbent kriselån ikke har nogen udvej tilbage. Jeg satte den tilbage på 0,40 og lod tallet stå.
+
+**Hvad jeg rettede undervejs, fordi det var botten og ikke spillet:**
+- Botten lånte hver 20. tomgangsrunde uden at ville noget med pengene: 11,7 lån pr. karriere, gæld uden gevinst. Nu låner den kun når der er noget at bygge og kassen ikke rækker — som pakken er bygget til. 3,25 lån pr. karriere.
+- Botten sagde ja til den *fatale* redning i 85 % af tilfældene, også når modalen skriver "This one ends it". Det tal (40 % af karriererne mistet) sagde mere om politikken end om spillet. `sane` vælger nu administrationen når alternativet er at aflevere klubben.
+
+**Spørgsmålet til dig:** skal banken være sværere at komme til for en klub der allerede taber penge? Den mest oplagte knap er at lade `loanHeadroom()` skalere med `G.netEwma` — *"banken låner mod indtjening, ikke mod håb"*. Det ville ramme præcis de klubber der i dag låner sig ind i trappen, uden at røre den klub der låner for at bygge en tribune den kan betale af. Jeg har ikke bygget den, fordi det er en ny regel og ikke en justering.

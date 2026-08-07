@@ -429,7 +429,25 @@ const BAL={
         tv = base x (perDivision^(3-div) - 1)
      League Three is deliberately zero. Nobody televises League Three. */
   tv:{base:2600, perDivision:2.35},
-  bank:{crisisAt:-60000, loanCash:50000, loanPerMD:5500, loanTerm:10, adminRelief:40000, adminPoints:6},
+  /* Nat 4, pakke 23. Banken var EN fast pakke -- £50.000 nu, £5.500/kampdag i
+     ti kampdage -- og den fandtes kun inde i krisemodalen naar kassen var under
+     crisisAt. Man kunne altsaa kun laane naar man druknede, og aldrig for at
+     investere. En tribune koster £70.000 og en aerlig saeson tjener ~£155.000:
+     med en bank kan man bygge nu og betale med den gate tribunen selv skaber.
+     Det er den klassiske formandsgamble -- og rebet man haenger sig selv i.
+     Renten er ikke en konstant. Den er bankens vurdering af DIG: division,
+     klubvaerdi, kassestilling, hvor meget du allerede skylder, og hvor mange
+     gange du har vaeret i administration. */
+  bank:{crisisAt:-60000, loanCash:50000, loanPerMD:5500, loanTerm:10, adminRelief:40000, adminPoints:6,
+    rateBase:0.14,            // the going rate for a club with nothing to recommend it
+    rateAdmin:0.09,           // per administration on the record — the scar the bank never forgets
+    rateDivision:-0.022,      // per step up the pyramid
+    rateOverdrawn:0.10,       // if the account is already in the red
+    rateExposure:0.30,        // × how much of a season's income you already owe
+    rateFloor:0.05, rateCap:0.65,
+    maxTermMD:26, minTermMD:5,
+    exposureCap:0.40,         // the bank says no beyond this share of a season's income
+    minLoan:10000, loanStep:10000, maxLoan:400000},
   /* Nat 4, pakke 22. GDD'ens oekonomitrappe har fem trin. Tre var bygget, og
      spillet TRUEDE med det fjerde op til tretten gange pr. karriere uden
      nogensinde at goere alvor af det (QA's F11). Nu findes de to sidste:
@@ -582,6 +600,11 @@ function loadGame(){
   // a career saved before freshness existed has no load on anyone; start them rested
   if(!Array.isArray(G.lastXI))G.lastXI=[];
   if(!Array.isArray(G.commitments))G.commitments=[];
+  /* Pakke 23: en karriere gemt foer banken blev en liste har et enkelt G.loan.
+     Den flyttes over, saa en gammel gemmefil ikke mister sin gaeld -- eller,
+     vaerre, beholder den et sted ingen laeser laengere. */
+  if(!Array.isArray(G.loans))G.loans=G.loan?[{perMD:G.loan.perMD,left:G.loan.left,took:BAL.bank.loanCash,rate:BAL.bank.rateBase,kind:"crisis"}]:[];
+  delete G.loan;
   if(!Array.isArray(G.valHistory))G.valHistory=[];
   if(!Number.isFinite(G.netEwma))G.netEwma=0;
   if(!Number.isFinite(G.trust))G.trust=BAL.owners.trustStart;
@@ -1089,7 +1112,7 @@ function newGame(name,hue,mode){
        numbers, never a team reference: G must stay a tree. Cleared every summer,
        because the opponents are regenerated on promotion. */
     revenge:null,
-    build:null,buildCost:80000,loan:null,warnedNeg:false,bankForced:false,
+    build:null,buildCost:80000,loans:[],warnedNeg:false,bankForced:false,
     sponsor:null,sponsorOffered:false,sponsorDue:null,
     coach:{...pick(COACHES)},
     fanMood:60,objectivePos:8,objectiveBold:0,pendingMatch:null,
@@ -1177,7 +1200,7 @@ function valuationParts(){
              +(G.titles||0)*V.perTitle
              +promos*V.perPromotion;
 
-  let debt=(G.loan?G.loan.perMD*G.loan.left:0)
+  let debt=loansOwed()
           +Math.max(0,-G.balance)*V.debtWeight
           +(G.admins||0)*V.adminScar;                 // a scar that stays put
   debt+=commitmentsOwed();                        // pakke 3: what you already signed away
@@ -1907,7 +1930,13 @@ function settleFinances(res){
     res.att=r.att;gate=r.gate;extras=r.extras;
   }
   let loanPay=0;
-  if(G.loan){loanPay=G.loan.perMD;G.loan.left--;if(G.loan.left<=0)G.loan=null;}
+  /* Pakke 23: flere aabne laan, en faelles afregning. Var et enkelt G.loan. */
+  if(Array.isArray(G.loans)&&G.loans.length){
+    for(const l of G.loans){loanPay+=l.perMD;l.left--;}
+    const done=G.loans.filter(l=>l.left<=0);
+    G.loans=G.loans.filter(l=>l.left>0);
+    if(done.length)addNews("CLUB",done.length===1?"A bank loan is paid off. The manager sends a card.":done.length+" bank loans paid off. The account can breathe.");
+  }
   res.gate=gate+extras;res.wages=wages;
   const net=(G.sponsor?G.sponsor.per:0)+tvMoney()+gate+extras-wages-loanPay;
   G.balance+=net;G.lastNet=net;      // "kassen + ugentligt netto altid synligt" (GDD)
@@ -2584,7 +2613,18 @@ function openBankUltimatum(){
     }
   }
   const canSell=G.squad.length>13;
-  const canLoan=!G.loan;
+  /* Banken omlaegger EN gang. Den finansierer ikke en redning nummer to.
+     Det er den gamle regel ("et laan ad gangen") udtrykt gennem den nye bank,
+     og den skal staa her og ikke i loanHeadroom(): at laane for at BYGGE maa
+     gerne kunne stables, at laane for at overleve maa ikke. Uden den her
+     linje stablede krisen laan oven paa laan, og andelen af karrierer der
+     mistede klubben gik fra 20 % til 45 % -- maalt, ikke gaettet. */
+  /* Banken omlaegger EN gang ad gangen -- men et byggelaan er ikke en
+     omlaegning. Foerste udgave spurgte om der var NOGET aabent laan, og saa
+     aad en tribune finansieret paa kredit hele noedlinjen: klubben stod i
+     krisen uden laanemulighed og fik trin 4 tilbudt 2,7 gange pr. karriere.
+     Maalt. Nu er det kun et aabent KRISElaan der lukker doeren. */
+  const canLoan=!(G.loans||[]).some(l=>l.kind==="crisis")&&loanHeadroom()>=BAL.bank.minLoan;
   /* Trin 4 ligger HER, mellem bankens ultimatum og administrationen: naar der
      hverken er en mand at saelge eller et laan at tage, er der stadig et sted
      at hente penge -- medejernes lommer. Prisen er klubben, en skive ad
@@ -2594,6 +2634,70 @@ function openBankUltimatum(){
   const best=[...G.squad].sort((a,b)=>b.value-a.value)[0];
   modal={type:"bank",best,canSell,canLoan};
   render();
+}
+/* ---------- nat 4, pakke 23: banken ----------
+   Laan er en LISTE, ikke et saertilfaelde. Det var hele pointen med at rive
+   G.loan ned: saa laenge der kun kunne vaere et, kunne banken hverken sige nej
+   fordi du allerede skylder, eller lade dig bygge paa kredit.
+
+   AFVIGELSE fra ROADMAP'en, med vilje: den skriver "laanet laegges i
+   G.commitments fra pakke 3". Det gaar ikke, og grunden er cadencen --
+   settleCommitments() koerer EN gang pr. saeson, mens et laan afdrages pr.
+   kampdag. Enten skulle laanet skifte takt (og saa forsvinder det drypvise
+   pres der er hele dets karakter), eller ogsaa skulle settleCommitments have
+   en anden afregningsvej ved siden af sin egen. Laanene har derfor deres egen
+   liste med samme form -- flere aabne forpligtelser, en faelles afregning i
+   settleFinances hvor de allerede blev afregnet. */
+function seasonIncome(){
+  // bankens maalestok for hvad klubben kan baere: det den tjener paa en saeson
+  return Math.round(((G.sponsor?G.sponsor.per:0)+tvMoney())*G.rounds
+    +attendance()*(G.ticket+BAL.matchday.kiosk)*homeGames());
+}
+function loansOwed(){return (G.loans||[]).reduce((s,l)=>s+l.perMD*l.left,0);}
+function bankExposure(){const inc=seasonIncome()||1;return loansOwed()/inc;}
+function loanRate(amount){
+  const B=BAL.bank,inc=seasonIncome()||1;
+  const r=B.rateBase
+    +(G.admins||0)*B.rateAdmin
+    +(3-G.div)*B.rateDivision
+    +(G.balance<0?B.rateOverdrawn:0)
+    +((loansOwed()+amount)/inc)*B.rateExposure;
+  return clamp(r,B.rateFloor,B.rateCap);
+}
+/* Hvad banken vil laane dig oveni det du allerede skylder. Nul betyder nej --
+   og det er praecis dét, der goer trin 2 i trappen aegte: banken siger ikke nej
+   fordi en variabel er sat, men fordi du allerede skylder for meget. */
+function loanHeadroom(){
+  const B=BAL.bank;
+  const room=Math.floor((seasonIncome()*B.exposureCap-loansOwed())/B.loanStep)*B.loanStep;
+  return clamp(room,0,B.maxLoan);
+}
+function loanTerms(amount,termMD){
+  const B=BAL.bank;
+  const term=clamp(Math.round(termMD),B.minTermMD,B.maxTermMD);
+  const rate=loanRate(amount);
+  const total=Math.round(amount*(1+rate*term/G.rounds));
+  return {amount,term,rate,total,perMD:Math.max(1,Math.round(total/term/10)*10)};
+}
+function takeLoan(amount,termMD,kind){
+  const t=loanTerms(amount,termMD);
+  if(amount>loanHeadroom())return null;
+  G.loans=G.loans||[];
+  G.loans.push({perMD:t.perMD,left:t.term,took:amount,rate:Math.round(t.rate*1000)/1000,kind:kind||"build"});
+  G.balance+=amount;
+  addNews("CLUB","Bank loan agreed: "+kfmt(amount)+" now, "+kfmt(t.perMD)+" per matchday for "+t.term+" matchdays at "+pct(t.rate)+".");
+  return t;
+}
+function openBank(){
+  const room=loanHeadroom();
+  modal={type:"loan",amount:Math.min(room,BAL.bank.loanCash),term:BAL.bank.loanTerm,room};
+  render();
+}
+function loanConfirm(){
+  const m=modal;if(!m||m.type!=="loan")return;
+  if(m.amount<BAL.bank.minLoan||m.amount>m.room){modal=null;render();return;}
+  takeLoan(m.amount,m.term);
+  modal=null;render();
 }
 /* Trin 4. Medejerne har kapital, og de vil hellere eje mere af en klub der
    overlever end lidt af en der ikke goer. Skiven de forlanger vokser naar de
@@ -2682,8 +2786,13 @@ function resolveBank(sell){
     if(best.traits.includes("localhero")){G.fanMood=clamp(G.fanMood-14,5,100);bumpTrust(BAL.owners.trustFavourite);addNews("FANS","Selling a local hero to pay the bank. The Shed End is composing new songs. They are not kind songs.");}
     addNews("CLUB",best.name+" sold under duress for "+kfmt(Math.round(best.value*0.85))+". The bank manager sends a fruit basket.");
   }else{
-    G.balance+=BAL.bank.loanCash;G.loan={perMD:BAL.bank.loanPerMD,left:BAL.bank.loanTerm};
-    addNews("CLUB","Emergency loan taken: +"+kfmt(BAL.bank.loanCash)+" now, "+kfmt(BAL.bank.loanPerMD)+" per matchday for "+BAL.bank.loanTerm+" matchdays. The interest is 'sporting'.");
+    /* Noedlaanet er ikke laengere en anden bank end den man kan gaa til i ro
+       og mag -- det er den samme, paa krisens vilkaar. Renten afspejler at
+       kassen er i minus, saa den ER dyrere; den er bare ikke en anden regel. */
+    const room=loanHeadroom();
+    const amt=Math.max(BAL.bank.minLoan,Math.min(room,BAL.bank.loanCash));
+    const t=takeLoan(amt,BAL.bank.loanTerm,"crisis");
+    if(t)addNews("CLUB","Emergency loan taken at "+pct(t.rate)+". The manager calls it 'sporting'. It is not.");
   }
   modal=null;
   if(resume){startPostSeason();return;}
@@ -3672,7 +3781,8 @@ function viewClub(){
     :`<div class="rowline"><span>No main sponsor <small>· the shirt is naked — offers arrive in your inbox</small></span><span class="amt num" style="color:var(--muted)">£0/W</span></div>`}
     <div class="rowline"><span>${G.coach.n} <small>· gaffer · ${G.coach.style}</small></span></div>
     <div class="statchips" style="margin-top:2px"><span class="sc">TAC <b>${G.coach.tac}</b></span><span class="sc">MAN <b>${G.coach.man}</b></span><span class="sc">DEV <b>${G.coach.dev}</b></span><span class="sc">OVR <b>${coachOvr(G.coach)}</b></span></div>
-    ${G.loan?`<div class="rowline"><span>Bank loan <small>· ${G.loan.left} payments left</small></span><span class="amt num" style="color:#E07A6A">−${kfmt(G.loan.perMD)}/MD</span></div>`:""}
+    ${(G.loans||[]).length?`<div class="rowline"><span>Bank loans <small>· ${G.loans.length} open, ${loansOwed()>0?kfmt(loansOwed())+" still owed":""}</small></span><span class="amt num" style="color:#E07A6A">−${kfmt((G.loans||[]).reduce((a,l)=>a+l.perMD,0))}/MD</span></div>`:""}
+    <div class="rowline"><span>Borrow <small>· the bank will lend up to ${kfmt(loanHeadroom())} at ${pct(loanRate(Math.max(BAL.bank.minLoan,loanHeadroom())))}</small></span>${loanHeadroom()>=BAL.bank.minLoan?`<button class="abtn comm" style="padding:6px 10px;font-size:10.5px" onclick="openBank()">Talk to the bank</button>`:`<span class="num" style="color:var(--muted);font-size:11px">not while you owe this much</span>`}</div>
     ${(G.commitments||[]).map(c=>`<div class="rowline"><span>${c.kind==="fee"?"Instalment":c.kind==="promo"?"Promotion clause":"Goal clause"} <small>· ${c.name.split(" ")[1]} → ${c.club} · ${c.seasonsLeft} season${c.seasonsLeft===1?"":"s"} left</small></span>
       <span class="amt num" style="color:#E07A6A">−${kfmt(c.amt)}${c.kind==="fee"?"/yr":c.kind==="goals"?"/goal":""}</span></div>`).join("")}</div>
   <div class="tifo"><div class="q">${fanQuote()}</div><div class="who">The Shed End · mood ${Math.round(G.fanMood)}/100</div>
@@ -4055,6 +4165,37 @@ function renderModal(){
   /* Trin 4: den eneste beslutning der findes naar der ikke er flere. Tallene
      staar der begge to -- hvad de giver, og hvad du ikke ejer bagefter -- fordi
      man skal kunne se trappen mens man staar paa den. */
+  /* Pakke 23. Banken som et bord man kan saette sig ved, ikke en knap i en
+     krise. Renten staar der FOER man laaner, og den staar der som bankens
+     vurdering af klubben -- ikke som en konstant. */
+  if(modal.type==="loan"){
+    const m=modal,t=loanTerms(m.amount,m.term);
+    const owed=loansOwed();
+    return `<div class="overlay"><div class="sheet">
+      <div class="kick">The bank · ${G.divNames[G.div]}</div>
+      <h2>Borrowing</h2>
+      <p>"We have looked at the books, chairman.${(G.admins||0)?" All of them, including the interesting years.":""} Here is what the money costs you."</p>
+      <div class="kick" style="margin-top:10px">How much</div>
+      <div class="stepper">
+        <button onclick="modal.amount=Math.max(${BAL.bank.minLoan},modal.amount-${BAL.bank.loanStep});render()">‹</button>
+        <span class="val num" style="font-size:24px">${kfmt(m.amount)}</span>
+        <button onclick="modal.amount=Math.min(modal.room,modal.amount+${BAL.bank.loanStep});render()">›</button></div>
+      <div class="kick" style="margin-top:8px">Over how many matchdays</div>
+      <div class="stepper">
+        <button onclick="modal.term=Math.max(${BAL.bank.minTermMD},modal.term-1);render()">‹</button>
+        <span class="val num" style="font-size:24px">${t.term}</span>
+        <button onclick="modal.term=Math.min(${BAL.bank.maxTermMD},modal.term+1);render()">›</button></div>
+      <div class="card" style="margin-top:10px">
+        <div class="rowline"><span>Rate <small>· their read on the club</small></span><span class="amt num">${pct(t.rate)}</span></div>
+        <div class="rowline"><span>Every matchday</span><span class="amt num" style="color:#E07A6A">−${kfmt(t.perMD)}</span></div>
+        <div class="rowline"><span>Paid back in total</span><span class="amt num">${kfmt(t.total)}</span></div>
+        ${owed?`<div class="rowline"><span>Already owed</span><span class="num">${kfmt(owed)}</span></div>`:""}
+        <div class="rowline"><span>They will go to</span><span class="num">${kfmt(m.room)}</span></div></div>
+      <div class="why"><b>What this means:</b> the payment leaves the account every matchday, home or away, whether or not anybody came. A stand pays for itself out of the gate it creates — if the gate arrives. The rate is what they think of your division, your balance, what you already owe, and every administration on the record.</div>
+      <button class="glowbtn" onclick="loanConfirm()">Sign for ${kfmt(m.amount)}</button>
+      <button class="abtn ghost" onclick="modal=null;render()">Not today</button>
+    </div></div>`;
+  }
   if(modal.type==="rescue"){
     const after=G.myShare-modal.share;
     return `<div class="overlay"><div class="sheet">
