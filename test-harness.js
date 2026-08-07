@@ -144,7 +144,7 @@ const BRIDGE = `
   get obData(){return obData;},
   consts:{STANDS,STANDCOST,FACS,FAC_DETAIL,ROLES,APPROACHES,SWATCHES,TRAITS,COACHES,SPONSORS,BAL,
     // pakke 6: tekstbiblioteket skal kunne inspiceres udefra
-    LINE_TAGS,POOLS:{GOALDESC,NEARMISS,FLAVOR,PENDESC,OPPGOAL,MOMENTUM,GHOSTBITTER,GHOSTWARM,DISALLOWED},GAFFERTALK,lineText,lineOk},
+    DIV_OBJECTIVE,LINE_TAGS,POOLS:{GOALDESC,NEARMISS,FLAVOR,PENDESC,OPPGOAL,MOMENTUM,GHOSTBITTER,GHOSTWARM,DISALLOWED},GAFFERTALK,lineText,lineOk},
   call(name){
     const f = globalThis[name];
     if(typeof f !== "function") throw new Error("harness: ingen global funktion '"+name+"'");
@@ -498,6 +498,90 @@ function runSeed(seed, PROFILE) {
     checkInvariants();
   }
 
+  /* Pakke 16. Nedrykningen har syv foelgevirkninger, og en mekanik hvor kun
+     G.div++ virker ville bestaa enhver naiv "kan man rykke ned"-test. Derfor
+     maales de hver for sig, foer og efter, paa en klub der placeres sidst. */
+  function checkRelegation() {
+    const G = H.G;
+    where = "nedrykning";
+    const B = H.consts.BAL, RG = B.relegation;
+    const keep = JSON.parse(JSON.stringify({ div: G.div, cap: G.wageCap, obj: G.objectivePos,
+      trust: G.trust, sponsor: G.sponsor, me: G.me, teams: G.teams, history: G.history,
+      season: G.season, md: G.md, phase: G.phase, inbox: G.inbox, news: G.news }));
+    const keepModal = H.modal, keepScreen = H.screen;
+
+    /* Sidst i tabellen: nul point til mig, rigeligt til alle andre. */
+    const lastPlace = () => { G.me = { pts: 0, gd: -40, pl: G.rounds };
+      G.teams.forEach((t, ix) => { t.pts = 20 + ix; t.gd = ix; t.pl = G.rounds; }); };
+
+    for (const div of [0, 1, 2, 3]) {
+      G.div = div; G.md = G.rounds; G.phase = "season"; H.modal = null;
+      G.wageCap = 20000; G.trust = 60; G.objectivePos = 7;
+      G.sponsor = { n: "Testsponsor", per: 5000, seasonsLeft: 3, demand: null, agenda: "t", character: "t" };
+      lastPlace();
+      const pos = H.call("myPos"), rows = H.call("table").length;
+      if (pos !== rows) fail("sidsteplads-opstillingen virker ikke: pos " + pos + " af " + rows);
+      const before = { div: G.div, cap: G.wageCap, trust: H.call("trustLevel"),
+        wages: G.squad.reduce((s, p) => s + p.wage, 0), val: H.call("clubValuation"),
+        sponsor: G.sponsor.per, town: H.call("townDemand"), opps: G.teams.map(t => t.name).join("|"),
+        /* Loennen maales PR. SPILLER, ikke som loensum. finishSeason lader
+           udloebne kontrakter gaa i samme aandedrag, saa en loensum foer/efter
+           blander nedrykningens loennedgang sammen med Bosman-afgange -- den
+           foerste udgave af den her kontrol maalte x0,62 hvor koden goer x0,82,
+           og ville derfor have fejlet paa korrekt kode. */
+        wageOf: new Map(G.squad.map(p => [p.id, p.wage])) };
+
+      H.call("startPostSeason");
+      if (H.modal && H.modal.type === "seasonDone") H.modal = null;
+      const hist = G.history[G.history.length - 1];
+
+      if (div >= RG.floorDiv) {
+        /* Verdens gulv. Man kan tabe alt hvad der er at tabe i League Three og
+           stadig vaere der -- kun oekonomien kan tage klubben. */
+        if (G.div !== div) fail("klubben rykkede ned FRA div " + div + ", som er gulvet (floorDiv " + RG.floorDiv + ")");
+        if (hist && hist.relegated) fail("historikken siger nedrykket fra gulvet");
+        continue;
+      }
+      if (G.div !== before.div + 1) fail("sidsteplads i div " + div + " gav div " + G.div + ", ikke " + (before.div + 1));
+      if (!hist || !hist.relegated) fail("nedrykningen staar ikke i historikken (div " + div + ")");
+      if (G.wageCap >= before.cap) fail("loenloftet faldt ikke ved nedrykning: " + G.wageCap + " mod " + before.cap);
+      if (H.call("trustLevel") >= before.trust) fail("bestyrelsen reagerede ikke: tillid " +
+        H.call("trustLevel") + " mod " + before.trust);
+      if (G.objectivePos !== H.consts.DIV_OBJECTIVE[G.div])
+        fail("maalsaetningen fulgte ikke divisionen: " + G.objectivePos + " mod " + H.consts.DIV_OBJECTIVE[G.div]);
+      if (G.sponsor && G.sponsor.per >= before.sponsor) fail("shirtsponsoren er lige saa meget vaerd en division laengere nede");
+      if (G.teams.map(t => t.name).join("|") === before.opps) fail("modstanderne blev ikke skiftet ud ved nedrykning");
+      const stayed = G.squad.filter(p => before.wageOf.has(p.id));
+      if (stayed.length < 5) fail("for faa spillere blev i truppen til at maale loennedgangen (" + stayed.length + ")");
+      const wasSum = stayed.reduce((s, p) => s + before.wageOf.get(p.id), 0);
+      const nowSum = stayed.reduce((s, p) => s + p.wage, 0);
+      const ratio = nowSum / wasSum;
+      if (ratio >= 1) fail("loennen faldt slet ikke ved nedrykning (x" + ratio.toFixed(3) + ")");
+      /* Og det vigtigste: loennen maa IKKE falde helt tilbage. Falder den lige
+         saa meget som den steg, er nedrykning en gratis nulstilling, og saa er
+         der ingen krise at spille sig ud af. Praecis det gap mellem
+         relegationDrop og 1/promotionRise ER krisen. */
+      if (ratio <= 1 / B.wages.promotionRise + 0.001)
+        fail("loennen faldt helt tilbage (x" + ratio.toFixed(3) + " mod oprykningens 1/" +
+          B.wages.promotionRise + " = x" + (1 / B.wages.promotionRise).toFixed(3) +
+          ") -- nedrykning er blevet en gratis nulstilling, ikke en krise");
+      if (Math.abs(ratio - B.wages.relegationDrop) > 0.02)
+        fail("loennen faldt x" + ratio.toFixed(3) + ", men BAL.wages.relegationDrop lover x" + B.wages.relegationDrop);
+      if (H.call("townDemand") >= before.town) fail("byen skrumpede ikke: " + H.call("townDemand") + " mod " + before.town);
+      /* BAL.val.floor ("even a smoking ruin owns a ground") spiser forskellen
+         paa en klub der allerede ligger paa bunden. Det er ikke en fejl i
+         nedrykningen -- det er gulvet der goer sit arbejde. Maal kun naar der
+         er noget at falde fra. Nat 1 laerte praecis den lektie paa
+         checkValuationDirection; jeg gentog fejlen her. */
+      if (before.val > B.val.floor && H.call("clubValuation") >= before.val)
+        fail("klubvaerdien faldt ikke: " + H.call("clubValuation") + " mod " + before.val);
+      checkInvariants();
+    }
+
+    Object.assign(G, keep); H.modal = keepModal; H.screen = keepScreen;
+    H.call("render"); checkHtml(); checkInvariants();
+  }
+
   function checkGroundStates() {
     const G = H.G;
     const keys = Object.keys(H.consts.STANDS);
@@ -656,7 +740,14 @@ function runSeed(seed, PROFILE) {
     const after = v();
     if (loose && after >= base) fail("administration saenkede ikke klubvaerdien: " + base + " -> " + after);
     if (!(G.admins > snap.admins)) fail("administration blev ikke talt med (G.admins)");
-    if (!(G.trust < snap.trust)) fail("administration kostede ikke tillid i bestyrelsen");
+    /* Samme klemme som vaerdiens gulv, en etage laengere nede: bumpTrust
+       klamper til 0-100, saa en bestyrelse der allerede har mistet al tillid
+       kan ikke miste mere. Det var uopnaaeligt indtil pakke 16 gav
+       nedrykningen trustRelegation -14; over 20 saesoner rammer flere klubber
+       bunden, og saa fejlede kontrollen paa en klub der bare var haabloes.
+       Maal kun naar der ER noget at miste. */
+    if (snap.trust > 0 && !(G.trust < snap.trust))
+      fail("administration kostede ikke tillid i bestyrelsen: " + snap.trust + " -> " + G.trust);
 
     G.div = snap.div; G.admins = snap.admins; G.trust = snap.trust; G.balance = snap.balance;
     G.fanMood = snap.mood; G.me.pts = snap.pts; G.md = snap.md; G.loan = snap.loan;
@@ -1596,6 +1687,12 @@ function runSeed(seed, PROFILE) {
     if (!Number.isFinite(G.capacity)) fail("capacity er ikke et tal");
     if (G.squad.length < 11) fail("truppen er for lille: " + G.squad.length);
     if (G.md < 0 || G.md > G.rounds) fail("md uden for interval: " + G.md);
+    /* Pakke 16: divisionen kan nu bevaege sig BEGGE veje, og saa er graenserne
+       ikke laengere noget der passer af sig selv. 0 er toppen, floorDiv er
+       verdens gulv. */
+    if (!Number.isInteger(G.div) || G.div < 0 || G.div > H.consts.BAL.relegation.floorDiv)
+      fail("div uden for 0-" + H.consts.BAL.relegation.floorDiv + ": " + G.div);
+    if (!G.divNames[G.div]) fail("div " + G.div + " har intet navn");
     if (G.myShare < 0 || G.myShare > 100) fail("myShare = " + G.myShare);
     const shares = G.owners.reduce((s, o) => s + o.share, 0) + G.myShare;
     if (shares !== 100) fail("ejerandele summer til " + shares + " (skal være 100)");
@@ -2264,6 +2361,7 @@ function runSeed(seed, PROFILE) {
   checkPriceCurves();
   checkGroundStates();
   checkMainStandRole();
+  checkRelegation();
   checkValuationDirection();
   checkBigGate();
   checkBigSources();
@@ -2750,6 +2848,28 @@ function report(runs) {
       " · oprykning " + up + "/" + rows.length);
   }
   console.log("  oprykninger i alt " + promos + " · mesterskaber i øverste række " + titles);
+
+  /* Pakke 16. Nedrykningens egen linje. Uden den kan man ikke se forskel paa
+     "mekanikken virker" og "mekanikken fyrer aldrig", og det var netop den
+     forskel pakke 5 blev maalt forkert paa. Slutdivisionen er det tal der
+     afgoer om klatreturen stadig betyder noget: rykker ingen ned, ender alle i
+     oeverste raekke, og saa er nedrykningen dekoration. */
+  {
+    const rel = runs.reduce((a, r) => a + r.stats.history.filter(h => h.relegated).length, 0);
+    const careersWith = runs.filter(r => r.stats.history.some(h => h.relegated)).length;
+    const bySeason = new Map();
+    for (const r of runs) for (const h of r.stats.history)
+      if (h.relegated) bySeason.set(h.season, (bySeason.get(h.season) || 0) + 1);
+    const divs = [0, 0, 0, 0];
+    for (const r of runs) divs[r.stats.final.div]++;
+    const names = ["Premier", "League One", "League Two", "League Three"];
+    console.log("  nedrykninger i alt " + rel + " (" + (rel / runs.length).toFixed(2) + " pr. karriere) · " +
+      "karrierer med mindst en: " + careersWith + " af " + runs.length);
+    console.log("  slutdivision: " + divs.map((n, i) => names[i] + " " + n).join(" · "));
+    const late = [...bySeason.keys()].filter(s => s >= 10).reduce((a, s) => a + bySeason.get(s), 0);
+    console.log("  heraf fra saeson 10 og frem: " + late +
+      " (den halvdel af karrieren hvor der foer ikke var noget at spille om)");
+  }
 }
 
 /* ---------------- main ---------------- */

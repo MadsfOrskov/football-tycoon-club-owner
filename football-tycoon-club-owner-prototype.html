@@ -299,8 +299,23 @@ const BAL={
        matchday and push the club into administration for doing the right thing. */
     scale:11.5,              // player wage = ovr × scale × division multiplier
     cap:10500, capOnPromotion:1.5, capRaise:1.2,
-    freeAgentMult:1.5, promotionRise:1.35, adminCut:0.8
+    freeAgentMult:1.5, promotionRise:1.35, adminCut:0.8,
+    /* Pakke 16, the mirrors of the two rungs above. Deliberately NOT the exact
+       inverses. Going up multiplies the cap by 1.5 and the payroll by 1.35;
+       coming down divides the cap by ~1.5 but the payroll only by ~1.22. The
+       gap is the crisis: relegation leaves you carrying a wage bill the new
+       division cannot pay, and it is yours to trade, renegotiate or drown in.
+       An exact inverse would make going down a free reset, which is the one
+       thing it must not be. */
+    capOnRelegation:0.68, relegationDrop:0.82
   },
+  /* Pakke 16. Down is the mirror of up: the bottom `spots` go, and `floorDiv`
+     is the floor of the world — you cannot be relegated out of League Three.
+     Sporting failure can send you to the bottom of the pyramid; only financial
+     failure can take the club off you, and that is a different story told by a
+     different mechanic. Keeping the two falls apart is what makes them two
+     stories instead of one double punishment. */
+  relegation:{spots:2, floorDiv:3, confHit:12},
   /* Club value. The old formula was assets only, and every one of its terms
      could only grow — squad, capacity, division. A monotonically rising value
      means the cheapest moment to buy control is always NOW, which is why a
@@ -333,7 +348,10 @@ const BAL={
     trustFundKept:3, trustAdmin:-30, trustRaid:-12, trustPromise:-5, trustFavourite:-8,
     /* Pakke 15b: the Main Stand is the one board-facing thing you can BUILD.
        Small on purpose — next to trustAdmin −30 it is a nod, not a shortcut. */
-    trustMainStand:4
+    trustMainStand:4,
+    /* Pakke 16. Bigger than trustMissed (−4) and smaller than trustAdmin (−30):
+       relegation is worse than a bad season and not as bad as losing the club. */
+    trustRelegation:-14
   },
   fund:{bonusPerMD:0.015, bonusCap:0.15},
   /* Freshness. The game's unit of time is the MATCHDAY — there are no rest
@@ -375,7 +393,10 @@ const BAL={
   // near break-even by design, so the building money comes from here.
   prize:{champions:150000, runnersUp:100000, playoffs:120000, objective:48000, missed:16000},
   bank:{crisisAt:-60000, loanCash:50000, loanPerMD:5500, loanTerm:10, adminRelief:40000, adminPoints:6},
-  sponsor:{penalty:0.2, stuntFee:6000},  // penalty: of a season's income if the clause is missed
+  /* penalty: of a season's income if the clause is missed. onPromotion /
+     onRelegation: what the shirt is worth in the new division — both were bare
+     constants (1.6 up, nothing down) inside finishSeason. */
+  sponsor:{penalty:0.2, stuntFee:6000, perDivision:0.6, onPromotion:1.6, onRelegation:0.66},
   /* The protest ladder (GDD): "først bannere, så tavshed (uhyggeligst), så
      boykot med økonomisk konsekvens. Vrede har trin, ikke bare et tal."
      `hysteresis` is what makes the way back possible but slow: you slip down a
@@ -1897,7 +1918,24 @@ function startPostSeason(){
   // not in playoffs — sim it in news
   const winner=pick(seeds.filter(r=>r.i!==0));
   addNews("LEAGUE",(winner?winner.n:"Somebody")+" win the playoff final. It should have been you. Next season.");
-  finishSeason({promoted:false,how:"league"});
+  finishSeason({promoted:false,how:"league",relegated:relegationSpot(pos,t.length)});
+}
+/* Pakke 16. The bottom `spots` of the table go down — the mirror of the two
+   automatic promotion places at the top. League Three is the floor of the
+   world, so nobody falls out of it. */
+/* What the co-owners ask for in each division. Was an inline map inside the
+   promotion branch with an ||10 fallback that never matched newGame's 8; now
+   division 3 is in it, so up and down read the same table. */
+const DIV_OBJECTIVE={3:8,2:10,1:9,0:7};
+/* A new division means new opponents. Shared by promotion and relegation so
+   the two directions cannot drift apart. */
+function reseedLeague(){
+  for(const t of G.teams){t.name=pick(TOWN1)+" "+pick(TOWN2);t.att=R(50,66)+(3-G.div)*2;t.def=R(50,66)+(3-G.div)*2;}
+}
+function relegationSpot(pos,rows){
+  const RG=BAL.relegation;
+  if(G.div>=RG.floorDiv)return false;
+  return pos>rows-RG.spots;
 }
 function playPlayoff(){
   const semi=G.phase==="playoff_semi";
@@ -1932,26 +1970,44 @@ function finishSeason(o){
   if(o.how==="champions"){prize=BAL.prize.champions;txt="CHAMPIONS. The town has run out of bunting.";}
   else if(o.how==="runners-up"){prize=BAL.prize.runnersUp;txt="Promoted as runners-up. The champagne is mid-range but plentiful.";}
   else if(o.how==="playoffs"&&o.promoted){prize=BAL.prize.playoffs;txt="PLAYOFF WINNERS! The most profitable afternoon in club history.";}
+  else if(o.relegated){prize=BAL.prize.missed;txt="RELEGATED. "+ord(pos)+" of "+(G.teams.length+1)+", and down we go. Nobody in the boardroom is looking at anybody.";}
   else if(pos<=G.objectivePos){prize=BAL.prize.objective;txt="You finished "+ord(pos)+". The co-owners are satisfied and have bought a new kettle.";}
   else{prize=BAL.prize.missed;txt="You finished "+ord(pos)+". The co-owners 'note the result with interest'. That's owner-speak for: do better.";}
   G.balance+=prize;
   sponsorSettleDemand(pos);          // the top-N clause is settled before the deal rolls over
-  G.history.push({season:G.season,div:G.divNames[G.div],pos,promoted:!!o.promoted});
+  G.history.push({season:G.season,div:G.divNames[G.div],pos,promoted:!!o.promoted,relegated:!!o.relegated});
   /* Trust is time plus delivery. It is why a share costs ~1,9× fair in season 1
      and drifts toward ~1,25× for a chairman they have watched keep his word. */
   {const O=BAL.owners;
    bumpTrust(O.trustPerSeason+(pos<=G.objectivePos?O.trustObjective:O.trustMissed)+(G.fundRaided?0:O.trustFundKept));}
   const promoted=o.promoted&&G.div>0;
+  const relegated=!!o.relegated&&G.div<BAL.relegation.floorDiv&&!promoted;
   settleCommitments(promoted);   // before the summer wipes p.sg — goal bonuses need it
   if(promoted){
-    G.div--;G.objectivePos={2:10,1:9,0:7}[G.div]||10;G.wageCap=Math.round(G.wageCap*BAL.wages.capOnPromotion/100)*100;
-    for(const t of G.teams){t.name=pick(TOWN1)+" "+pick(TOWN2);t.att=R(50,66)+(3-G.div)*2;t.def=R(50,66)+(3-G.div)*2;}
-    if(G.sponsor)G.sponsor.per=Math.round(G.sponsor.per*1.6); // may be shirtless — that used to crash the run
+    G.div--;G.objectivePos=DIV_OBJECTIVE[G.div];G.wageCap=Math.round(G.wageCap*BAL.wages.capOnPromotion/100)*100;
+    reseedLeague();
+    if(G.sponsor)G.sponsor.per=Math.round(G.sponsor.per*BAL.sponsor.onPromotion); // may be shirtless — that used to crash the run
     // the squad renegotiates too: a higher division costs more than the cap alone
     const before=G.squad.reduce((s,p)=>s+p.wage,0);
     for(const p of G.squad)p.wage=Math.round(p.wage*BAL.wages.promotionRise/10)*10;
     const after=G.squad.reduce((s,p)=>s+p.wage,0);
     msg("Ledger (bookkeeper)","L","Promotion has a price tag","Every agent rang on Monday morning. The same squad now costs "+kfmt(after)+"/w instead of "+kfmt(before)+"/w — that is what "+G.divNames[G.div]+" football pays. The cap moved to "+kfmt(G.wageCap)+".",null);
+  }
+  /* Pakke 16. Every consequence of going up, mirrored — and none of them
+     exactly. The cap falls harder than the payroll does, so a relegated club
+     walks into the new season carrying a wage bill it cannot pay: that gap IS
+     the crisis, and trading out of it is the season's work. */
+  else if(relegated){
+    const wasDiv=G.divNames[G.div];
+    G.div++;G.objectivePos=DIV_OBJECTIVE[G.div];G.wageCap=Math.round(G.wageCap*BAL.wages.capOnRelegation/100)*100;
+    reseedLeague();
+    if(G.sponsor)G.sponsor.per=Math.round(G.sponsor.per*BAL.sponsor.onRelegation);
+    bumpTrust(BAL.owners.trustRelegation);
+    const before=G.squad.reduce((s,p)=>s+p.wage,0);
+    for(const p of G.squad)p.wage=Math.round(p.wage*BAL.wages.relegationDrop/10)*10;
+    const after=G.squad.reduce((s,p)=>s+p.wage,0);
+    msg("Ledger (bookkeeper)","L","Relegation has a price tag too","Some contracts had a clause, most did not. The squad still costs "+kfmt(after)+"/w against "+kfmt(before)+"/w in "+wasDiv+" — on "+G.divNames[G.div]+" money, and against a cap of "+kfmt(G.wageCap)+". Sell, renegotiate, or drown, chairman.",null);
+    addNews("CLUB","Relegated to "+G.divNames[G.div]+". The banner outside the Shed End has been taken down for repairs it does not need.");
   }
   // the contract clock ticks — and Bosman waits for the careless
   const leavers=[];
@@ -1983,6 +2039,23 @@ function finishSeason(o){
     p.conf=clamp(p.conf*0.6+20,10,95); // confidence regresses toward the mean over summer
   }
   applyRetirements();
+  /* Pakke 16. The dressing room reads the table too. Applied AFTER the summer's
+     confidence regression (conf*0.6+20), not before — put it in the relegation
+     branch above and the regression washes it straight back out, which is the
+     kind of effect that measures as "built" and plays as nothing.
+     The dreamer is the man who wants the move; the trait exists, is documented
+     in the GDD as exactly this, and was used in two places. Now it is used
+     where it means something. */
+  if(relegated){
+    for(const p of G.squad)p.conf=clamp(p.conf-BAL.relegation.confHit,10,95);
+    const wantAway=G.squad.filter(p=>p.traits.includes("dreamer"));
+    if(wantAway.length&&G.squad.length>13){
+      const p=pick(wantAway);p.reqDone=true;
+      msg(pick(AGENTS).n,"A","TRANSFER REQUEST: "+p.name.split(" ")[1],
+        "\"My client signed for a "+G.divNames[G.div-1]+" club, chairman. He is very sorry about the relegation and very serious about leaving.\"",
+        {kind:"transferReq",pid:p.id});
+    }
+  }
   G.captSuggested=false;G.talkCooldown=0;
   G.mentors=G.mentors.filter(m=>byId(m.vet)&&byId(m.kid));
   if(!G.captain||!byId(G.captain))pickCaptain();
@@ -2005,8 +2078,8 @@ function sponsorRenewal(){
   const first=pick(SPONSORS);
   const rest=SPONSORS.filter(s=>s.n!==first.n);          // never two identical cards
   const offers=[sponsorCopy(first),sponsorCopy(pick(rest.length?rest:SPONSORS))];
-  offers[0].per=Math.round(offers[0].per*(1+(3-G.div)*0.6));offers[0].seasonsLeft=2;offers[0].demand=null;
-  offers[1].per=Math.round(offers[1].per*(1+(3-G.div)*0.6)*1.35);offers[1].seasonsLeft=1;offers[1].demand="top "+Math.max(4,G.objectivePos-2)+" finish or "+pct(BAL.sponsor.penalty)+" penalty";
+  offers[0].per=Math.round(offers[0].per*(1+(3-G.div)*BAL.sponsor.perDivision));offers[0].seasonsLeft=2;offers[0].demand=null;
+  offers[1].per=Math.round(offers[1].per*(1+(3-G.div)*BAL.sponsor.perDivision)*1.35);offers[1].seasonsLeft=1;offers[1].demand="top "+Math.max(4,G.objectivePos-2)+" finish or "+pct(BAL.sponsor.penalty)+" penalty";
   // shown after the budget meeting, not buried in the inbox
   G.sponsorDue={offers,renewal:true};
 }

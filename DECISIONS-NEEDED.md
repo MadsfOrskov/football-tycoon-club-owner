@@ -138,3 +138,31 @@ Jeg valgte den første, fordi den flytter hviletilstanden, og det var hviletilst
 **Valgt imens: 0** — GDD'en kalder tavsheden *"uhyggeligst"*, og at den tager hele den tolvte mand er den mest GDD-konsistente læsning. Den er samtidig mildere end den gamle knap for enhver klub med en Shed End, fordi Shed End-leddet nu overlever protesten (det gjorde det ikke før — se QA's F7, hvor en færdigbygget Shed End til £220.000 var værdiløs på 31 % af kampdagene).
 
 **Spørgsmålet til dig:** skal der være en rest af publikum tilbage i tavsheden (fx `silentCrowd: 0,3`)? Det er nu en ren, monoton skrue: 0 = hårdest, 1 = ingen straf, og alt derimellem er forudsigeligt. Den kan tunes uden at ændre form, hvilket var hele problemet før.
+
+## 8. Nedrykningen virker — men to tredjedele af karriererne ender på gulvet (pakke 16)
+
+**Målt over 60 seeds × 20 sæsoner, kun pakke 16 til forskel:**
+
+| | uden nedrykning | med nedrykning |
+|---|---|---|
+| gns. placering, sæson 20 | 12,2 | **10,8** |
+| oprykninger, sæson 20 | 1 af 60 | **6 af 60** |
+| oprykninger i alt | 185 | **231** |
+| oprykninger fra sæson 6 og frem | 89 | **133** |
+| lønsum/uge, sæson 20 | £56.626 | **£30.275** |
+| sene sæsoner der slutter i minus | 45 % | **39 %** |
+| slutkasse, snit | £131.005 | £346.297 |
+| sene sæsoner i øverste række | 60 % | **19 %** |
+| **slutdivision efter 20 sæsoner** | — | **Premier 9 · L1 6 · L2 5 · League Three 40** |
+| nedrykninger pr. karriere | — | 2,57 (60 af 60 karrierer har mindst én) |
+
+**Det gode:** den monotone nedtur er brudt. Placeringen flader ud omkring 9,1-9,8 fra sæson 9 til 15 i stedet for at glide støt mod 12,2, og der rykkes op igen — 133 oprykninger fra sæson 6 og frem mod 89. Nedrykningen er også præcis den økonomiske ventil QA efterlyste: lønsummen i sæson 20 er næsten halveret, fordi en klub ikke længere kan bære en Premier-lønsum i det uendelige.
+
+**Det jeg er i tvivl om:** **40 af 60 karrierer ender i League Three.** Klubben jojoer, men med en nedadgående skævhed. Mekanismen er sandsynligvis at `capOnRelegation` (0,68) er hårdere end `relegationDrop` (0,82) — det er *med vilje*, for det er dét, der gør nedrykning til en krise frem for en gratis nulstilling — men kombineret med at indtægtssiden ikke skalerer (pakke 18's emne) betyder det, at en nedrykket klub er ukonkurrencedygtig og rykker ned igen.
+
+**Jeg har IKKE tunet det væk.** Pakke 18 er bygget til at rette netop indtægtssiden, og den kommer efter med vilje. Tallene ovenfor er målt FØR pakke 18. Hvis fordelingen stadig er så skæv efter 18, er der to knapper:
+
+1. **Blødgør nedrykningen:** `relegationDrop` ned mod 0,74 (= 1/`promotionRise`), så lønnen falder helt tilbage. Prisen er, at nedrykning bliver en gratis nulstilling — og så er der ingen krise at spille sig ud af. Harness'en fejler i dag med vilje, hvis det sker.
+2. **Accepter det:** en lower league chairman sim, hvor klubben *hører til* i League Three og hvor de fem sæsoner i Premier Division er karrierens højdepunkt frem for dens hviletilstand, er ikke åbenlyst forkert. GDD'ens kernefantasi er "bygge klubben op fra bunden", ikke "blive der".
+
+Det er et spørgsmål om hvilket spil det skal være, og derfor ikke mit.
