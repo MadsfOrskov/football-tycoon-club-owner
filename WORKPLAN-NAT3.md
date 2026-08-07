@@ -249,6 +249,23 @@ Læg det mod vores egne målinger: fra sæson 8 er alt bygget i 73 % af karriere
 
 Natten samler derfor det, der før hed "Verden": byinvesteringerne, de navngivne lokale med egne dagsordener (GDD'en har allerede byrådet, den rige bejler, skandalen og naboens konkurs som de fire store dilemmaer, plus Maureen Cobb som gennemgående journalist), og liganyhederne — målt til **0,09 pr. kampdag mod GDD's lovede 2-3**, faktor 28, og rørene findes allerede.
 
+# Nat 5b — pyramiden: der skal findes en verden uden for din liga
+
+**Besluttet af Mads 7/8.** I dag er verden 13 navngivne modstandere, og `G.div` er et heltal fra 0 til 3. De andre divisioner findes ikke som *steder*.
+
+**Vigtig afklaring:** nedrykningen (pakke 16) har ikke brug for pyramiden. Mekanikken virker med `G.div` som tal. Pyramiden gør faldet **synligt**, ikke muligt — de er additive. Men den skal ligge **før pokalen og multi-klub**, ellers skal begge bygges om.
+
+Formen er en **overfladisk** simulering af de tre andre rækker — ikke en fuld motor:
+
+- Tabeller der bevæger sig sæson for sæson, med navngivne klubber.
+- Op- og nedrykning mellem alle fire niveauer, så klubber faktisk **ankommer** i din liga næste sæson. Den klub der sendte dig ned, kan du møde igen på vej op.
+- De spillere du solgte, dukker op i dem. **`G.soldTo` registrerer allerede navn, klub, position, OVR og om han gik bittert** — dataene ligger der, ingen læser dem. GDD'ens Legende-væg lover ordret: *"Quigley scorede i går for storklubben, du solgte ham til."*
+- Klubber i andre divisioner er modstandere i pokalen og mulige opkøb i multi-klub.
+
+**Hvorfor før frem for efter:** tre køpunkter afhænger af den — pokalen, multi-klub og Legenderne. Bygger vi den først, er de tre billigere. Bygger vi den bagefter, skal alle tre laves om.
+
+`G` skal forblive et træ: de andre divisioner er tabeller af primitive værdier, ingen delte objektreferencer til `G.teams`.
+
 # Nat 6 — multi-klub
 
 Flere klubber pr. ejer, aldrig to i samme liga. `G` skal have en klub-dimension i roden — **egen pakke, efter nedrykningen**, med harness'en som sikkerhedsnet: 4.000 sæsoner uden et eneste nedbrud er præcis det aktiv, der gør en stor mekanisk omskrivning forsvarlig.
