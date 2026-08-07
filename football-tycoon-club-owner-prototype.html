@@ -2113,7 +2113,7 @@ function finishSeason(o){
   const relegated=!!o.relegated&&G.div<BAL.relegation.floorDiv&&!promoted;
   settleCommitments(promoted);   // before the summer wipes p.sg — goal bonuses need it
   if(promoted){
-    G.div--;G.objectivePos=DIV_OBJECTIVE[G.div];G.wageCap=Math.round(G.wageCap*BAL.wages.capOnPromotion/100)*100;
+    G.div--;G.wageCap=Math.round(G.wageCap*BAL.wages.capOnPromotion/100)*100;
     reseedLeague();
     if(G.sponsor)G.sponsor.per=Math.round(G.sponsor.per*BAL.sponsor.onPromotion); // may be shirtless — that used to crash the run
     // the squad renegotiates too: a higher division costs more than the cap alone
@@ -2128,7 +2128,7 @@ function finishSeason(o){
      the crisis, and trading out of it is the season's work. */
   else if(relegated){
     const wasDiv=G.divNames[G.div];
-    G.div++;G.objectivePos=DIV_OBJECTIVE[G.div];G.wageCap=Math.round(G.wageCap*BAL.wages.capOnRelegation/100)*100;
+    G.div++;G.wageCap=Math.round(G.wageCap*BAL.wages.capOnRelegation/100)*100;
     reseedLeague();
     if(G.sponsor)G.sponsor.per=Math.round(G.sponsor.per*BAL.sponsor.onRelegation);
     bumpTrust(BAL.owners.trustRelegation);
@@ -2138,6 +2138,14 @@ function finishSeason(o){
     msg("Ledger (bookkeeper)","L","Relegation has a price tag too","Some contracts had a clause, most did not. The squad still costs "+kfmt(after)+"/w against "+kfmt(before)+"/w in "+wasDiv+" — on "+G.divNames[G.div]+" money, and against a cap of "+kfmt(G.wageCap)+". Sell, renegotiate, or drown, chairman.",null);
     addNews("CLUB","Relegated to "+G.divNames[G.div]+". The banner outside the Shed End has been taken down for repairs it does not need.");
   }
+  /* Pakke 16/19: maalsaetningen hoerer til divisionen og forhandles paa ny hvert
+     aar. EET sted saetter den -- her, lige efter divisionen kan have flyttet
+     sig. Den stod ogsaa inde i baade oprykningens og nedrykningens gren, og to
+     steder der haandhaever samme regel betyder at man kan slette det ene uden
+     at noget fejler: sabotage-sweepet fandt netop det. Springer man
+     budgetmoedet over, staar divisionens egen ramme -- ikke sidste aars aftale.
+     Ligger foer sponsorRenewal(), som laeser objectivePos. */
+  G.objectivePos=DIV_OBJECTIVE[G.div];G.objectiveBold=0;
   // the contract clock ticks — and Bosman waits for the careless
   const leavers=[];
   for(const p of G.squad){p.years=Math.max(0,(p.years||1)-1);}
@@ -2190,10 +2198,6 @@ function finishSeason(o){
   if(!G.captain||!byId(G.captain))pickCaptain();
   // sponsor expiry
   if(G.sponsor){G.sponsor.seasonsLeft--;if(G.sponsor.seasonsLeft<=0){G.sponsor=null;sponsorRenewal();}}
-  /* Pakke 16/19: maalsaetningen hoerer til divisionen og forhandles paa ny hvert
-     aar. Springer man moedet over, staar divisionens egen ramme -- ikke sidste
-     saesons aftale. */
-  G.objectivePos=DIV_OBJECTIVE[G.div];G.objectiveBold=0;
   G.season++;G.md=0;G.phase="season";
   G.me={pts:0,gd:0,pl:0};for(const t of G.teams){t.pts=0;t.gd=0;t.pl=0;}
   G.fixtures=makeFixtures();refreshMarket();
