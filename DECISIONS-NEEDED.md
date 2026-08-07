@@ -248,3 +248,33 @@ Gæld gør klubben skrøbelig. Det er ikke en fejl — det er hele meningen med 
 - Botten sagde ja til den *fatale* redning i 85 % af tilfældene, også når modalen skriver "This one ends it". Det tal (40 % af karriererne mistet) sagde mere om politikken end om spillet. `sane` vælger nu administrationen når alternativet er at aflevere klubben.
 
 **Spørgsmålet til dig:** skal banken være sværere at komme til for en klub der allerede taber penge? Den mest oplagte knap er at lade `loanHeadroom()` skalere med `G.netEwma` — *"banken låner mod indtjening, ikke mod håb"*. Det ville ramme præcis de klubber der i dag låner sig ind i trappen, uden at røre den klub der låner for at bygge en tribune den kan betale af. Jeg har ikke bygget den, fordi det er en ny regel og ikke en justering.
+
+## 12. Nat 4's fire pakker gør tilsammen klubben markant skrøbeligere (pakke 22-25)
+
+Målt over **60 seeds × 20 sæsoner, begge botprofiler**, med hele nat 4 bygget:
+
+| | nat 3 færdig (200×20) | nat 4 færdig (60×20) |
+|---|---|---|
+| administrationer pr. karriere, `sane` | 2,3 | **4,15** |
+| administrationer pr. karriere, `lazy` | 0,45 | **0,63** |
+| trin 4 tilbudt pr. karriere, `sane` | — | 4,07 |
+| karrierer hvor trin 5 er inden for rækkevidde, `sane` | — | 63 % |
+| kampdage med under 11 friske | 31 % | **40 %** |
+| sene sæsoner i minus, `sane` | 21 % | 35 % |
+| store kampe pr. sæson | 4,0 | 3,4 ✅ |
+| trup ved sæsonslut | 15,5 | 14,7 ✅ |
+
+**ROADMAP'ens mål for nat 4 var administration ~1 gang pr. karriere.** Vi er på 4,15 for den aktive bot — altså tilbage ved det tal QA klagede over (4,5), efter at nat 3 havde fået det ned på 2,3.
+
+**Hvorfor, og hvorfor jeg ikke bare har skruet det væk:** de fire pakker trækker samme vej, hver for sig med god grund.
+
+- **pakke 23** giver gæld, og gæld gør skrøbelig.
+- **pakke 24** lader et brudt key-løfte koste bestyrelsestillid, og lav tillid gør både lån og andele dyrere.
+- **pakke 25** lader "vi skal have tre point" koste ben og skader, så en aktiv formand har en tyndere trup.
+- **pakke 22** samler regningen op: når der hverken er en mand at sælge eller et lån at tage, står trin 4 der.
+
+Bemærk at `lazy` — botten der ikke låner, ikke forlanger og ikke bygger — ligger på **0,63**. Det er altså ikke spillet der er blevet umuligt; det er **aktiv spil der er blevet dyrt.** Om det er den rigtige pris er en designbeslutning, ikke en fejl.
+
+**Det jeg vil advare imod:** jeg brugte en time på at tune pakke 25 mod målinger på **20 seeds × 20 sæsoner**, og tallene svingede 2,75 → 3,40 → 5,10 administrationer på parameterændringer der burde have flyttet lidt. Det var **stikprøvestøj**, ikke signal — 20 karrierer er for få til at tune på, og jeg opdagede det for sent. Alle tal ovenfor er derfor målt på 60 seeds × 20 sæsoner med begge profiler, og de tre mellemregninger er kasseret. **Tun ikke nat 4 på 20 seeds.**
+
+**Den knap jeg tror på, hvis det skal ned:** `loanHeadroom()` skal skalere med `G.netEwma` (punkt 11). Det rammer præcis den klub der låner sig ind i trappen, uden at røre den der låner for at bygge en tribune den kan betale af — og det er den ene af de fire tråde der ikke har en naturlig bremse i dag.

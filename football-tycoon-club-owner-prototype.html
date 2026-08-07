@@ -415,6 +415,37 @@ const BAL={
      Nu er rollen en FORPLIGTELSE, ikke en rabat. Loennedslaget paa en
      key-kontrakt betales med et loefte om spilletid, og et loefte man ikke
      holder koster selvtillid, tillid i bestyrelsen og til sidst spilleren. */
+  /* Nat 4, pakke 25. Tilgangen hed ting som "Park it tight, frustrate them,
+     nick something". Det er en TAKTISK INSTRUKS, og formanden vaelger aldrig
+     taktik -- mekanikken broed spillets egen hovedregel, den samme regel der
+     staar oeverst i hver eneste arbejdsordre. Nu siger du hvilket RESULTAT du
+     har brug for, og gafferen vaelger selv hvordan.
+     Han siger ikke altid ja. `patience` er hans syn paa dig -- en egen maaler,
+     adskilt fra bestyrelsens tillid, praecis som ROADMAP'en beskriver den til
+     nat 5. Den defineres her og fyldes med indhold der; det er den ene af de
+     to muligheder ROADMAP'en selv stiller op. */
+  orders:{
+    startPatience:50,
+    /* Maalt, ikke gaettet. Ved 0,35/0,35 kostede en "tre point"-ordre saa mange
+       ben og saa mange skader at administrationer gik fra 3,1 til 4,25 pr.
+       karriere og 70 % af karriererne endte paa kanten af trappen. Prisen skal
+       kunne maerkes og ikke afgoere karrieren -- den er en afvejning, ikke en
+       straf for at ville vinde fodboldkampe. */
+    winFresh:0.08,        // chasing it burns legs
+    winInjury:0.10,       // ... and invites the physio
+    pointMoodVsWeak:-2,   // settling for a draw against a bottom club stings
+    weakBy:4,             // "bottom club" = this many places below you
+    saidWinLost:-3,       // you said three points and got none. They remember.
+    /* ... og HAN husker det ogsaa. Uden det her kunne taalmodigheden kun stige
+       (keptWord) og falde naar man tvang ordren igennem, saa den saturerede paa
+       100 hos stort set alle: median 100 over 20 karrierer, og saa siger han
+       aldrig nej til noget. En maaler der kun kan gaa en vej er ikke en maaler. */
+    saidWinLostPatience:-2,
+    saidWinWon:1,
+    insistPatience:-8,    // forcing his hand costs you with him
+    keptWord:3,           // ... and delivering on your own order buys it back
+    oddsBase:0.55, oddsPatience:0.35, oddsStyle:0.18
+  },
   role:{
     keyShare:0.55,        // a key player expects to start at least this share of the season
     keyGrace:6,           // matchdays into the season before anybody counts
@@ -1134,7 +1165,7 @@ function newGame(name,hue,mode){
     build:null,buildCost:80000,loans:[],warnedNeg:false,bankForced:false,
     sponsor:null,sponsorOffered:false,sponsorDue:null,
     coach:{...pick(COACHES)},
-    fanMood:60,objectivePos:8,objectiveBold:0,pendingMatch:null,
+    fanMood:60,objectivePos:8,objectiveBold:0,pendingMatch:null,gafferPatience:BAL.orders.startPatience,lastOrder:null,
     squad:posPlan.map(p=>genPlayer(p,R(42,58),G_DIV_WAGE(3))),
     market:[],freeAgents:[],scoutPending:0,scoutUsed:false,sponsorBoost:false,
     wageCap:BAL.wages.cap,bids:[],callbacks:[],lastXI:[],
@@ -1351,8 +1382,12 @@ function squadFreshness(){
    everyone else — bench, injured, suspended — sheds it. */
 function applyLoad(playedIds){
   const d=loadDecay(),played=new Set(playedIds);
+  /* Pakke 25: en eftermiddag hvor der blev jagtet en sejr koster mere i ben end
+     en hvor der blev holdt fast. Prisen ligger paa BELASTNINGEN og ikke paa et
+     nyt tal, saa den gaar gennem friskhedssystemet der allerede findes. */
+  const chase=1+(G.lastOrder==="win"?BAL.orders.winFresh:0);
   for(const p of G.squad){
-    const l=(p.load||0)*d+(played.has(p.id)?loadCost(p):0);
+    const l=(p.load||0)*d+(played.has(p.id)?loadCost(p)*chase:0);
     p.load=Math.round(Math.max(0,l)*1000)/1000;   // keep the save small and exact
   }
 }
@@ -1538,7 +1573,7 @@ function matchIncidents(match){ // red cards & injuries with consequences
     const F=BAL.fresh,p=pick(xiList());
     if(p){
       const scale=F.injuryScale*(G.fac.clinic?F.clinicScale:1);
-      const risk=(G.fac.clinic?F.injClinic:F.injBase)*(1+(100-freshOf(p))/100*scale);
+      const risk=(G.fac.clinic?F.injClinic:F.injBase)*(1+(100-freshOf(p))/100*scale)*(1+(match.order==="win"?BAL.orders.winInjury:0));
       if(Math.random()<risk){
         p.inj=Math.max(1,R(2,4)-(G.fac.clinic?BAL.fresh.clinicInjDays:0));
         out.push({m:R(10,80),txt:"Injury: "+p.name.split(" ")[1]+" pulls up. The physio's sponge is out.",
@@ -1589,6 +1624,65 @@ function gafferRead(match){
   if(returning)bits.push(returning.name.split(" ")[1]+" faces his old club — he's been first to training all week");
   return "\""+bits.join(", ")+".\"";
 }
+/* ---------- nat 4, pakke 25: formandens ord foer kampen ----------
+   Du beder om et RESULTAT. Han vaelger tilgangen. */
+const ORDERS={
+ win:{n:"We need three points",txt:"Go and win it. I do not care how it looks."},
+ point:{n:"A point will do",txt:"Take the draw if it is there. Do not throw it away chasing."},
+ free:{n:"Your call",txt:"You watch them all week. You decide."}
+};
+/* Hans stil farver hvordan han LAESER ordren -- en forsigtig gaffer hedger
+   stadig, naar han faar besked paa at jagte sejren. */
+function gafferLean(){
+  const c=G.coach||{};
+  const style=String(c.style||"").toLowerCase();
+  if(/attack|front|bold|cavalier/.test(style))return 1;
+  if(/defen|caution|pragma|dour|organis/.test(style))return -1;
+  return 0;
+}
+/* Hvor sandsynligt er det at han goer som du siger? Vises FOER du beder om
+   noget -- du har en stemme, ikke magten, og nu kan du se hvor staerk den er. */
+function gafferAcceptOdds(order){
+  const O=BAL.orders;
+  if(order==="free")return 1;
+  const pat=(G.gafferPatience===undefined?O.startPatience:G.gafferPatience)/100;
+  const lean=gafferLean();
+  const with_=order==="win"?lean:-lean;      // beder du om det han selv vil, siger han lettere ja
+  return clamp(O.oddsBase+(pat-0.5)*2*O.oddsPatience+with_*O.oddsStyle,0.05,0.98);
+}
+function gafferPicks(order,match){
+  const lean=gafferLean();
+  if(order==="win")return lean<0?"bal":"allout";
+  if(order==="point")return lean>0?"bal":"caut";
+  // "din afgoerelse": han laeser modstanderen, ikke dig
+  const t=G.teams[match.oppIdx-1]||{};const s=myStrength();
+  const gap=(s.att+s.def)/2-((t.att||50)+(t.def||50))/2;
+  return gap>4?"allout":gap<-4?"caut":lean>0?"allout":lean<0?"caut":"bal";
+}
+/* Hans EGEN vurdering, naar han ikke foelger ordren. */
+function gafferOwnChoice(match){return gafferPicks("free",match);}
+function giveOrder(order,insist){
+  const O=BAL.orders,m=modal,match=m.match;
+  if(G.gafferPatience===undefined)G.gafferPatience=O.startPatience;
+  const odds=gafferAcceptOdds(order);
+  const obeyed=order==="free"||insist||Math.random()<odds;
+  const appr=obeyed?gafferPicks(order,match):gafferOwnChoice(match);
+  if(insist&&order!=="free"){
+    G.gafferPatience=clamp(G.gafferPatience+O.insistPatience,0,100);
+    addNews("CLUB","The gaffer was told, not asked. He did it. He also said nothing on the way out.");
+  }
+  match.order=order;match.obeyed=obeyed;match.said=gafferSays(order,appr,obeyed,insist);
+  G.lastOrder=order;
+  choosePrematch(appr);
+}
+function gafferSays(order,appr,obeyed,insist){
+  const a=APPROACHES[appr].n.toLowerCase();
+  if(order==="free")return "\"Leave it with me. We go "+a+", and I will answer for it.\"";
+  if(insist)return "\"You are the chairman. "+a[0].toUpperCase()+a.slice(1)+" it is.\"";
+  if(obeyed)return order==="win"?"\"Right. "+a[0].toUpperCase()+a.slice(1)+", then, and we take our chances.\""
+    :"\"Sensible. We keep it "+a+" and see where we are at eighty.\"";
+  return "\"With respect, chairman — not today. We go "+a+". You can shout at me after.\"";
+}
 function choosePrematch(appr){
   const match=modal.match;
   // now the word is given, the rest of the division kicks off too (once only)
@@ -1633,6 +1727,30 @@ function htChoice(c){
    at skulle drives frem gennem en hel kampdag. Foerste udgave laa inde i
    finalizeMatch, og kontrollen kaldte postMatchMessages -- den maalte altsaa
    et sted hvor koden ikke var, og fejlede paa korrekt kode. */
+/* Prisen paa ordren. At jagte en sejr braender ben og inviterer fysioterapeuten;
+   at noejes med et point mod et bundhold stikker; og siger du at I SKAL vinde og
+   taber, husker byen hvad du sagde. */
+function orderAftermath(match,gf,ga){
+  const O=BAL.orders;
+  if(!match.order||match.order==="free")return;
+  if(G.gafferPatience===undefined)G.gafferPatience=O.startPatience;
+  if(match.order==="win"){
+    if(gf>ga){G.gafferPatience=clamp(G.gafferPatience+O.keptWord,0,100);
+      G.fanMood=clamp(G.fanMood+O.saidWinWon,5,100);}
+    else{
+      G.fanMood=clamp(G.fanMood+O.saidWinLost,5,100);
+      G.gafferPatience=clamp(G.gafferPatience+O.saidWinLostPatience,0,100);
+      bumpTrust(BAL.owners.trustPromise);
+      addNews("FANS","\"We need three points,\" the chairman said. The Gazette has printed it next to the result.");
+    }
+  }else if(match.order==="point"){
+    const t=G.teams[match.oppIdx-1];
+    const myPosNow=myPos(),tbl=table();
+    const oppPos=tbl.findIndex(r=>r.i===match.oppIdx)+1;
+    if(t&&oppPos>myPosNow+O.weakBy)G.fanMood=clamp(G.fanMood+O.pointMoodVsWeak,5,100);
+    if(gf>=ga)G.gafferPatience=clamp(G.gafferPatience+O.keptWord,0,100);
+  }
+}
 function reviewRoles(){
 if(G.md>BAL.role.keyGrace&&G.md%BAL.role.reviewEvery===0){
   const RO=BAL.role;
@@ -1686,6 +1804,7 @@ function finalizeMatch(match){
   let motm=xi[0],best=0;
   for(const [p,r] of ratings)if(r>best){best=r;motm=p;}
   if(motm){motm.smotm++;motm.conf=clamp(motm.conf+3,10,95);}
+  orderAftermath(match,gf,ga);
   reviewRoles();
   // broken playing-time promises come home to roost
   for(const p of G.squad){
@@ -4071,7 +4190,15 @@ function renderModal(){
       })()}
       <div class="dlg"><div class="iav g">GM</div><div class="bubble">${gafferRead(M)}</div></div>
       <div class="kick" style="margin-top:14px">The gaffer awaits your word</div>
-      ${Object.entries(APPROACHES).map(([k,a])=>`<button class="abtn ${k==='allout'?'comm':''}" onclick="choosePrematch('${k}')" style="text-align:left"><b>${a.n}</b> — ${a.txt}</button>`).join("")}
+      ${Object.entries(ORDERS).map(([k,o])=>{
+        const odds=gafferAcceptOdds(k);
+        const pct_=Math.round(odds*100);
+        return `<button class="abtn ${k==='win'?'comm':''}" onclick="giveOrder('${k}',false)" style="text-align:left"><b>${o.n}</b> — ${o.txt}${k==="free"?"":`<div class="kick" style="font-size:9px;margin-top:3px;opacity:.75">he goes along with this ${pct_}% of the time</div>`}</button>`;
+      }).join("")}
+      <div class="why" style="font-size:11px"><b>You have a voice, not the power.</b> He picks the shape; you tell him what the afternoon is for. Chasing three points burns legs and invites injuries — and if you say it and lose, the town has it in print. ${G.gafferPatience<35?`<b>He is not in the mood to be told anything.</b>`:""}</div>
+      <div style="display:flex;gap:8px">
+        <button class="abtn ghost" style="flex:1" onclick="giveOrder('win',true)">Insist on three points <small style="opacity:.7">— costs you with him</small></button>
+      </div>
       ${M.isPlayoff?"":`<button class="abtn ghost" onclick="prematchBack()">‹ Tilbage <small style="opacity:.7">— nothing has kicked off yet</small></button>`}
     </div></div>`;
   }
@@ -4079,7 +4206,8 @@ function renderModal(){
     const M=modal.match;
     return `<div class="overlay"><div class="sheet tickwrap" id="tick">
       ${M.label?`<div class="biglabel">${M.label}</div>`:""}
-      <div class="kick" style="text-align:center">${M.weather.n} · ${APPROACHES[M.approach].n}</div>
+      <div class="kick" style="text-align:center">${M.weather.n} · ${APPROACHES[M.approach].n}${M.order&&M.order!=="free"?(M.obeyed?" · as asked":" · his call"):""}</div>
+      ${M.said?`<div class="dlg" style="margin:6px 12px 0"><div class="iav g">GM</div><div class="bubble" style="font-size:11.5px">${M.said}</div></div>`:""}
       <div class="tclock"><b class="num" id="tmin">0'</b></div>
       <div class="tscore">
         <div class="tn">${M.home?G.club:M.opp}</div>
