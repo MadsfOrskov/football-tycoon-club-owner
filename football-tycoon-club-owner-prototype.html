@@ -1632,13 +1632,19 @@ const ORDERS={
  free:{n:"Your call",txt:"You watch them all week. You decide."}
 };
 /* Hans stil farver hvordan han LAESER ordren -- en forsigtig gaffer hedger
-   stadig, naar han faar besked paa at jagte sejren. */
+   stadig, naar han faar besked paa at jagte sejren.
+   EKSPLICIT tabel og ikke en regex over stilnavnet. Foerste udgave sniffede
+   ("attack|front|bold|cavalier"), og den ramte to af de otte traenere: seks
+   havde ingen haeldning overhovedet, saa "tre point" og "et point" viste
+   noejagtig samme accept-odds hos tre fjerdedele af alle gaffere. Det saa jeg
+   foerst da jeg laeste den renderede prematch-markup. En tabel kan mangle en
+   noegle, og DET kan en invariant se -- en regex der ikke matcher, ser ud som
+   om alt er i orden. */
+const COACH_LEAN={attacking:1, direct:1, defensive:-1, technical:-1,
+                  balanced:0, "man-management":0, youth:0, academy:0};
 function gafferLean(){
-  const c=G.coach||{};
-  const style=String(c.style||"").toLowerCase();
-  if(/attack|front|bold|cavalier/.test(style))return 1;
-  if(/defen|caution|pragma|dour|organis/.test(style))return -1;
-  return 0;
+  const st=(G.coach||{}).style;
+  return COACH_LEAN[st]||0;
 }
 /* Hvor sandsynligt er det at han goer som du siger? Vises FOER du beder om
    noget -- du har en stemme, ikke magten, og nu kan du se hvor staerk den er. */
