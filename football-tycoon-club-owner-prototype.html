@@ -433,6 +433,12 @@ const BAL={
        straf for at ville vinde fodboldkampe. */
     winFresh:0.08,        // chasing it burns legs
     winInjury:0.10,       // ... and invites the physio
+    cardBase:0.08,        // a red card in any given match, before the order
+    winCard:0.35,         // chasing it puts more of them in the referee's book
+    winCardMine:0.62,     // ... and the extra ones are mostly yours, not theirs
+    insistTrust:-3,       // overruling the gaffer: the boardroom sees it
+    insistMood:-2,        // ... and the dressing room feels it
+    oddsMan:0.5,          // a man-manager goes along; a tactical purist digs in
     pointMoodVsWeak:-2,   // settling for a draw against a bottom club stings
     weakBy:4,             // "bottom club" = this many places below you
     saidWinLost:-3,       // you said three points and got none. They remember.
@@ -1563,10 +1569,16 @@ function halfEvents(match,half,gf,ga){
   ev.sort((a,b)=>a.m-b.m);
   return ev;
 }
+/* Egen funktion, saa kortrisikoen kan MAALES udefra frem for at drives frem
+   gennem hundrede kampe -- samme greb som loanRate og proDevBonus. Specen for
+   pakke 25: at jagte en sejr haever skades- OG kortrisiko. Skaderne var koblet
+   (winInjury), kortene var et fladt tal der ignorerede ordren. */
+function cardRisk(order){const O=BAL.orders;return O.cardBase*(1+(order==="win"?O.winCard:0));}
 function matchIncidents(match){ // red cards & injuries with consequences
   const out=[];
-  if(Math.random()<0.08){
-    const mine=Math.random()<0.5;
+  if(Math.random()<cardRisk(match.order)){
+    // jagter du sejren, falder de ekstra kort mest paa DINE spillere
+    const mine=Math.random()<(match.order==="win"?BAL.orders.winCardMine:0.5);
     if(mine){const p=pick(xiList());p.susp=1;out.push({m:R(20,85),txt:"RED CARD! "+p.name.split(" ")[1]+" sees red. The referee's notebook has a new enemy.",sub:"Suspended next matchday."});}
     else out.push({m:R(20,85),txt:"RED CARD — "+match.opp+" down to ten! Their bench is furious. Lovely stuff."});
   }
@@ -1651,7 +1663,25 @@ function gafferAcceptOdds(order){
   const pat=(G.gafferPatience===undefined?O.startPatience:G.gafferPatience)/100;
   const lean=gafferLean();
   const with_=order==="win"?lean:-lean;      // beder du om det han selv vil, siger han lettere ja
-  return clamp(O.oddsBase+(pat-0.5)*2*O.oddsPatience+with_*O.oddsStyle,0.05,0.98);
+  /* Stilen (gafferLean) farver RETNINGEN af hvad han vil; men hans tac/man-tal
+     farver hvor haardt han holder paa sit. En hoej man-manager foejer sig efter
+     formanden; en taktisk purist (hoej tac, lav man) graver sig ned. Det er
+     "TAC/MAN farver hvordan han laeser ordren" fra specen -- lagt paa oddsene,
+     hvor tallene betyder noget, frem for paa retningen, hvor de ikke goer. */
+  const c=G.coach||{};
+  const manLean=(((c.man||50)-(c.tac||50))/100);
+  return clamp(O.oddsBase+(pat-0.5)*2*O.oddsPatience+with_*O.oddsStyle+manLean*O.oddsMan,0.05,0.98);
+}
+/* Prisen for at overtrue gafferen -- lagt i egen funktion, saa den kan MAALES
+   isoleret i stedet for gennem giveOrder, der kaskaderer videre ind i
+   choosePrematch og selv roerer stemningen. Specen: "Tvinger du det igennem,
+   koster det tillid og moral" -- oveni taalmodigheden. Bruges baade af ordren
+   foer kamp og af "riv dem et nyt et" i pausen. */
+function insistCost(){
+  const O=BAL.orders;
+  G.gafferPatience=clamp((G.gafferPatience===undefined?O.startPatience:G.gafferPatience)+O.insistPatience,0,100);
+  bumpTrust(O.insistTrust);
+  G.fanMood=clamp(G.fanMood+O.insistMood,5,100);
 }
 function gafferPicks(order,match){
   const lean=gafferLean();
@@ -1671,7 +1701,7 @@ function giveOrder(order,insist){
   const obeyed=order==="free"||insist||Math.random()<odds;
   const appr=obeyed?gafferPicks(order,match):gafferOwnChoice(match);
   if(insist&&order!=="free"){
-    G.gafferPatience=clamp(G.gafferPatience+O.insistPatience,0,100);
+    insistCost();
     addNews("CLUB","The gaffer was told, not asked. He did it. He also said nothing on the way out.");
   }
   match.order=order;match.obeyed=obeyed;match.said=gafferSays(order,appr,obeyed,insist);
@@ -1717,7 +1747,16 @@ function htChoice(c){
   const match=modal.match;
   match.htDone=true;
   if(c==="steady")match.h2=simHalf(match,{own:0.85,opp:0.72});
-  if(c==="fury")match.h2=simHalf(match,{own:1.35,opp:1.25});
+  if(c==="fury"){
+    /* "Riv dem et nyt et" er ogsaa en ordre -- en gung-ho anden halvleg. Vil
+       gafferen ikke (lav odds for en jagt), koster det som en insister:
+       bestyrelsen og omklaedningsrummet. "Det gaelder ALT du beder ham om." */
+    if(Math.random()>=gafferAcceptOdds("win")){
+      insistCost();
+      addNews("CLUB","Half-time. The gaffer wanted calm; you wanted blood. You got your way, and a cold dressing room.");
+    }
+    match.h2=simHalf(match,{own:1.35,opp:1.25});
+  }
   if(c&&(match.h1.gf<match.h1.ga)&&Math.random()<0.5)match.h2.gf++; // trailing desperation push
   match.h2events=[...halfEvents(match,2,match.h2.gf,match.h2.ga),...(match.inc2||[]).map(e=>({...e}))].sort((a,b)=>a.m-b.m);
   // pakke 20: pausetalen ER en ny beslutning, saa den anden halvleg rulles om
@@ -4839,7 +4878,7 @@ function showHT(){
   if(box){
     box.style.display="block";
     box.innerHTML=burning
-      ?`<div class="kick" style="text-align:center;margin-bottom:8px">Half-time — the gaffer looks at you</div>
+      ?`<div class="kick" style="text-align:center;margin-bottom:8px">Half-time — the gaffer looks at you${(()=>{const o=Math.round(gafferAcceptOdds("win")*100);return " · he's "+(o>=66?"up for it":o>=40?"unsure":"against it")+" ("+o+"%)";})()}</div>
         <div style="display:flex;gap:8px">
         <button class="abtn" style="flex:1" onclick="tickHT('steady')">Steady on</button>
         <button class="abtn comm" style="flex:1" onclick="tickHT('fury')">Riv dem et nyt et</button></div>`
