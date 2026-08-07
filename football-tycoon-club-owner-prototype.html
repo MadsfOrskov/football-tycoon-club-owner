@@ -523,7 +523,16 @@ const BAL={
     rescueShare:[5,10],      // the slice they want, by how badly they are needed
     rescueCash:70000,        // what a slice buys, before the club's own standing
     rescueTrustFloor:25,     // below this they drive a harder bargain
-    controlAt:50             // your stake at or below this and it is over
+    controlAt:50,            // your stake at or below this and it is over
+    /* Trin 3, det interaktive: administrationen er ikke et fladt lønnedslag
+       laengere -- den er et brandudsalg med ur. "Skaer denne andel af lønsummen
+       inden fireClockMD kampdage. DU vaelger hvem -- eller administratoren
+       goer det hen over hovedet paa dig." fireSaleFee er den skampris de
+       udhungrede aktiver hentes for. */
+    fireWageFrac:0.20,       // how much of the weekly wage bill must come off
+    fireClockMD:3,           // the countdown, in matchdays, before they act
+    fireSaleFee:0.60,        // what a forced sale fetches, on the pound
+    fireMinSquad:13          // the administrator will not sell below a playable squad
   },
   /* penalty: of a season's income if the clause is missed. onPromotion /
      onRelegation: what the shirt is worth in the new division — both were bare
@@ -1149,6 +1158,11 @@ function byId(id){return (G&&G.squad.find(p=>p.id===id))||null;}
 function detachPlayer(p){
   if(p.id===G.captain)G.captain=null;
   G.mentors=G.mentors.filter(m=>m.vet!==p.id&&m.kid!==p.id);
+  /* Enhver vej ud af truppen taeller mod brandudsalgets maal -- det er derfor
+     krediteringen sidder HER, i det ene choke point alle exits gaar igennem, og
+     ikke i hvert enkelt salgsflow. Under administrationen betyder det at DINE
+     valg (salg, frigivelse) bringer lønsummen ned praecis som specen beskriver. */
+  if(G.fireSale)G.fireSale.done+=p.wage;
 }
 function nameOf(id){const p=byId(id);return p?p.name:"";}
 function surnameOf(id){const n=nameOf(id);return n?n.split(" ")[1]:"";}
@@ -2259,6 +2273,7 @@ function weakestLine(){
 }
 function afterMatchday(){
   if(G.bankDue){G.bankDue=false;openBankUltimatum();return;}
+  if(G.fireSale)checkFireSale();     // brandudsalgets ur tikker en kampdag
   if(G.md>=G.rounds){startPostSeason();return;}
   if(G.md===13&&!G.midwayDone){openMidway();return;}
   if(G.sponsorDue){modal={type:"sponsorOffer",after:"matchday"};render();return;}
@@ -2980,17 +2995,64 @@ function eraSummary(){
     share:G.myShare
   };
 }
+function wageBill(){return G.squad.reduce((s,p)=>s+p.wage,0);}
 function administration(){
   G.admins=(G.admins||0)+1;                 // a scar the valuation never forgets
   bumpTrust(BAL.owners.trustAdmin);
   G.me.pts=Math.max(0,G.me.pts-BAL.bank.adminPoints);
-  for(const p of G.squad)p.wage=Math.round(p.wage*BAL.wages.adminCut/10)*10;
   G.fanMood=clamp(G.fanMood-10,5,100);
   G.balance+=BAL.bank.adminRelief; // creditors restructure
-  msg("The administrators","AD","THE CLUB IS IN ADMINISTRATION",BAL.bank.adminPoints+" points deducted. All wages cut "+pct(1-BAL.wages.adminCut)+". The creditors have restructured the debt. Next time there may be nothing left to sell and no loan to take — and then the co-owners buy their way in, "+BAL.ladder.rescueShare[0]+"-"+BAL.ladder.rescueShare[1]+"% at a time. Below "+BAL.ladder.controlAt+"% you are not the chairman. The kettle has been repossessed.",null);
-  addNews("CLUB","Administration. −"+BAL.bank.adminPoints+" points. The town is furious, the pies are smaller, and it is all uphill from here.");
+  for(const p of G.squad)p.wage=Math.round(p.wage*BAL.wages.adminCut/10)*10; // renegotiated down
+  /* Trin 3 var FOER kun det flade lønnedslag ovenfor. Det er den vedvarende,
+     tunede lettelse der holder administration paa ~1 pr. karriere, saa det
+     BLIVER staaende. Oveni kommer nu GDD'ens "hvem ryger": administratoren
+     tvinger ogsaa et brandudsalg -- du vaelger hvem der saelges/frigives inden
+     uret loeber ud, ellers goer HAN det hen over hovedet paa dig, til skampris
+     (administratorSells). Kontraktnedslaget er genforhandlingen; brandudsalget
+     er aktivstripningen. To aegte konsekvenser, ikke een forklaedt som to. */
+  if(!G.fireSale){
+    const target=Math.round(wageBill()*BAL.ladder.fireWageFrac/10)*10;
+    G.fireSale={target,done:0,left:BAL.ladder.fireClockMD};
+    msg("The administrators","AD","THE CLUB IS IN ADMINISTRATION",BAL.bank.adminPoints+" points deducted. The creditors have restructured the debt — but "+kfmt(target)+"/week must come off the wage bill within "+BAL.ladder.fireClockMD+" matchdays. Sell or release whoever you choose. Miss the deadline and the administrator picks for you, at fire-sale prices. Below "+BAL.ladder.controlAt+"% ownership you are not the chairman at all.",null);
+    addNews("CLUB","Administration. −"+BAL.bank.adminPoints+" points. "+kfmt(target)+"/week must come off the wage bill in "+BAL.ladder.fireClockMD+" matchdays — your call who goes, or theirs.");
+  }
   if(G.md>=G.rounds){startPostSeason();return;}
   render();
+}
+/* Kaldes hver kampdag mens brandudsalget loeber. Naar maalet er naaet, gaar
+   administratoren; naar uret loeber ud uden at det er naaet, saelger han selv. */
+function checkFireSale(){
+  const fs=G.fireSale;if(!fs)return;
+  if(fs.done>=fs.target){endFireSale(true);return;}
+  fs.left--;
+  if(fs.left<=0)administratorSells();
+}
+/* Feature 1: administratoren saelger spillere hen over hovedet paa dig. Han
+   dumper de dyreste kontrakter foerst -- det er lønsummen han er efter -- til
+   skampris, og han roerer ikke en spilbar trup (fireMinSquad). */
+function administratorSells(){
+  const fs=G.fireSale;if(!fs)return;
+  const sold=[];
+  while(fs.done<fs.target&&G.squad.length>BAL.ladder.fireMinSquad){
+    const p=[...G.squad].sort((a,b)=>b.wage-a.wage)[0];
+    if(!p)break;
+    const fee=Math.round(p.value*BAL.ladder.fireSaleFee/1000)*1000;
+    G.balance+=fee;
+    G.squad=G.squad.filter(x=>x!==p);detachPlayer(p); // detachPlayer krediterer fs.done
+    sold.push(surnameOf(p.id)||p.name.split(" ")[1]);
+  }
+  if(!G.captain)pickCaptain();
+  if(sold.length){
+    G.fanMood=clamp(G.fanMood-8,5,100);
+    addNews("CLUB","The administrator sold over your head: "+sold.join(", ")+". You were not consulted. That is what administration means.");
+    msg("The administrators","AD","They sold them for you","You did not make the cut in time, so we did. "+sold.join(", ")+" are gone, for what we could get. The wage bill is where it needed to be.",null);
+  }
+  endFireSale(sold.length>0||fs.done>=fs.target);
+}
+function endFireSale(met){
+  if(met)addNews("CLUB","The administrators have left the building. The wage bill is under control — for now.");
+  else addNews("CLUB","The administrators leave with the job half done. There was not enough left to sell.");
+  G.fireSale=null;
 }
 function resolveBank(sell){
   const best=modal.best;
@@ -4015,6 +4077,7 @@ function viewClub(){
     <div class="rowline"><span>${G.coach.n} <small>· gaffer · ${G.coach.style}</small></span></div>
     <div class="statchips" style="margin-top:2px"><span class="sc">TAC <b>${G.coach.tac}</b></span><span class="sc">MAN <b>${G.coach.man}</b></span><span class="sc">DEV <b>${G.coach.dev}</b></span><span class="sc">OVR <b>${coachOvr(G.coach)}</b></span></div>
     ${(G.loans||[]).length?`<div class="rowline"><span>Bank loans <small>· ${G.loans.length} open, ${loansOwed()>0?kfmt(loansOwed())+" still owed":""}</small></span><span class="amt num" style="color:#E07A6A">−${kfmt((G.loans||[]).reduce((a,l)=>a+l.perMD,0))}/MD</span></div>`:""}
+    ${G.fireSale?`<div class="rowline" style="border-left:3px solid #E07A6A;padding-left:8px"><span style="color:#E07A6A"><b>Administration · fire sale</b> <small>· sell or release ${kfmt(Math.max(0,G.fireSale.target-G.fireSale.done))}/week more within ${G.fireSale.left} matchday${G.fireSale.left===1?"":"s"}, or they choose</small></span><span class="amt num" style="color:#E07A6A">${kfmt(G.fireSale.done)}/${kfmt(G.fireSale.target)}</span></div>`:""}
     <div class="rowline"><span>Borrow <small>· the bank will lend up to ${kfmt(loanHeadroom())} at ${pct(loanRate(Math.max(BAL.bank.minLoan,loanHeadroom())))}</small></span>${loanHeadroom()>=BAL.bank.minLoan?`<button class="abtn comm" style="padding:6px 10px;font-size:10.5px" onclick="openBank()">Talk to the bank</button>`:`<span class="num" style="color:var(--muted);font-size:11px">not while you owe this much</span>`}</div>
     ${(G.commitments||[]).map(c=>`<div class="rowline"><span>${c.kind==="fee"?"Instalment":c.kind==="promo"?"Promotion clause":"Goal clause"} <small>· ${c.name.split(" ")[1]} → ${c.club} · ${c.seasonsLeft} season${c.seasonsLeft===1?"":"s"} left</small></span>
       <span class="amt num" style="color:#E07A6A">−${kfmt(c.amt)}${c.kind==="fee"?"/yr":c.kind==="goals"?"/goal":""}</span></div>`).join("")}</div>
