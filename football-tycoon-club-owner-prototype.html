@@ -405,6 +405,25 @@ const BAL={
   // A fax nobody answers used to hang forever, and the player stayed flagged
   // BID PENDING for the rest of the career. Bids now have a shelf life.
   bids:{replyMD:2},
+  /* Nat 4, pakke 24. ROLES var kun en pris: key x0,90, rot x1,00, pro x1,18 --
+     og p.role gjorde INTET efter underskriften. QA maalte konsekvensen (afsnit
+     7b): "Key player" er baade billigst OG den eneste rolle en ambitioes
+     spiller accepterer, "Prospect" koster 18 % mere for ingenting, og 4 aar er
+     billigst pr. uge paa alle tre roller. Det rationelle svar er altid
+     "Key player, 4 aar" -- GDD'ens centrale forhandlingsmekanik reduceret til
+     en fast indstilling.
+     Nu er rollen en FORPLIGTELSE, ikke en rabat. Loennedslaget paa en
+     key-kontrakt betales med et loefte om spilletid, og et loefte man ikke
+     holder koster selvtillid, tillid i bestyrelsen og til sidst spilleren. */
+  role:{
+    keyShare:0.55,        // a key player expects to start at least this share of the season
+    keyGrace:6,           // matchdays into the season before anybody counts
+    keyConfHit:9,         // per review, if he is not playing
+    proAgeMax:24,         // "prospect" is an insult to anybody older
+    proDev:1,             // and it buys a boy a faster year
+    proShare:0.25,        // ... if he actually gets on the pitch
+    reviewEvery:6         // the agent checks in this often
+  },
   /* Pakke 21c. Tre kampdagstal der stod i teksten og i logikken hver for sig.
      De var rigtige; de var bare skrevet af to steder, og det er den fejlklasse
      talscanneren findes for. */
@@ -1610,6 +1629,32 @@ function htChoice(c){
   saveGame();
   resumeTicker();
 }
+/* Pakke 24. Egen funktion, saa rollens virkning kan MAALES udefra i stedet for
+   at skulle drives frem gennem en hel kampdag. Foerste udgave laa inde i
+   finalizeMatch, og kontrollen kaldte postMatchMessages -- den maalte altsaa
+   et sted hvor koden ikke var, og fejlede paa korrekt kode. */
+function reviewRoles(){
+if(G.md>BAL.role.keyGrace&&G.md%BAL.role.reviewEvery===0){
+  const RO=BAL.role;
+  for(const p of G.squad){
+    if(p.role!=="key"||p.inj||p.susp)continue;
+    const share=p.sapps/Math.max(1,G.md);
+    if(share>=RO.keyShare)continue;
+    p.conf=clamp(p.conf-RO.keyConfHit,10,95);
+    bumpTrust(BAL.owners.trustPromise);
+    if(!p.roleWarned){
+      p.roleWarned=true;
+      msg(pick(AGENTS).n,"A","\"Key player, you said\"",
+        "\"My client signed as a KEY PLAYER. He has "+p.sapps+" starts in "+G.md+" matchdays. The word means something, chairman, or it means you can be trusted with nothing.\"",null);
+    }else if(p.conf<=30&&!p.reqDone&&G.squad.length>13){
+      p.reqDone=true;
+      msg(pick(AGENTS).n,"A","TRANSFER REQUEST: "+p.name.split(" ")[1],
+        "\"He was promised a shirt. He has a seat. List him, or explain yourself to the dressing room — they are all watching how this ends.\"",
+        {kind:"transferReq",pid:p.id});
+    }
+  }
+}
+}
 function finalizeMatch(match){
   G.pendingMatch=null;                 // pakke 20: kampen er bogfoert nu
   const gf=match.h1.gf+match.h2.gf, ga=match.h1.ga+match.h2.ga;
@@ -1641,6 +1686,7 @@ function finalizeMatch(match){
   let motm=xi[0],best=0;
   for(const [p,r] of ratings)if(r>best){best=r;motm=p;}
   if(motm){motm.smotm++;motm.conf=clamp(motm.conf+3,10,95);}
+  reviewRoles();
   // broken playing-time promises come home to roost
   for(const p of G.squad){
     if(p.promiseMD!==null&&G.md-p.promiseMD>=BAL.clock.promiseMD){
@@ -2213,13 +2259,17 @@ function finishSeason(o){
     let dev;
     if(p.age<24){
       const playF=Math.min(1,p.sapps/12); // benched kids stall
-      dev=Math.round((R(1,3)+(G.fac.training?1:0)+(G.coach.dev>=60?1:0))*(0.35+0.65*playF));
+      /* Pakke 24: "Prospect" koster 18 % mere end Rotation og gav indtil nu
+         praecis ingenting. Nu koeber den et hurtigere aar -- men kun for en
+         dreng der faktisk har spillet, saa den ikke bare er en dyrere maade at
+         parkere nogen paa baenken. */
+      dev=Math.round((R(1,3)+(G.fac.training?1:0)+(G.coach.dev>=60?1:0)+proDevBonus(p))*(0.35+0.65*playF));
     }else dev=(p.age<30?R(-1,1):-R(1,3));
     p.att=clamp(p.att+dev,25,95);p.def=clamp(p.def+dev,25,95);
     p.phy=clamp(p.phy+(p.age>=30?-R(1,3):dev),25,95);
     if(p.focus&&p.age<28){p[p.focus]=clamp(p[p.focus]+(p.age<24?2:1),25,95);}
     p.value=Math.max(1000,Math.round((ovr(p)*ovr(p)*14*(p.age<24?1.3:p.age>30?0.6:1))/1000)*1000);
-    p.form=0;p.sg=0;p.sapps=0;p.smotm=0;p.inj=0;p.susp=0;p.promiseMD=null;p.load=0; // a summer is a summer
+    p.form=0;p.sg=0;p.sapps=0;p.smotm=0;p.inj=0;p.susp=0;p.promiseMD=null;p.load=0;p.roleWarned=false; // a summer is a summer
     p.conf=clamp(p.conf*0.6+20,10,95); // confidence regresses toward the mean over summer
   }
   applyRetirements();
@@ -2957,6 +3007,17 @@ function roleRefused(){
   if(n.role==="pro"&&n.p.age>=26)return "\""+n.p.name.split(" ")[1]+" is "+n.p.age+". Calling him a PROSPECT is an insult. Try again.\"";
   if(n.role==="key"&&ovr(n.p)<48)return "\"Even HE knows he's not a key player. He blushed. Pick something honest.\"";
   return null;
+}
+/* Pakke 24. Egen funktion, saa den kan MAALES udefra frem for at blive
+   efterlignet i en test. Foerste udgave af kontrollen regnede formlen efter i
+   harness'en og bestod derfor mod enhver kode overhovedet -- den maalte sin
+   egen kopi. "Prospect" koster 18 % mere end Rotation; det her er hvad de
+   penge koeber, og kun for en dreng der faktisk kommer paa banen. */
+function proDevBonus(p){
+  const RO=BAL.role;
+  if(!p||p.role!=="pro")return 0;
+  if(p.age>=RO.proAgeMax)return 0;
+  return p.sapps>=G.rounds*RO.proShare?RO.proDev:0;
 }
 function playerAmbitious(p){ // clearly above the club's level — and not a dreamer chasing the move
   if(p.traits.includes("dreamer"))return false;
@@ -4073,6 +4134,7 @@ function renderModal(){
         <div class="modes" style="margin-top:8px">${[1,2,3,4].map(y=>`<button class="${n.years===y?'on':''}" onclick="nego.years=${y};render()">${y} yr${sub(wageDemandFor(y,n.role))}</button>`).join("")}</div>
         <div class="kick" style="margin-top:12px">Promised playing time${seen?` <span style="font-size:9px;text-transform:none">· status is worth money to him</span>`:""}</div>
         <div class="modes" style="margin-top:8px">${Object.entries(ROLES).map(([k,r])=>`<button class="${n.role===k?'on':''}" onclick="nego.role='${k}';render()">${r.n}${sub(wageDemandFor(n.years,k))}</button>`).join("")}</div>
+        <div class="why" style="font-size:11px"><b>${ROLES[n.role].n}:</b> ${n.role==="key"?`cheapest on the wage, and a standing promise — start him in ${pct(BAL.role.keyShare)} of the season or his agent, his confidence and the boardroom all notice.`:n.role==="pro"?`dearest on the wage, and only for the young: a boy under ${BAL.role.proAgeMax} who plays ${pct(BAL.role.proShare)} of the season develops a year faster.`:`promises nothing and demands nothing. The price of not being tied to anything.`}</div>
         <div class="kick" style="margin-top:12px">Weekly wage</div>
         <div class="stepper">
           <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-500);render()" title="−${kfmt(500)}">‹‹</button>
