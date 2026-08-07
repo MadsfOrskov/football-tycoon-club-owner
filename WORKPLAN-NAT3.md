@@ -16,7 +16,7 @@ Læs `Claude.md` først. Læs derefter `QA-REPORT.md` på `nightly/qa` — den e
 - **Sabotér hver ny invariant, før du stoler på den.** Nat 2 havde to assertions der bestod mod bevidst ødelagt kode. QA fandt to mere. Gør sabotageforsøget til første skridt.
 - **Ingen designbeslutninger.** Er `Claude.md` og GDD'en tavse, og betyder valget noget: skriv spørgsmålet i `DECISIONS-NEEDED.md`, vælg imens den mest GDD-konsistente mulighed, begrund i commit-beskeden. Tun aldrig et måltal væk i stilhed.
 - **Hård stop kl. 04:00 dansk (02:00 UTC).** Skriv `NIGHT-REPORT-3.md` og push som allersidste handling — testagenten bruger den som færdigmarkør.
-- **Du når ikke alle ni, og det er planlagt.** Pakke 16 og 18 er de største i projektets historie. Pakke 19 og 20 ligger sidst, netop fordi de kan undværes. Tre solide pakker slår ni halve.
+- **Du når ikke alle ti, og det er planlagt.** Pakke 16 og 18 er de største i projektets historie. Pakke 21 ligger sidst, netop fordi den kan undværes. Tre solide pakker slår ti halve.
 
 ---
 
@@ -193,7 +193,21 @@ Afvejningen er det, der gør det til et valg: **presser du målsætningen ned**,
 
 ---
 
-# Pakke 20 — Oprydning (må gerne droppes, hvis tiden slipper op)
+# Pakke 20 — Resultatet står fast
+
+Lille pakke, men den hører sammen med nedrykningen: **risiko uden permanens er teater.** Bygger vi et spil, hvor man kan rykke ned og miste klubben, skal man ikke kunne rulle et resultat om.
+
+`saveGame()` kaldes tre steder: ved skærmskift (`go()`), ved sæsonslut, og i `afterMatchday()` — altså **efter** tickeren. Men resultatet er allerede afgjort, når tickeren begynder at rulle. Lukker spilleren appen midt i tickeren, ligger den gemte tilstand stadig før kampdagen, og kampen spilles om med et nyt udfald.
+
+Gem i det øjeblik resultatet afgøres — i `choosePrematch()`, når kampen og AI-runden er beregnet, før tickeren starter. Så er kampen på papiret, uanset hvad spilleren gør bagefter.
+
+Skriv det som en **egenskab, ikke en begrænsning**: en linje i onboardingen eller på indstillingsskærmen om at resultater står fast. Konkurrenten Hometown FC reklamerer eksplicit med det (*"a match is saved the moment it's played, so you can't reload to re-roll a result you didn't like"*), og det er en tillidserklæring til spilleren om at klubben er ægte.
+
+Harness: invariant om at et gemt spil taget midt i en ticker giver samme resultat ved genindlæsning.
+
+---
+
+# Pakke 21 — Oprydning (må gerne droppes, hvis tiden slipper op)
 
 **a) Sponsorkollapset er en anden lodtrækning end det ser ud til (F8).**
 
@@ -221,14 +235,41 @@ if(G.sponsor.risk && G.md===R(8,20) && Math.random()<G.sponsor.risk){ … }
 
 **Tilgangen bliver et resultatmål, ikke en taktik** (Mads 7/8). De tre nuværende hedder ting som *"Park it tight, frustrate them, nick something"* — det er en taktisk instruks, og formanden vælger aldrig taktik. Mekanikken bryder spillets egen hovedregel. Nyt: du siger hvilket **resultat** du har brug for — *"vi skal have tre point"* / *"et point rækker her"* / *"din afgørelse"* — og gafferen vælger selv tilgangen og fortæller hvad han gør. Hans `TAC`/`MAN`/stil farver, hvordan han læser ordren: en forsigtig gaffer hedger stadig, når han får besked på at jagte sejren. Priser: at jagte en sejr brænder friskhed og hæver skades- og kortrisiko; at nøjes med et point mod et bundhold koster stemning; kræver du en sejr og taber, husker bestyrelsen og fansene hvad du sagde. **Kræver nedrykning (pakke 16) for at have mening** — først da findes der situationer hvor ét point faktisk er nok.
 
+**Vis accept-oddset, før du beder om noget.** Grebet er lånt fra konkurrenten Hometown FC og passer til Mads' egen kaptajn-regel (*"du har en stemme, ikke magten"*): når du beder gafferen om noget — et resultatmål, en anfører, en spiller i startopstillingen — vises sandsynligheden for at han siger ja, **inden** du spørger. Tvinger du det igennem alligevel, koster det tillid og moral. Det gør trænerrelationen til et tal, du kan aflæse, i stedet for en gætteleg, og det gælder alle steder hvor du beder ham om noget, ikke kun før kampen.
+
 *Til orientering: de nuværende tal er `caut {own −0.22, opp −0.33}`, `allout {own +0.30, opp +0.28}`, `bal {0,0}`. Begge alternativer har en indbygget nettofordel, Balanced har ingen — derfor er Balanced dårligst i alle seks målte celler (caut 1,429 · allout 1,396 · bal 1,374 point pr. hjemmekamp).*
 
-# Designnoter længere ude
+# Nat 5 — "byen lever": investeringen der mangler
+
+**Det største enkeltfund fra gennemgangen af konkurrenten Hometown FC (7/8).** Deres stærkeste system er ikke fodbold: byen er noget man *investerer i* — 16 investeringer i seks kategorier (grassroots, infrastruktur, kommerciel, community, industri, prestige) — og den vokser landsby → by → storby → metropol, hvilket hæver sponsorværdi, fanloft og ungdomskvalitet.
+
+Læg det mod vores egne målinger: fra sæson 8 er alt bygget i 73 % af karriererne, den ene botprofil ender med **£4,7 millioner den ikke kan bruge på noget**, og `townDemand()` er et loft, der kun kan flyttes af division og Family Stand.
+
+**Byinvesteringer er det afløb, endgame mangler** — og de er den rigtige slags, fordi de **hæver loftet** i stedet for at hæve din andel af et fast loft. Det er ordret Mads' princip fra 7/8: stiger noget, skal alt andet stige med.
+
+Natten samler derfor det, der før hed "Verden": byinvesteringerne, de navngivne lokale med egne dagsordener (GDD'en har allerede byrådet, den rige bejler, skandalen og naboens konkurs som de fire store dilemmaer, plus Maureen Cobb som gennemgående journalist), og liganyhederne — målt til **0,09 pr. kampdag mod GDD's lovede 2-3**, faktor 28, og rørene findes allerede.
+
+# Nat 6 — multi-klub
+
+Flere klubber pr. ejer, aldrig to i samme liga. `G` skal have en klub-dimension i roden — **egen pakke, efter nedrykningen**, med harness'en som sikkerhedsnet: 4.000 sæsoner uden et eneste nedbrud er præcis det aktiv, der gør en stor mekanisk omskrivning forsvarlig.
+
+Åbne spørgsmål, der skal besvares før den bygges: fælles eller adskilt kasse (det er hele forskellen på et holdingselskab og to parallelle spil); ejer medejerne klubben eller holdingselskabet. **Og kollisionen, som er en feature:** rykker din ene klub ned i den andens division, skal du sælge en af dem.
+
+# Længere ude
 
 - **Pokalen som kilde til `big`.** 87 % af alle store kampe kommer i dag fra to tabelafhængige kilder. En pokalkamp er uafhængig af tabellen. **Mads' regel (7/8):** møder du din rival fra en anden division i pokalen, er det en *ekstraordinær* situation og må være sæsonens sjette store kamp, uden for båndet.
-- **Multi-klub.** Flere klubber pr. ejer, aldrig to i samme liga. `G` skal have en klub-dimension i roden — **egen pakke, efter nedrykningen**, med harness'en som sikkerhedsnet. Åbne spørgsmål: fælles eller adskilt kasse; ejer medejerne klubben eller holdingselskabet. **Og kollisionen:** rykker din ene klub ned i den andens division, skal du sælge en af dem.
-- **Mennesker-natten:** skjult potentiale (findes slet ikke i koden — GDD kalder det *"hele gambling-spændingen i talentkøb"*, og det er forudsætningen for både Youth Day og scout-missioner), `party` og `whinger` som tomme mærkater, de otte tavse sponsorer.
-- **Verden-natten:** liganyheder måler 0,09 pr. kampdag mod GDD's 2-3 — faktor 28, og rørene findes allerede.
+- **Mennesker:** skjult potentiale (findes slet ikke i koden — GDD kalder det *"hele gambling-spændingen i talentkøb"*, og det er forudsætningen for både Youth Day og scout-missioner), `party` og `whinger` som tomme mærkater, de otte tavse sponsorer.
+- **Karantæner pr. turnering** — lille realismedetalje, relevant når pokalen kommer.
+
+# Dagarbejde med Mads — ikke til en natlig agent
+
+**Det grafiske løft.** En agent kan ikke se en telefon, så dette bygges ikke om natten. Gennemgangen af Hometown FC viste, at deres UI ikke er bedre end vores — lyst tema, hvide kort, emoji som ikoner — men at **fotografiet gør alt arbejdet**: hver skærm ligger oven på en fotorealistisk rendering med halvgennemsigtige kort ovenpå. Til gengæld er deres by de samme fem faste billeder for alle spillere, mens `stadiumSvg()` tegnes ud fra spillerens egen tilstand: klubfarver, tribuner, fremmøde, protestbannere.
+
+Konklusionen er derfor **ikke** at jagte fotorealisme i UI'et — Floodlight-temaet med Barlow Condensed er mere karakterfuldt end deres. Men tre ting ville løfte meget for lidt:
+
+1. Et dæmpet fotografisk baggrundslag bag hovedskærmene, med kortene ovenpå.
+2. Lys og materialer i `stadiumSvg()`: tidspunkt på dagen, vejr, lysmasternes kegler, tekstur på tribunetaget. Realisme i **belysningen**, ikke i geometrien.
+3. Byen mangler et billede overhovedet — den er i dag kun tallet `townDemand()`. Hænger sammen med nat 5.
 
 ---
 
