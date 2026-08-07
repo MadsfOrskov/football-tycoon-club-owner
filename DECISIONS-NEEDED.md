@@ -202,3 +202,27 @@ Det er præcis den anden af QA's to endgame-fejlmåder: *"den ene bot køber sig
 | efter en nedrykning | 8.996 | −£4.268 | £16.330 | **−0,26** |
 
 En klub der *starter* i League Three har en normal økonomi. En klub der *lander* der efter en nedrykning bærer en lønsum på £16.330 hvor divisionen betaler for £11.171 — og det er pakke 16's krise, der virker efter hensigten. Havde jeg kun set totalen, ville jeg have tunet bunden op og dermed fjernet nedrykningens konsekvens uden at opdage det.
+
+---
+
+*Tilføjet af nat 3's overtid, som gik ind i nat 4's kø (pakke 22).*
+
+## 10. Trin 4 er fatalt fra start, fordi du kun ejer 51 % (nat 4, pakke 22)
+
+Femtrins-trappen er bygget. Trin 4 er redningskapital mod andele; trin 5 er at miste kontrollen under 50 %. Medejerne forlanger **5 % hvis de stoler på dig, 10 % hvis de ikke gør** (`BAL.ladder.rescueShare`, tærskel `rescueTrustFloor`).
+
+**Konsekvensen af at starte på 51 %:** den første redning er også den sidste. 51 − 5 = 46, altså under 50. Trin 4 og trin 5 falder sammen i én beslutning, indtil spilleren har købt medejere ud og dermed *købt sig plads til at blive fortyndet*.
+
+**Jeg har valgt at lade det stå sådan**, og at lade modalen sige det ligeud (*"This one ends it. Take this and you are a shareholder, not the chairman."*). Begrundelsen er GDD-konsistens: ROADMAP'en siger *"game over bliver noget du går ind i med åbne øjne, én beslutning ad gangen"* og *"du kan altid se hvor mange trin der er tilbage, fordi din ejerandel står på klubskærmen"*. På 51 % er svaret "ét trin", og det er ærligt. `buyOutOwner()` findes allerede og er den eneste vej til mere plads — hvilket giver medejer-opkøb en helt ny grund til at eksistere.
+
+**Alternativet, hvis du synes det er for hårdt:** lad skiven blive skåret ned, så den aldrig tager dig under 50 med det samme (fx `Math.min(myShare − 50 + 1, share)`). Så bliver trin 4 en rigtig mellemstation — men prisen er, at redningen på 51 % kun koster 2 %, og at trin 5 aldrig kan nås direkte. Jeg prøvede den variant først; den gør trappen blødere og trin 5 nærmest uopnåelig.
+
+**Målt (20 seeds × 20 sæsoner, botprofil `sane`):**
+
+| | før nat 4 | efter pakke 22 | ROADMAP's mål |
+|---|---|---|---|
+| administrationer pr. karriere | 2,45 | **1,05** | ~1 |
+| trin 4 tilbudt pr. karriere | — | 0,30 | — |
+| karrierer der når trin 5 | — | **20 %** | 5-15 % |
+
+Administrationstallet rammer plet. **Game over-tallet ligger over båndet**, og jeg vil gerne være tydelig om hvorfor jeg ikke bare har skruet på det: botten tager imod redningen i **85 %** af tilfældene i `sane`-profilen, også når modalen udtrykkeligt advarer om at den er fatal. Det er en botpolitik, ikke en spillerbeslutning — et menneske der læser *"This one ends it"* ville formentlig sige nej og tage administrationen. Tallet er altså et **loft** for hvor tit det sker, ikke et estimat. Skal det ned uanset, er knappen `BAL.ladder.rescueShare` (mindre skive) eller `controlAt` (lavere grænse).

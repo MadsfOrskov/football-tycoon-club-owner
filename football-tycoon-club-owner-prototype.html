@@ -430,6 +430,24 @@ const BAL={
      League Three is deliberately zero. Nobody televises League Three. */
   tv:{base:2600, perDivision:2.35},
   bank:{crisisAt:-60000, loanCash:50000, loanPerMD:5500, loanTerm:10, adminRelief:40000, adminPoints:6},
+  /* Nat 4, pakke 22. GDD'ens oekonomitrappe har fem trin. Tre var bygget, og
+     spillet TRUEDE med det fjerde op til tretten gange pr. karriere uden
+     nogensinde at goere alvor af det (QA's F11). Nu findes de to sidste:
+       4  redningskapital mod andele -- tag pengene og afgiv 5-10 %, eller lad
+          klubben falde i administration
+       5  under 50 % -- du er ikke formand laengere
+     Fortynding frem for konkurs, fordi maskineriet allerede staar der: du ejer
+     51 %, medejerne har personligheder, humoer og kapital. Game over bliver
+     noget man gaar ind i med aabne oejne, en beslutning ad gangen, og man kan
+     hele tiden se hvor mange trin der er tilbage -- ejerandelen staar paa
+     klubskaermen. Du mister ikke klubben fordi du taber kampe. Du mister den
+     fordi du solgte den lidt ad gangen for at redde den. */
+  ladder:{
+    rescueShare:[5,10],      // the slice they want, by how badly they are needed
+    rescueCash:70000,        // what a slice buys, before the club's own standing
+    rescueTrustFloor:25,     // below this they drive a harder bargain
+    controlAt:50             // your stake at or below this and it is over
+  },
   /* penalty: of a season's income if the clause is missed. onPromotion /
      onRelegation: what the shirt is worth in the new division — both were bare
      constants (1.6 up, nothing down) inside finishSeason. */
@@ -2567,10 +2585,79 @@ function openBankUltimatum(){
   }
   const canSell=G.squad.length>13;
   const canLoan=!G.loan;
+  /* Trin 4 ligger HER, mellem bankens ultimatum og administrationen: naar der
+     hverken er en mand at saelge eller et laan at tage, er der stadig et sted
+     at hente penge -- medejernes lommer. Prisen er klubben, en skive ad
+     gangen. */
+  if(!canSell&&!canLoan&&rescueOffer()){return;}
   if(!canSell&&!canLoan){administration();return;}
   const best=[...G.squad].sort((a,b)=>b.value-a.value)[0];
   modal={type:"bank",best,canSell,canLoan};
   render();
+}
+/* Trin 4. Medejerne har kapital, og de vil hellere eje mere af en klub der
+   overlever end lidt af en der ikke goer. Skiven de forlanger vokser naar de
+   stoler mindre paa dig -- det er den samme tillid der prissaetter deres
+   andele, og det er derfor en daarlig formand betaler dyrere for at blive
+   reddet. Returnerer true hvis tilbuddet blev lagt frem. */
+function rescueOffer(){
+  const L=BAL.ladder;
+  const backers=G.owners.filter(o=>o.share>0);
+  if(!backers.length)return false;                 // eneejer: ingen at gaa til
+  if(G.myShare<=L.controlAt)return false;          // allerede uden kontrol
+  const t=trustLevel();
+  /* Skiven er 5 eller 10 -- den skaeres IKKE ned til lige at holde dig over
+     graensen. Starter man paa 51 %, er den foerste redning derfor ogsaa den
+     sidste, og modalen siger det ligeud foer man trykker. Det er meningen: paa
+     51 % ejer man knap nok halvdelen, og valget er "mist klubben nu med penge
+     i kassen" mod "gaa i administration og behold den". Rum til at blive
+     fortyndet er noget man KOEBER, ved at koebe medejere ud. */
+  const share=t>=L.rescueTrustFloor?L.rescueShare[0]:L.rescueShare[1];
+  const standing=clamp(clubValuation()/1000000,0.6,3.5);
+  const cash=Math.round(L.rescueCash*share/L.rescueShare[0]*standing/1000)*1000;
+  const backer=backers.reduce((a,b)=>b.share>a.share?b:a);
+  modal={type:"rescue",share,cash,who:backer.n,role:backer.role,fatal:G.myShare-share<=L.controlAt};
+  render();return true;
+}
+function rescueAccept(){
+  const m=modal;if(!m||m.type!=="rescue")return;
+  const backer=G.owners.find(o=>o.n===m.who);
+  if(!backer){modal=null;administration();return;}
+  G.balance+=m.cash;G.myShare-=m.share;backer.share+=m.share;
+  addNews("CLUB",m.who+" has put "+kfmt(m.cash)+" into the club for "+m.share+"% of it. Your stake: "+G.myShare+"%.");
+  msg("The co-owners","CO","Rescue capital, and what it costs",
+    "\""+m.who+" has found "+kfmt(m.cash)+". The paperwork moves "+m.share+"% across the table. You still run this club, chairman — you just own less of it. There is a number below which you do not run it at all, and it is "+BAL.ladder.controlAt+"%.\"",null);
+  modal=null;
+  if(G.myShare<=BAL.ladder.controlAt){loseControl(m.who);return;}
+  if(G.md>=G.rounds){startPostSeason();return;}
+  render();
+}
+function rescueDecline(){
+  const m=modal;if(!m||m.type!=="rescue")return;
+  addNews("CLUB","The rescue package was turned down. The administrators are on their way.");
+  modal=null;administration();
+}
+/* Trin 5. Ikke en konkurs -- en generalforsamling. Aeraen goeres op, og det er
+   den opgoerelse der er belonningen for at have spillet saa laenge. */
+function loseControl(who){
+  G.phase="over";G.overTo=who||null;
+  addNews("CLUB","Control of "+G.club+" has passed out of your hands. Fourteen seasons of paperwork, and it fits in one envelope.");
+  modal={type:"eraOver",who:who||null};
+  saveGame();render();
+}
+function eraSummary(){
+  const h=G.history||[];
+  return {
+    seasons:h.length,
+    promotions:h.filter(x=>x.promoted).length,
+    relegations:h.filter(x=>x.relegated).length,
+    titles:G.titles||0,
+    admins:G.admins||0,
+    best:h.length?h.reduce((a,x)=>x.pos<a.pos?x:a,h[0]):null,
+    peak:(G.valHistory||[]).reduce((a,x)=>Math.max(a,x.v),clubValuation()),
+    div:G.divNames[G.div],
+    share:G.myShare
+  };
 }
 function administration(){
   G.admins=(G.admins||0)+1;                 // a scar the valuation never forgets
@@ -2579,7 +2666,7 @@ function administration(){
   for(const p of G.squad)p.wage=Math.round(p.wage*BAL.wages.adminCut/10)*10;
   G.fanMood=clamp(G.fanMood-10,5,100);
   G.balance+=BAL.bank.adminRelief; // creditors restructure
-  msg("The administrators","AD","THE CLUB IS IN ADMINISTRATION",BAL.bank.adminPoints+" points deducted. All wages cut "+pct(1-BAL.wages.adminCut)+". The creditors have restructured the debt — one more collapse like this and the co-owners WILL force a sale. The kettle has been repossessed.",null);
+  msg("The administrators","AD","THE CLUB IS IN ADMINISTRATION",BAL.bank.adminPoints+" points deducted. All wages cut "+pct(1-BAL.wages.adminCut)+". The creditors have restructured the debt. Next time there may be nothing left to sell and no loan to take — and then the co-owners buy their way in, "+BAL.ladder.rescueShare[0]+"-"+BAL.ladder.rescueShare[1]+"% at a time. Below "+BAL.ladder.controlAt+"% you are not the chairman. The kettle has been repossessed.",null);
   addNews("CLUB","Administration. −"+BAL.bank.adminPoints+" points. The town is furious, the pies are smaller, and it is all uphill from here.");
   if(G.md>=G.rounds){startPostSeason();return;}
   render();
@@ -3965,6 +4052,45 @@ function renderModal(){
       ${modal.canLoan?`<button class="abtn comm" onclick="resolveBank(false)">Emergency loan · +${kfmt(BAL.bank.loanCash)} now, ${kfmt(BAL.bank.loanPerMD)}/MD × ${BAL.bank.loanTerm}</button>`:`<p><b>The loan line is spent.</b> One loan at a time, chairman.</p>`}
     </div></div>`;
   }
+  /* Trin 4: den eneste beslutning der findes naar der ikke er flere. Tallene
+     staar der begge to -- hvad de giver, og hvad du ikke ejer bagefter -- fordi
+     man skal kunne se trappen mens man staar paa den. */
+  if(modal.type==="rescue"){
+    const after=G.myShare-modal.share;
+    return `<div class="overlay"><div class="sheet">
+      <div class="kick" style="color:#E07A6A">Nothing left to sell, no loan to take</div>
+      <h2>${modal.who} is offering</h2>
+      <p>"${modal.role==="butcher"?"I have had a good year. Sausages, chairman. Sausages have been very good to me.":modal.role==="solicitor"?"I have consulted myself, and I am prepared to be reasonable.":"I have money and a pie empire. You have a football club and a problem."} ${kfmt(modal.cash)} into the account tonight. For ${modal.share}% of the club."</p>
+      <div class="card">
+        <div class="rowline"><span>Into the account</span><span class="amt num" style="color:var(--acc)">+${kfmt(modal.cash)}</span></div>
+        <div class="rowline"><span>Your stake</span><span class="amt num">${G.myShare}% → <b style="color:${after<=BAL.ladder.controlAt?"#E07A6A":"inherit"}">${after}%</b></span></div>
+        <div class="rowline"><span>You stop being chairman at</span><span class="num">${BAL.ladder.controlAt}%</span></div></div>
+      ${modal.fatal?`<div class="why" style="border-left-color:rgba(224,90,74,.6);background:rgba(224,90,74,.08)"><b>This one ends it.</b> Take this and you are a shareholder, not the chairman. The club survives. You do not run it.</div>`:`<div class="why">The club survives the winter either way. The question is who owns it in the spring.</div>`}
+      <button class="glowbtn" onclick="rescueAccept()">Take the money · −${modal.share}%</button>
+      <button class="abtn ghost" onclick="rescueDecline()">Refuse · let the administrators in</button>
+    </div></div>`;
+  }
+  /* Trin 5. Ikke en fejlskaerm -- en opgoerelse. Det er den, der goer at man
+     kan gaa ind i trin 4 med aabne oejne og alligevel goere det. */
+  if(modal.type==="eraOver"){
+    const e=eraSummary();
+    return `<div class="overlay"><div class="sheet">
+      <div class="kick">${G.club} · the end of it</div>
+      <h2>Your era</h2>
+      <p>${modal.who?`${modal.who} holds the majority now. `:""}You arrived with a solicitor's letter and an empty trophy cabinet. You leave with ${e.seasons} season${e.seasons===1?"":"s"} on the record and ${e.share}% of a football club.</p>
+      <div class="card">
+        <div class="rowline"><span>Seasons in charge</span><span class="amt num">${e.seasons}</span></div>
+        <div class="rowline"><span>Promotions</span><span class="amt num">${e.promotions}</span></div>
+        <div class="rowline"><span>Relegations</span><span class="amt num">${e.relegations}</span></div>
+        <div class="rowline"><span>Championships</span><span class="amt num">${e.titles}</span></div>
+        <div class="rowline"><span>Administrations</span><span class="amt num">${e.admins}</span></div>
+        ${e.best?`<div class="rowline"><span>Best finish</span><span class="amt">${ord(e.best.pos)} · ${e.best.div}</span></div>`:""}
+        <div class="rowline"><span>Peak club value</span><span class="amt num">${kfmt(e.peak)}</span></div>
+        <div class="rowline"><span>Where it ended</span><span class="amt">${e.div}</span></div></div>
+      <div class="why">You did not lose the club by losing matches. You sold it, a slice at a time, to keep it alive — and that is a different kind of story.</div>
+      <button class="glowbtn" onclick="newCareer()">Start again ▸</button>
+    </div></div>`;
+  }
   if(modal.type==="interstitial"){
     return `<div class="overlay"><div class="sheet">
       <div class="kick">Monetisation placeholder</div>
@@ -4441,12 +4567,21 @@ function renderTitle(){
   </div></div>`;
 }
 function continueCareer(){
-  if(loadGame()){bootSave=null;resumePendingMatch();render();}
+  if(loadGame()){bootSave=null;if(!resumeIfOver())resumePendingMatch();render();}
   else{bootSave=null;renderOnboarding();}
 }
 /* Pakke 20. Blev appen lukket midt i tickeren, ligger den afgjorte kamp i G.
    Den spilles ikke om -- den rulles videre fra begyndelsen med NOEJAGTIG samme
    maal, samme haendelser og samme runde i resten af divisionen. */
+/* Pakke 20 og 22 haenger sammen her: er kontrollen tabt, skal den VAERE tabt
+   ogsaa efter en genstart. Ellers kan spilleren lukke appen paa opgoerelsen og
+   aabne den igen som formand -- samme genindlaesningssmuthul som resultatet
+   havde, bare med hele klubben som indsats. */
+function resumeIfOver(){
+  if(!G||G.phase!=="over")return false;
+  modal={type:"eraOver",who:G.overTo||null};
+  return true;
+}
 function resumePendingMatch(){
   if(!G||!G.pendingMatch)return false;
   const m=G.pendingMatch;
