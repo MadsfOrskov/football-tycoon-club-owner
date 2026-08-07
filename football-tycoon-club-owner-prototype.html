@@ -439,7 +439,8 @@ const BAL={
        analysen? GDD linje 210 vil have "deres midtbane var 8 point bedre" —
        altså tal, ikke stemninger. Under dette er forskellen støj. */
     analysisMin:3,      // points of attribute gap worth naming
-    analysisMax:2       // how many factors the gaffer bothers to mention
+    analysisMax:2,      // how many factors the gaffer bothers to mention
+    disallowed:0.03     // chance per half of a goal being chalked off
   }
 };
 
@@ -744,6 +745,22 @@ const MOMENTUM=[
  T("lead","Their manager is on the touchline gesturing at nobody in particular."),
  T("behind","We have nothing to lose now, and the crowd knows it before the players do."),
  T("silent","Still nothing from the stands. The players glance up and look away again.")
+];
+/* Pakke 13: det annullerede maal var EN hardkodet linje, pushet direkte ind i
+   ev[] uden om pickLine() -- altsaa uden om dublettvagten. halfEvents() kaldes
+   to gange pr. kamp med hver sin terning, saa 1 kamp ud af 1.007 viste samme
+   vits to gange, og regressionstesten var derfor tilfaeldigt roed i ~0,3 % af
+   alle seeds. Nu er den en pulje som alt andet. Utaggede med vilje: et
+   annulleret maal kan ske i al slags vejr og ved enhver stilling. */
+const DISALLOWED=[
+ "GOAL — no, WAIT. Flag's up. The linesman is the least popular man in the county.",
+ "The net bulges, the ground erupts, and then everyone sees the flag. Silence, then swearing.",
+ "Ruled out. Offside by the length of a boot, if you believe the man with the flag.",
+ "Disallowed — a shove in the back, apparently. Nobody in the ground saw it except the referee.",
+ "Chalked off. The celebration had already reached the corner flag before anyone looked back.",
+ "The flag stays up. Eleven men surround the official and achieve precisely nothing.",
+ "No goal. Something happened in the build-up that only two people in Lancashire noticed.",
+ "Offside. The linesman jogs back up the touchline pretending he cannot hear any of it."
 ];
 const NEARMISS=[
  "Chance! {P} drags it wide. The Shed End groans in unison.",
@@ -1308,7 +1325,7 @@ function halfEvents(match,half,gf,ga){
     const p=pick(scorers.length?scorers:G.squad),m=mkMin();
     ev.push({m,txt:fillName(pickLine(NEARMISS,at(m),match.used),surname(p))});
   }
-  if(Math.random()<0.03)ev.push({m:mkMin(),txt:"GOAL — no, WAIT. Flag's up. The linesman is the least popular man in the county."});
+  if(Math.random()<BAL.text.disallowed){const m=mkMin();ev.push({m,txt:pickLine(DISALLOWED,at(m),match.used)});}
   ev.sort((a,b)=>a.m-b.m);
   return ev;
 }

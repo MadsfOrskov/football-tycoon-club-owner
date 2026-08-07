@@ -144,7 +144,7 @@ const BRIDGE = `
   get obData(){return obData;},
   consts:{STANDS,STANDCOST,FACS,FAC_DETAIL,ROLES,APPROACHES,SWATCHES,TRAITS,COACHES,SPONSORS,BAL,
     // pakke 6: tekstbiblioteket skal kunne inspiceres udefra
-    LINE_TAGS,POOLS:{GOALDESC,NEARMISS,FLAVOR,PENDESC,OPPGOAL,MOMENTUM,GHOSTBITTER,GHOSTWARM},GAFFERTALK,lineText,lineOk},
+    LINE_TAGS,POOLS:{GOALDESC,NEARMISS,FLAVOR,PENDESC,OPPGOAL,MOMENTUM,GHOSTBITTER,GHOSTWARM,DISALLOWED},GAFFERTALK,lineText,lineOk},
   call(name){
     const f = globalThis[name];
     if(typeof f !== "function") throw new Error("harness: ingen global funktion '"+name+"'");
@@ -982,6 +982,33 @@ function runSeed(seed, PROFILE) {
       }
       for (const l of lines)
         if (/\{[A-Z][A-Z0-9_]*\}/.test(l)) fail("uudskiftet pladsholder i ticker-linje: " + l.slice(0, 60));
+    }
+    /* 5b) Pakke 13: den sjaeldne linje. Kontrol (5) draeber ikke F1, fordi det
+           annullerede maal kun tegnes med 3 % pr. halvleg -- QA maalte 1 dublet
+           pr. 1.007 kampe, hvilket er under enhver stikproeve harness'en har
+           raad til. Her tvinges sandsynligheden op paa 1, saa BEGGE halvlege
+           tegner den, og dubletten skal stadig udeblive. Enhver fremtidig linje
+           der pushes uden om pickLine() vil falde paa den her, uanset hvor lav
+           dens terning er. Sabotage der skal fange den: skift pickLine(DISALLOWED,
+           ...) tilbage til en hardkodet streng -> fejler paa foerste koersel. */
+    {
+      const keep = C.BAL.text.disallowed;
+      C.BAL.text.disallowed = 1;
+      try {
+        for (let round = 0; round < 40; round++) {
+          const match = H.call("buildMatch", 1, true, true, "TESTKAMP");
+          match.weather = { n: "Clear skies", phys: 0, txt: "test" };
+          match.approach = "balanced"; match.h1 = { gf: 1, ga: 1 };
+          const all = H.call("halfEvents", match, 1, 1, 1).concat(H.call("halfEvents", match, 2, 1, 1));
+          const seen = new Set();
+          for (const e of all) for (const l of [e.txt, e.sub]) {
+            if (!l || /^(GOAL!|PENALTY!|Goal —)/.test(l)) continue;
+            if (seen.has(l)) fail("sjaelden ticker-linje gentaget i EN kamp da dens terning blev tvunget: " +
+              l.slice(0, 70) + " -- linjen gaar uden om pickLine()/match.used");
+            seen.add(l);
+          }
+        }
+      } finally { C.BAL.text.disallowed = keep; }
     }
     G.md = snap.md; G.mdWeather = snap.w;
 
