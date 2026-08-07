@@ -223,70 +223,14 @@ if(G.sponsor.risk && G.md===R(8,20) && Math.random()<G.sponsor.risk){ … }
 
 ---
 
-# Designnoter til nat 4 — "konsekvensen: dine beslutninger skal koste noget"
+# Efter i nat
 
-**Byg dem IKKE i nat.**
+Køen bagefter ligger i `ROADMAP.md` — nat 4 (trappen, banken, kontraktrollen, tilgangen), nat 5 (hele staben), nat 6 (formandens ord), nat 7 (pyramiden), og derefter pokal, multi-klub og byen. **Byg ikke på den i nat.** Den er der, så du kan se hvor tingene skal hen, ikke som arbejdsordre.
 
-**Femtrins-trappen.** Trin 4 = redningskapital mod andele (medejerne redder klubben og tager 5-10 %), trin 5 = under 50 % er game over. Administrator-karakteren der flytter ind på kontoret og sælger spillere hen over hovedet på dig; brandudsalg med ur (skær £X af lønsummen inden tre kampdage — *du* vælger hvem); æra-opsummeringen ved game over. Måltal: administration ~1 gang pr. karriere (nu 4,5), game over inden for rækkevidde i 5-15 % af karriererne.
+To ting derfra er relevante for i nat:
 
-**En rigtig bank.** I dag: ét fast lån (£50.000 nu, £5.500/kampdag × 10), kun tilgængeligt i krisemodalen når kassen er under −£60.000. Du kan altså kun låne når du drukner, aldrig for at investere. Nyt: du vælger beløb og løbetid, banken vælger renten ud fra klubværdi, division, kassestilling og administrationshistorik. Lånet lægges i `G.commitments` fra pakke 3 frem for sit eget `G.loan`-særtilfælde. Så bliver trin 2 i trappen naturligt: banken siger nej, fordi du allerede skylder.
-
-**Kontraktrollen skal betyde noget efter underskrift** (besluttet 7/8). I dag `ROLES = {key: ×0.90, rot: ×1.00, pro: ×1.18}`, og `p.role` gør intet mekanisk bagefter — så "Key player" er både billigst *og* den eneste ambitiøse spillere accepterer, "Prospect" koster 18 % mere for ingenting, og 4 år er billigst pr. uge. Det rationelle svar er altid *Key player, 4 år.* Nyt: en `key` der ikke spiller nok mister selvtillid og beder om væk; en `pro` udvikler sig hurtigere men accepteres kun af unge; `rot` er neutral. Så betales lønrabatten på en key-kontrakt med en forpligtelse.
-
-**Tilgangen bliver et resultatmål, ikke en taktik** (Mads 7/8). De tre nuværende hedder ting som *"Park it tight, frustrate them, nick something"* — det er en taktisk instruks, og formanden vælger aldrig taktik. Mekanikken bryder spillets egen hovedregel. Nyt: du siger hvilket **resultat** du har brug for — *"vi skal have tre point"* / *"et point rækker her"* / *"din afgørelse"* — og gafferen vælger selv tilgangen og fortæller hvad han gør. Hans `TAC`/`MAN`/stil farver, hvordan han læser ordren: en forsigtig gaffer hedger stadig, når han får besked på at jagte sejren. Priser: at jagte en sejr brænder friskhed og hæver skades- og kortrisiko; at nøjes med et point mod et bundhold koster stemning; kræver du en sejr og taber, husker bestyrelsen og fansene hvad du sagde. **Kræver nedrykning (pakke 16) for at have mening** — først da findes der situationer hvor ét point faktisk er nok.
-
-**Vis accept-oddset, før du beder om noget.** Grebet er lånt fra konkurrenten Hometown FC og passer til Mads' egen kaptajn-regel (*"du har en stemme, ikke magten"*): når du beder gafferen om noget — et resultatmål, en anfører, en spiller i startopstillingen — vises sandsynligheden for at han siger ja, **inden** du spørger. Tvinger du det igennem alligevel, koster det tillid og moral. Det gør trænerrelationen til et tal, du kan aflæse, i stedet for en gætteleg, og det gælder alle steder hvor du beder ham om noget, ikke kun før kampen.
-
-*Til orientering: de nuværende tal er `caut {own −0.22, opp −0.33}`, `allout {own +0.30, opp +0.28}`, `bal {0,0}`. Begge alternativer har en indbygget nettofordel, Balanced har ingen — derfor er Balanced dårligst i alle seks målte celler (caut 1,429 · allout 1,396 · bal 1,374 point pr. hjemmekamp).*
-
-# Nat 5 — "byen lever": investeringen der mangler
-
-**Det største enkeltfund fra gennemgangen af konkurrenten Hometown FC (7/8).** Deres stærkeste system er ikke fodbold: byen er noget man *investerer i* — 16 investeringer i seks kategorier (grassroots, infrastruktur, kommerciel, community, industri, prestige) — og den vokser landsby → by → storby → metropol, hvilket hæver sponsorværdi, fanloft og ungdomskvalitet.
-
-Læg det mod vores egne målinger: fra sæson 8 er alt bygget i 73 % af karriererne, den ene botprofil ender med **£4,7 millioner den ikke kan bruge på noget**, og `townDemand()` er et loft, der kun kan flyttes af division og Family Stand.
-
-**Byinvesteringer er det afløb, endgame mangler** — og de er den rigtige slags, fordi de **hæver loftet** i stedet for at hæve din andel af et fast loft. Det er ordret Mads' princip fra 7/8: stiger noget, skal alt andet stige med.
-
-Natten samler derfor det, der før hed "Verden": byinvesteringerne, de navngivne lokale med egne dagsordener (GDD'en har allerede byrådet, den rige bejler, skandalen og naboens konkurs som de fire store dilemmaer, plus Maureen Cobb som gennemgående journalist), og liganyhederne — målt til **0,09 pr. kampdag mod GDD's lovede 2-3**, faktor 28, og rørene findes allerede.
-
-# Nat 5b — pyramiden: der skal findes en verden uden for din liga
-
-**Besluttet af Mads 7/8.** I dag er verden 13 navngivne modstandere, og `G.div` er et heltal fra 0 til 3. De andre divisioner findes ikke som *steder*.
-
-**Vigtig afklaring:** nedrykningen (pakke 16) har ikke brug for pyramiden. Mekanikken virker med `G.div` som tal. Pyramiden gør faldet **synligt**, ikke muligt — de er additive. Men den skal ligge **før pokalen og multi-klub**, ellers skal begge bygges om.
-
-Formen er en **overfladisk** simulering af de tre andre rækker — ikke en fuld motor:
-
-- Tabeller der bevæger sig sæson for sæson, med navngivne klubber.
-- Op- og nedrykning mellem alle fire niveauer, så klubber faktisk **ankommer** i din liga næste sæson. Den klub der sendte dig ned, kan du møde igen på vej op.
-- De spillere du solgte, dukker op i dem. **`G.soldTo` registrerer allerede navn, klub, position, OVR og om han gik bittert** — dataene ligger der, ingen læser dem. GDD'ens Legende-væg lover ordret: *"Quigley scorede i går for storklubben, du solgte ham til."*
-- Klubber i andre divisioner er modstandere i pokalen og mulige opkøb i multi-klub.
-
-**Hvorfor før frem for efter:** tre køpunkter afhænger af den — pokalen, multi-klub og Legenderne. Bygger vi den først, er de tre billigere. Bygger vi den bagefter, skal alle tre laves om.
-
-`G` skal forblive et træ: de andre divisioner er tabeller af primitive værdier, ingen delte objektreferencer til `G.teams`.
-
-# Nat 6 — multi-klub
-
-Flere klubber pr. ejer, aldrig to i samme liga. `G` skal have en klub-dimension i roden — **egen pakke, efter nedrykningen**, med harness'en som sikkerhedsnet: 4.000 sæsoner uden et eneste nedbrud er præcis det aktiv, der gør en stor mekanisk omskrivning forsvarlig.
-
-Åbne spørgsmål, der skal besvares før den bygges: fælles eller adskilt kasse (det er hele forskellen på et holdingselskab og to parallelle spil); ejer medejerne klubben eller holdingselskabet. **Og kollisionen, som er en feature:** rykker din ene klub ned i den andens division, skal du sælge en af dem.
-
-# Længere ude
-
-- **Pokalen som kilde til `big`.** 87 % af alle store kampe kommer i dag fra to tabelafhængige kilder. En pokalkamp er uafhængig af tabellen. **Mads' regel (7/8):** møder du din rival fra en anden division i pokalen, er det en *ekstraordinær* situation og må være sæsonens sjette store kamp, uden for båndet.
-- **Mennesker:** skjult potentiale (findes slet ikke i koden — GDD kalder det *"hele gambling-spændingen i talentkøb"*, og det er forudsætningen for både Youth Day og scout-missioner), `party` og `whinger` som tomme mærkater, de otte tavse sponsorer.
-- **Karantæner pr. turnering** — lille realismedetalje, relevant når pokalen kommer.
-
-# Dagarbejde med Mads — ikke til en natlig agent
-
-**Det grafiske løft.** En agent kan ikke se en telefon, så dette bygges ikke om natten. Gennemgangen af Hometown FC viste, at deres UI ikke er bedre end vores — lyst tema, hvide kort, emoji som ikoner — men at **fotografiet gør alt arbejdet**: hver skærm ligger oven på en fotorealistisk rendering med halvgennemsigtige kort ovenpå. Til gengæld er deres by de samme fem faste billeder for alle spillere, mens `stadiumSvg()` tegnes ud fra spillerens egen tilstand: klubfarver, tribuner, fremmøde, protestbannere.
-
-Konklusionen er derfor **ikke** at jagte fotorealisme i UI'et — Floodlight-temaet med Barlow Condensed er mere karakterfuldt end deres. Men tre ting ville løfte meget for lidt:
-
-1. Et dæmpet fotografisk baggrundslag bag hovedskærmene, med kortene ovenpå.
-2. Lys og materialer i `stadiumSvg()`: tidspunkt på dagen, vejr, lysmasternes kegler, tekstur på tribunetaget. Realisme i **belysningen**, ikke i geometrien.
-3. Byen mangler et billede overhovedet — den er i dag kun tallet `townDemand()`. Hænger sammen med nat 5.
+- **Pyramiden kommer senere, og nedrykningen skal ikke vente på den.** Pakke 16 virker med `G.div` som tal.
+- **Store kampe får en femte kilde (pokalen) senere.** Byg ikke pokalstruktur ind i pakke 17 — udled `big` af tabellen som beskrevet.
 
 ---
 
