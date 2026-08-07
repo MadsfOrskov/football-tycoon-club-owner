@@ -441,6 +441,63 @@ function runSeed(seed, PROFILE) {
 
   /* Kør stadion-tegningen gennem alle byggetilstande — det er den mest
      forgrenede markup i spillet (4 tribuner × 3 niveauer × faciliteter). */
+  /* Pakke 15: hovedtribunen fik to virkninger, og begge maales her frem for at
+     blive laest i kilden. Det er samme krav som pakke 5 stillede til de store
+     kampe: en virkning der kun kan verificeres ved at laese koden, er en
+     lovning -- ikke en mekanik. */
+  function checkMainStandRole() {
+    const G = H.G;
+    where = "hovedtribunens rolle";
+    const snap = { stands: { ...G.stands }, fac: { ...G.fac }, trust: G.trust, build: G.standBuild,
+      inbox: G.inbox.slice(), news: G.news.slice(), screen: H.screen, modal: H.modal };
+
+    /* a) VIP-boksene kraever hovedtribunen -- baade ved bygning og i kassen.
+          Foer pakke 15 udbetalte de deres faste beloeb uanset hvad, mens
+          stadstegningen kun tegnede dem naar main>=1: koden og billedet var
+          uenige, og billedet havde ret. */
+    G.stands.main = 0; G.fac.vip = 0; G.standBuild = null; G.facBuild = null;
+    if (!H.call("facBlockedBy", "vip")) fail("VIP-bokse kan bygges uden hovedtribune -- kravet er ikke aegte");
+    G.balance = 5000000;
+    H.modal = null; H.call("buildFac", "vip");
+    if (G.facBuild) fail("buildFac('vip') startede byggeriet uden hovedtribune");
+    if (!H.modal || H.modal.type !== "info") fail("buildFac('vip') uden hovedtribune gav ingen forklaring til spilleren");
+    H.modal = null;
+    /* ... og udbetalingen skal foelge kravet, ikke kun knappen. En gammel
+       gemmefil kan have vip uden main; saa maa boksene heller ikke betale. */
+    G.fac.vip = 1;
+    const res = { home: true, big: false };
+    G.stands.main = 0; const without = H.call("gateReceipts", res).extras;
+    G.stands.main = 1; const withMain = H.call("gateReceipts", res).extras;
+    if (withMain <= without)
+      fail("VIP-boksene betaler det samme med og uden hovedtribune (" + withMain + " mod " + without + ")");
+    if (Math.round(withMain - without) !== Math.round(H.consts.BAL.matchday.vipFlat))
+      fail("VIP-forskellen er " + Math.round(withMain - without) + ", men BAL.matchday.vipFlat er " +
+        H.consts.BAL.matchday.vipFlat + " -- teksten og kassen er uenige");
+
+    /* b) tillid pr. niveau ved OPFOERELSE. Maales gennem finishStand(), ikke ved
+          at kalde bumpTrust: det er faerdiggoerelsen der skal betale. */
+    G.stands.main = 0; G.trust = 40;
+    G.standBuild = { key: "main", remain: 1, lvl: 1 };
+    const before = H.call("trustLevel");
+    H.call("finishStand");
+    const gained = H.call("trustLevel") - before;
+    if (Math.abs(gained - H.consts.BAL.owners.trustMainStand) > 0.51)
+      fail("hovedtribunen gav " + gained.toFixed(1) + " tillid, BAL.owners.trustMainStand lover " +
+        H.consts.BAL.owners.trustMainStand);
+    // og en ANDEN tribune maa ikke give det samme, ellers maaler vi bare byggeri
+    G.stands.shed = 0; G.trust = 40;
+    G.standBuild = { key: "shed", remain: 1, lvl: 1 };
+    const b2 = H.call("trustLevel");
+    H.call("finishStand");
+    if (Math.abs(H.call("trustLevel") - b2) > 0.51)
+      fail("Shed End giver ogsaa bestyrelsestillid -- virkningen er ikke hovedtribunens");
+
+    G.stands = snap.stands; G.fac = snap.fac; G.trust = snap.trust; G.standBuild = snap.build;
+    G.inbox = snap.inbox; G.news = snap.news; H.screen = snap.screen; H.modal = snap.modal;
+    H.call("recalcCapacity");
+    checkInvariants();
+  }
+
   function checkGroundStates() {
     const G = H.G;
     const keys = Object.keys(H.consts.STANDS);
@@ -2206,6 +2263,7 @@ function runSeed(seed, PROFILE) {
   checkSaveLoad();
   checkPriceCurves();
   checkGroundStates();
+  checkMainStandRole();
   checkValuationDirection();
   checkBigGate();
   checkBigSources();

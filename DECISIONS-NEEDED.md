@@ -6,7 +6,10 @@ Skrevet af nat 2 (7/8 2026), branch `nightly/trupdybde`.
 
 ---
 
-## 1. Skal Main Stand gøre noget i bestyrelsen? (pakke 7)
+## 1. Skal Main Stand gøre noget i bestyrelsen? (pakke 7) — ✅ BESVARET, bygget i pakke 15
+
+> **Mads svarede 7/8: begge virkninger.** Bygget i nat 3's pakke 15. VIP-bokse kræver nu Main Stand ≥ 1 (både knappen og udbetalingen — en gammel gemmefil med VIP uden hovedtribune får heller ikke pengene), og en færdig Main Stand giver `BAL.owners.trustMainStand` = +4 tillid pr. niveau. Harness'en måler begge dele og skelner hovedtribunen fra de andre tribuner, så virkningen ikke bare er "byggeri giver tillid". Spørgsmålet nedenfor er bevaret som reference for hvad der blev spurgt om.
+
 
 **Fundet:** `STANDS.main.role` lovede *"Seats & boardroom gravitas"*. Koden rører intet uden for kapaciteten. Der var ingen `trust`-effekt, ingen medejer-effekt, ingenting. Nøjagtig samme fejlklasse som sponsorklausulen: en lovning ingen kode indfrier.
 

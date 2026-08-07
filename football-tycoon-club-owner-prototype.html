@@ -330,7 +330,10 @@ const BAL={
     askMult:1.2, openMult:0.72,
     moodDiscount:0.05, insultBelow:0.62, lockSeasons:2,
     trustStart:15, trustPerSeason:5, trustObjective:7, trustMissed:-4,
-    trustFundKept:3, trustAdmin:-30, trustRaid:-12, trustPromise:-5, trustFavourite:-8
+    trustFundKept:3, trustAdmin:-30, trustRaid:-12, trustPromise:-5, trustFavourite:-8,
+    /* Pakke 15b: the Main Stand is the one board-facing thing you can BUILD.
+       Small on purpose — next to trustAdmin −30 it is a nod, not a shortcut. */
+    trustMainStand:4
   },
   fund:{bonusPerMD:0.015, bonusCap:0.15},
   /* Freshness. The game's unit of time is the MATCHDAY — there are no rest
@@ -1034,11 +1037,12 @@ const pct=n=>Math.round(n*100)+"%";
 const perHead=n=>"£"+n.toFixed(2)+" per spectator, every home game";
 const STANDS={
  shed:{n:"The Shed End",role:"Atmosphere — home advantage +"+BAL.stands.shedHome.toFixed(2)+" per tier",cap:[0,1000,2000]},
- /* "Seats & boardroom gravitas" promised something the code never did: the Main
-    Stand touches capacity and nothing else. Whether the boardroom SHOULD care
-    is a design decision, so it is in DECISIONS-NEEDED.md and the text now says
-    what is true. */
- main:{n:"Main Stand",role:"Seats — the biggest capacity step per tier",cap:[0,1500,3000]},
+ /* Pakke 15, decided by Mads 7/8. "Seats & boardroom gravitas" once promised
+    something the code never did, so nat 2 cut the promise back to the truth and
+    put the question in DECISIONS-NEEDED. The answer came back: BOTH effects.
+    The stand now unlocks the VIP boxes (which the stadium drawing has always
+    hung off it) and pays a small, honest amount of board trust per tier. */
+ main:{n:"Main Stand",role:"Seats — the biggest capacity step per tier · unlocks the VIP boxes · +"+BAL.owners.trustMainStand+" board trust per tier",cap:[0,1500,3000]},
  family:{n:"Family Stand",role:"Fan growth: +"+pct(BAL.demand.familyStand)+" town demand, mood +0.5 a matchday per tier",cap:[0,1000,2000]},
  away:{n:"Away End",role:"Gate +"+pct(BAL.matchday.awayEndBigGate)+" per tier in big matches",cap:[0,800,1600]}
 };
@@ -1052,6 +1056,10 @@ const FACS={
  basics:{n:"The unsexy basics",cost:15000,txt:"parking, loos, lights — small mood & gate lift"},
  vip:{n:"VIP boxes",cost:60000,txt:"+"+kfmt(BAL.matchday.vipFlat)+" per home game. The fans call it the prawn sandwich brigade"}
 };
+/* Pakke 15a: which stands a facility needs before it can be built. The VIP
+   boxes have always been DRAWN hanging off the Main Stand; now they are gated
+   on it too, so the code and the picture say the same thing. */
+const FAC_REQ={vip:{stand:"main",lvl:1}};
 function recalcCapacity(){
   G.capacity=Object.entries(G.stands).reduce((s,[k,l])=>s+STANDS[k].cap[l],0);
 }
@@ -1736,7 +1744,7 @@ function gateReceipts(res){
   const M=BAL.matchday;
   const extras=Math.round(att*(M.kiosk+G.fac.shop*M.shop+G.fac.pub*M.pub+(G.fac.basics?M.basics:0))
         +att*M.merch*G.jerseyFactor*(1+G.fac.shop*M.shopMerchBoost)
-        +(G.fac.vip?M.vipFlat:0));
+        +(G.fac.vip&&!facBlockedBy("vip")?M.vipFlat:0));
   return {att,gate,extras};
 }
 function settleFinances(res){
@@ -2761,6 +2769,13 @@ function finishStand(){
   G.stands[b.key]=b.lvl;recalcCapacity();
   msg("Site foreman","SF",STANDS[b.key].n.toUpperCase()+" IS OPEN","Capacity is now "+G.capacity.toLocaleString("en-GB")+". Cut the ribbon, chairman — and mind the wet paint.",null);
   G.fanMood=clamp(G.fanMood+6,5,100);
+  /* Pakke 15b. The Main Stand's second role. Deliberately small: against
+     trustAdmin −30 it is a nod, not a shortcut. Trust is still earned by
+     conduct — this is the one board-facing thing you can BUILD. */
+  if(b.key==="main"){
+    bumpTrust(BAL.owners.trustMainStand);
+    addNews("CLUB","The new Main Stand has a boardroom in it. The co-owners have opinions about the carpet, and rather warmer ones about you.");
+  }
   G.standBuild=null;
 }
 const FAC_DETAIL={
@@ -2787,17 +2802,35 @@ const FAC_DETAIL={
    warn:"Pays off over YEARS, not weeks. A boy who never plays gets a third of it.",md:3},
  basics:{fx:["Fan mood +4 on opening",perHead(BAL.matchday.basics),
    "Town demand +"+pct(BAL.demand.basics)+" — a few more through the gate every week"],warn:null,md:1},
- vip:{fx:[kfmt(BAL.matchday.vipFlat)+" flat, every home game"],
+ vip:{fx:[kfmt(BAL.matchday.vipFlat)+" flat, every home game",
+   "Requires the "+STANDS[FAC_REQ.vip.stand].n+" — the boxes hang off it"],
    warn:"The Shed End will call it the prawn sandwich brigade. Fan mood −3 on opening.",md:2}
 };
+/* Pakke 15a. The VIP boxes paid their flat fee whether or not a Main Stand
+   existed, but stadiumSvg() has always drawn them only when G.stands.main>=1 —
+   the code and the picture disagreed, and the picture was right. The boxes hang
+   off the main stand; there is nowhere else to put them. Making the requirement
+   real also gives the Main Stand the first of its two roles: it unlocks the most
+   lucrative facility in the game. */
+function facBlockedBy(key){
+  const need=FAC_REQ[key];
+  if(!need||!G)return null;
+  if(G.stands[need.stand]>=need.lvl)return null;
+  return STANDS[need.stand].n;
+}
 function buildFac(key){
   const f=FACS[key];
+  const blocker=facBlockedBy(key);
+  if(blocker){modal={type:"info",title:"Nowhere to put them",
+    body:f.n+" hang off the "+blocker+". Build that first — the boxes have to look out over something."};render();return;}
   if(G.fac[key]){modal={type:"info",title:"Already built",body:f.n+" is up and running."};render();return;}
   if(G.facBuild){modal={type:"info",title:"One small job at a time",body:"The local firm is on "+FACS[G.facBuild.key].n+". They don't split crews either."};render();return;}
   modal={type:"facConfirm",key};render();
 }
 function facConfirm(){
   const key=modal.key;const f=FACS[key];
+  const blocker=facBlockedBy(key);
+  if(blocker){modal={type:"info",title:"Nowhere to put them",body:f.n+" need the "+blocker+" first."};render();return;}
   if(G.balance<f.cost){modal={type:"info",title:"Not enough funds",body:f.n+" costs "+kfmt(f.cost)+"."};render();return;}
   G.balance-=f.cost;
   G.facBuild={key,remain:FAC_DETAIL[key].md};
