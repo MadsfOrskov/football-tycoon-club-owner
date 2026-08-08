@@ -2218,12 +2218,19 @@ function updateFormMood(res){
   {const MO=BAL.mood;
    G.fanMood=clamp(G.fanMood+(w?MO.win:d?MO.draw:MO.loss)+(gatePrice(res.big)>BAL.ticket.moodPenaltyAbove?MO.dearTicket:0)
      +G.stands.family*MO.familyPerTier+(G.fac.pub?MO.pubDrift:0),5,100);}
-  // the way back: anger cools toward a baseline, never inflates a happy ground
-  {const P=BAL.protest;
-   if(G.fanMood<P.baseline)G.fanMood=clamp(G.fanMood+(P.baseline-G.fanMood)*P.easing,5,100);}
+  easeMood(); // the way back: anger cools toward a baseline (egen funktion -> maalbar)
   updateProtest();
   if(G.talkCooldown>0)G.talkCooldown--;
   for(const t of G.teams){t.att=clamp(t.att+R(-1,1)*0.5,40,75);t.def=clamp(t.def+R(-1,1)*0.5,40,75);}
+}
+/* "Vejen tilbage": vreden koeler mod en baseline, aldrig over. Trukket ud i
+   egen funktion (pakke 29 / QA's N1), saa harness'en kan KALDE spillets easing
+   frem for at regne sin egen kopi -- QA viste at man kunne fjerne easingen helt
+   fra spillet og stadig faa REGRESSION_OK, fordi invarianten maalte sin egen
+   formel. Nu er det spillets kode der maales. */
+function easeMood(){
+  const P=BAL.protest;
+  if(G.fanMood<P.baseline)G.fanMood=clamp(G.fanMood+(P.baseline-G.fanMood)*P.easing,5,100);
 }
 function postMatchMessages(){
   resolveBids();
