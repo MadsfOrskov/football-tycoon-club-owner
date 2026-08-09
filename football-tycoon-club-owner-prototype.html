@@ -4440,7 +4440,10 @@ function marketRow(p,ix,fa){
 }
 function viewClub(){
   const b=G.standBuild;
-  return `${stadiumSvg()}
+  // N8: klubsiden delt i faner, saa hver del passer paa én skaerm
+  const tab=G.clubTab||"ground";
+  const bar=`<div class="modes" style="margin-bottom:10px">`+[["ground","Ground"],["money","Money"],["board","Board"]].map(x=>`<button class="${tab===x[0]?'on':''}" onclick="G.clubTab='${x[0]}';render()">${x[1]}</button>`).join("")+`</div>`;
+  return bar+(tab==="ground"?`${stadiumSvg()}
   ${b?`<div class="card"><div class="rowline"><span>${STANDS[b.key].n} · level ${b.lvl}</span><span class="cn num" style="color:var(--comm)">${b.remain} MD LEFT</span></div>
     <div class="bar amber"><i style="width:${Math.round(100*(5-b.remain)/5)}%"></i></div>
     <div class="boost"><button onclick="buildBoost()">▶ WATCH AD · −1 MD</button><button class="iap" onclick="grantReward('build')">FINISH NOW · £0.99 <span style="font-size:8px">(IAP)</span></button></div></div>`:""}
@@ -4458,8 +4461,8 @@ function viewClub(){
     }).join("")}</div>
   <div class="card"><div class="kick" style="margin-bottom:4px">Facilities</div>
     ${Object.entries(FACS).map(([k,f])=>`<div class="rowline"><span>${f.n} <small>· ${f.txt}</small></span>
-      ${G.fac[k]?'<span class="sc" style="color:var(--acc)">✓</span>':(G.facBuild&&G.facBuild.key===k?`<span class="cn num" style="color:var(--comm);font-size:11px">${G.facBuild.remain} MD</span>`:`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="buildFac('${k}')">Details…</button>`)}</div>`).join("")}</div>
-  <div class="card"><div class="kick" style="margin-bottom:4px">Matchday tickets · season tickets: <b>${G.seasonTix.sold.toLocaleString("en-GB")}</b> holders</div>
+      ${G.fac[k]?'<span class="sc" style="color:var(--acc)">✓</span>':(G.facBuild&&G.facBuild.key===k?`<span class="cn num" style="color:var(--comm);font-size:11px">${G.facBuild.remain} MD</span>`:`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="buildFac('${k}')">Details…</button>`)}</div>`).join("")}</div>`:"")
+  +(tab==="money"?`<div class="card"><div class="kick" style="margin-bottom:4px">Matchday tickets · season tickets: <b>${G.seasonTix.sold.toLocaleString("en-GB")}</b> holders</div>
     <div class="rowline"><span>Ticket price</span>
     <span class="stepper" style="margin:0"><button onclick="G.ticket=Math.max(5,G.ticket-1);render()">‹</button><span class="val" style="font-size:20px;min-width:60px">£${G.ticket}</span><button onclick="G.ticket=Math.min(30,G.ticket+1);render()">›</button></span></div>
     <div class="rowline"><span>Big-match surcharge <small>· six-pointers, run-ins, relegation scraps, playoffs · every £1 over £${BAL.ticket.sweetSpot} costs about ${pct(BAL.ticket.elasticity)} of the crowd</small></span>
@@ -4509,8 +4512,8 @@ function viewClub(){
         ${gate?`<span class="sc" style="opacity:.65;flex-shrink:0">${gate}</span>`
           :`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="buyOutOwner(${i})">Buy out…</button>`}</div>`;
     }).join("")||'<div class="newsline">Sole owner. The kingdom is yours — cap-free and excuse-free.</div>'}
-    ${G.owners.length?`<div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Buy out one owner per season. Trust lowers the price; a losing club is cheapest.</div>`:""}</div>
-  <div class="card"><div class="kick" style="margin-bottom:4px">Partners & staff</div>
+    ${G.owners.length?`<div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Buy out one owner per season. Trust lowers the price; a losing club is cheapest.</div>`:""}</div>`:"")
+  +(tab==="board"?`<div class="card"><div class="kick" style="margin-bottom:4px">Partners & staff</div>
     ${G.sponsor?`<div class="rowline"><span>${G.sponsor.n} <small>· main · ${G.sponsor.seasonsLeft} season${G.sponsor.seasonsLeft===1?"":"s"} left${G.sponsor.demand?" · "+G.sponsor.demand:""}</small></span><span class="amt num">${kfmt(G.sponsor.per)}/W</span></div>
     <div class="rowline"><span>Sponsor bonus <small>· hear out their 'big idea'</small></span><button class="abtn comm" onclick="sponsorBoost()" ${G.sponsorBoost?"disabled style='opacity:.4'":""}>▶ +${kfmt(BAL.sponsor.boost)} <span style="font-size:8px">AD</span></button></div>`
     :`<div class="rowline"><span>No main sponsor <small>· the shirt is naked — offers arrive in your inbox</small></span><span class="amt num" style="color:var(--muted)">£0/W</span></div>`}
@@ -4522,7 +4525,7 @@ function viewClub(){
     ${(G.commitments||[]).map(c=>`<div class="rowline"><span>${c.kind==="fee"?"Instalment":c.kind==="promo"?"Promotion clause":"Goal clause"} <small>· ${c.name.split(" ")[1]} → ${c.club} · ${c.seasonsLeft} season${c.seasonsLeft===1?"":"s"} left</small></span>
       <span class="amt num" style="color:#E07A6A">−${kfmt(c.amt)}${c.kind==="fee"?"/yr":c.kind==="goals"?"/goal":""}</span></div>`).join("")}</div>
   <div class="tifo"><div class="q">${fanQuote()}</div><div class="who">The Shed End · mood ${Math.round(G.fanMood)}/100</div>
-    <div class="bar" style="margin-top:9px"><i style="width:${G.fanMood}%"></i></div></div>`;
+    <div class="bar" style="margin-top:9px"><i style="width:${G.fanMood}%"></i></div></div>`:"");
 }
 function fanQuote(){
   if(G.fanMood>75)return `"Best chairman since old man Tilbury. Don't you dare leave."`;
