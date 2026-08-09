@@ -4493,7 +4493,7 @@ function viewClub(){
       ${line("Earnings · form of the books, sponsor, TV",V.earnings)}
       ${line("Brand · the town, the division, the honours",V.brand)}
       ${line("Debt · loans, overdraft, scars",V.debt,true)}
-      <div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Relegation, losses, a bank loan, sour fans and administration all take value OUT. Promotion, profit, building and a growing town put it back. That is what makes a shareholding worth owning.</div></div>`;
+      <div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Winning, building and profit lift the value; relegation, debt and losses sink it.</div></div>`;
   })()}
   <div class="card"><div class="kick" style="margin-bottom:4px">Ownership · you hold <b>${G.myShare}%</b> · boardroom trust <b>${Math.round(trustLevel())}%</b></div>
     <div class="rowline"><span>Club cash</span><span class="amt num">${kfmt(G.balance)}</span></div>
@@ -4509,7 +4509,7 @@ function viewClub(){
         ${gate?`<span class="sc" style="opacity:.65;flex-shrink:0">${gate}</span>`
           :`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="buyOutOwner(${i})">Buy out…</button>`}</div>`;
     }).join("")||'<div class="newsline">Sole owner. The kingdom is yours — cap-free and excuse-free.</div>'}
-    ${G.owners.length?`<div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">There is no locked door — only a price. Strangers pay the most; a chairman they have watched keep his word pays least, and a club heading downhill is the cheapest of all. One chair empties per season, and a collapsed talk shuts that one for two.</div>`:""}</div>
+    ${G.owners.length?`<div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Buy out one owner per season. Trust lowers the price; a losing club is cheapest.</div>`:""}</div>
   <div class="card"><div class="kick" style="margin-bottom:4px">Partners & staff</div>
     ${G.sponsor?`<div class="rowline"><span>${G.sponsor.n} <small>· main · ${G.sponsor.seasonsLeft} season${G.sponsor.seasonsLeft===1?"":"s"} left${G.sponsor.demand?" · "+G.sponsor.demand:""}</small></span><span class="amt num">${kfmt(G.sponsor.per)}/W</span></div>
     <div class="rowline"><span>Sponsor bonus <small>· hear out their 'big idea'</small></span><button class="abtn comm" onclick="sponsorBoost()" ${G.sponsorBoost?"disabled style='opacity:.4'":""}>▶ +${kfmt(BAL.sponsor.boost)} <span style="font-size:8px">AD</span></button></div>`
@@ -4751,9 +4751,9 @@ function renderModal(){
         const pct_=Math.round(odds*100);
         return `<button class="abtn ${k==='win'?'comm':''}" onclick="giveOrder('${k}',false)" style="text-align:left"><b>${o.n}</b> — ${o.txt}${k==="free"?"":`<div class="kick" style="font-size:9px;margin-top:3px;opacity:.75">he goes along with this ${pct_}% of the time</div>`}</button>`;
       }).join("")}
-      <div class="why" style="font-size:11px"><b>You have a voice, not the power.</b> He picks the shape; you tell him what the afternoon is for. Chasing three points burns legs and invites injuries — and if you say it and lose, the town has it in print. ${G.gafferPatience<35?`<b>He is not in the mood to be told anything.</b>`:""}</div>
+      <div class="why" style="font-size:11px">You tell him what the afternoon is for; he picks the shape. Chasing a win burns legs and books cards.${G.gafferPatience<35?` <b>He's not in the mood to be told.</b>`:""}</div>
       <div style="display:flex;gap:8px">
-        <button class="abtn ghost" style="flex:1" onclick="giveOrder('win',true)">Insist on three points <small style="opacity:.7">— costs you with him</small></button>
+        <button class="abtn ghost" style="flex:1" onclick="giveOrder('win',true)">Insist on the win <small style="opacity:.7">— costs you with him</small></button>
       </div>
       ${M.isPlayoff?"":`<button class="abtn ghost" onclick="prematchBack()">‹ Tilbage <small style="opacity:.7">— nothing has kicked off yet</small></button>`}
     </div></div>`;
@@ -5533,37 +5533,32 @@ function renderOnboarding(){
   applyTheme(obData.hue,obData.mode);
   let inner="";
   if(obStep===0){
-    inner=`<div class="letter"><div class="lh">J. WHITMORE & SONS, SOLICITORS — EST. 1963</div>
-      Dear Sir or Madam,<br><br>It is my duty to inform you that your late great-uncle Aldous has left you his entire estate: one (1) football club of the lower leagues, its debts, its groundskeeper — Reg conveys his regards — and a trophy cabinet described by the valuer as <b>"hauntingly empty."</b><br><br>The club requires a name and an owner. It appears, regrettably, to have found both.<br><br>Yours,<br>J. Whitmore</div>
+    inner=`<div class="letter"><div class="lh">STEP 1 OF 4 · NAME</div>
+      Your great-uncle left you a lower-league club, its debts, and an empty trophy cabinet. Name it.</div>
       <input id="obname" type="text" value="${obData.name}" maxlength="24" placeholder="Name your club">
-      <button class="glowbtn" style="margin-top:14px" onclick="obNext()">Sign the papers ▸</button>`;
+      <button class="glowbtn" style="margin-top:14px" onclick="obNext()">Sign ▸</button>`;
   }
   if(obStep===1){
     const sw=SWATCHES.find(s=>s.h===obData.hue);
-    inner=`<div class="letter"><div class="lh">CLUB COLOURS — STEP 2 OF 4</div>
-      Every club bleeds a colour, chairman. Choose <b>${obData.name}</b>'s — and choose carefully, because the whole world takes it on.</div>
+    inner=`<div class="letter"><div class="lh">STEP 2 OF 4 · COLOUR</div>Pick <b>${obData.name}</b>'s colour.</div>
       <div class="swatches">${SWATCHES.map(s=>`<div class="sw ${obData.hue===s.h?'on':''}" style="background:linear-gradient(135deg,hsl(${s.h},88%,60%),hsl(${s.h},75%,42%))" onclick="obHue(${s.h})" title="${s.n}"></div>`).join("")}</div>
-      <div class="obwhy"><b>${sw?sw.n:"Your colour"}.</b> Badge, shirt, seats, the banner in the Shed End — every screen in this club takes its accent from here. Cosmetic only: it changes nothing on the pitch.</div>
-      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">These are our colours ▸</button>`;
+      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Next ▸</button>`;
   }
   if(obStep===2){
-    inner=`<div class="letter"><div class="lh">YOUR LIGHT — STEP 3 OF 4</div>
-      Some of us live for evening kick-offs under the lamps. Some for Saturday, three o'clock, sun in your eyes. Which is yours?</div>
+    inner=`<div class="letter"><div class="lh">STEP 3 OF 4 · LOOK</div>Dark or light? Flip it any time.</div>
       <div class="modes" style="margin-top:14px;flex-direction:column">
-        <button class="${obData.mode==='dark'?'on':''}" onclick="obMode('dark')">◗&nbsp; Floodlight — dark</button>
-        <button class="${obData.mode==='light'?'on':''}" onclick="obMode('light')">☀&nbsp; Matchday — light</button></div>
-      <div class="obwhy"><b>${obData.mode==='dark'?"Floodlight":"Matchday"}.</b> ${obData.mode==='dark'?"The club's own look — a dark ground with your colour glowing off it. Easier on the eyes on a late bus home.":"Bright and paper-white, like a printed programme. Easier to read in daylight on the terrace."} You can flip it any time with the button up in the corner.</div>
-      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">That's our light ▸</button>`;
+        <button class="${obData.mode==='dark'?'on':''}" onclick="obMode('dark')">◗&nbsp; Dark</button>
+        <button class="${obData.mode==='light'?'on':''}" onclick="obMode('light')">☀&nbsp; Light</button></div>
+      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Next ▸</button>`;
   }
   if(obStep===3){
     const c=obData.coach||(obData.coach=pick(COACHES));
-    inner=`<div class="letter"><div class="lh">THE GAFFER'S OFFICE — STEP 4 OF 4</div>
-      <b>${c.n}</b> — your inherited head coach (${c.style} · TAC ${c.tac} · MAN ${c.man} · DEV ${c.dev}) — looks up from a cold tea:<br><br><i>"${c.line} Three things you should know, chairman:"</i></div>
-      <div class="truth"><span class="n">1</span><span>The squad is <b>honest but limited</b>. Two of them are good. I won't say which two in front of the others.</span></div>
-      <div class="truth"><span class="n">2</span><span>We have <b>no sponsor</b>, and the ground holds <b>1,500 souls</b> on a good day. Everything must be built. By you.</span></div>
-      <div class="truth"><span class="n">3</span><span>The bank balance is <b>£150,000</b> — the inheritance, minus Whitmore's fee. Spend it like it's the last money on earth. It might be.</span></div>
-      <div class="why" style="margin-top:12px"><b>One promise from us.</b> A match is saved the moment it is played. Close the app halfway through if you like — the result will be waiting for you, exactly as it was. This club is not one you can reload your way out of, and that is what makes it yours.</div>
-      <button class="glowbtn" style="margin-top:16px" onclick="obFinish()">Take over the club ▸</button>`;
+    inner=`<div class="letter"><div class="lh">STEP 4 OF 4 · THE GAFFER</div>
+      <b>${c.n}</b> · ${c.style} · TAC ${c.tac} · MAN ${c.man} · DEV ${c.dev}</div>
+      <div class="truth"><span class="n">1</span><span>Squad: honest but limited. Build it.</span></div>
+      <div class="truth"><span class="n">2</span><span>No sponsor · 1,500 seats · £150,000 in the bank.</span></div>
+      <div class="truth"><span class="n">3</span><span>A match is saved the moment it's played. No reloads.</span></div>
+      <button class="glowbtn" style="margin-top:16px" onclick="obFinish()">Take over ▸</button>`;
   }
   app().innerHTML=`<div class="ob"><div class="box">
     <div style="text-align:center;margin-bottom:14px">${svgShield(initials(obData.name),true,52)}
