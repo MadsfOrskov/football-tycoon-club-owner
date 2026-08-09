@@ -648,6 +648,22 @@ const BAL={
      chaos er den uforudsigelige (Dex). Tallene bor her; AGENTS holder kun
      replikkerne. Relation bygges: handler du ofte og fair med en agent,
      blødgøres han (relSoften × G.agentRel[key]) — "for DIG, chairman…". */
+  /* Pakke T4. Deadline day var ét bargain + ét panikbud, begge ét-klik. GDD:
+     "Deadline day — sæsonens teaterforestilling ... et rullende feed time for
+     time med 3-5 muligheder der KUN findes her ... Høj puls, store fortrydelser,
+     bedre historier." Nu et feed af 3-5 events med tidsstempler, hver med
+     modspil OG konsekvens (ingen nøgne knapper), alle trukket fra rigtige
+     klubber i G.teams (T1's verden). Annoncefrit — deadline day er hellig. */
+  deadline:{
+    slots:{min:3, max:5},
+    heistDiscount:0.64,      // a skint club dumps a good man at this fraction of value (T1's desperation)
+    panicPremium:1.30,       // a panic bid lands above the player's value
+    pushChance:0.5,          // pressing a panic bid: it goes up, or the caller walks
+    pushBump:1.15,           // ... and if it goes up, by this much
+    holdCost:0.25,           // pay this share of his value (loyalty bonus) to keep a poached man
+    poachRaise:0.30,         // a rival's poach offer, above value, that you must beat to hold
+    times:["21:40","22:10","22:35","22:47","23:20","23:55"]  // the ticking clock
+  },
   agents:{
     relGain:0.12, relDecay:0.03, relSoften:0.06, relCap:1,
     list:[
@@ -2464,7 +2480,7 @@ function afterMatchday(){
   if(G.md>=G.rounds){startPostSeason();return;}
   if(G.md===13&&!G.midwayDone){openMidway();return;}
   if(G.sponsorDue){modal={type:"sponsorOffer",after:"matchday"};render();return;}
-  if(G.md%4===0){G.adCount++;modal={type:"interstitial"};}
+  if(G.md%4===0&&!isDeadlineDay()){G.adCount++;modal={type:"interstitial"};}  // pakke T4: deadline day er annoncefri
   saveGame();
   render();
 }
@@ -2943,7 +2959,7 @@ function openMidway(){
 function midwayConfirm(){
   G.fund+=modal.fundAdd;G.balance-=modal.fundAdd;
   G.midwayDone=true;modal=null;
-  if(G.md%4===0){G.adCount++;modal={type:"interstitial"};}
+  if(G.md%4===0&&!isDeadlineDay()){G.adCount++;modal={type:"interstitial"};}  // pakke T4: deadline day er annoncefri
   render();
 }
 /* Buying the boardroom out is meant to be a long game, not a shopping trip:
@@ -3284,15 +3300,109 @@ function resolveBank(sell){
   render();
 }
 
-/* ---------- deadline day ---------- */
-function openDeadline(key){
-  const bargain=genPlayer(pick(["DF","MF","FW"]),R(56,64),G_DIV_WAGE(G.div));
-  bargain.value=Math.round(bargain.value*0.7/1000)*1000;
+/* ---------- deadline day: a rolling feed of theatre ---------- */
+function isDeadlineDay(){return G.md===5||G.md===14;}
+function buildDeadlineEvents(){
+  const D=BAL.deadline,events=[];
+  const rivalIdx=()=>Math.floor(Math.random()*G.teams.length);
+  // 1) the heist — a skint club dumps a good man cheap (T1's desperation, dialled up)
+  const heist=genMarketPlayer(pick(["DF","MF","FW","MF"]));
+  heist.value=Math.max(1000,Math.round(heist.value*D.heistDiscount/1000)*1000);
+  heist.desperation=D.heistDiscount;heist.heist=true;
+  events.push({kind:"heist",time:"",fromIdx:heist.fromIdx,player:heist,price:heist.value,done:false,
+    primaryFn:"dlHeistSign"});
+  // 2) the panic bid — a rival throws money at one of your best
   const best=[...G.squad].sort((a,b)=>b.value-a.value)[0];
-  const bid=Math.round(best.value*1.25/1000)*1000;
-  modal={type:"deadline",key,bargain,best,bid,done:{buy:false,sell:false}};
+  if(best){
+    const bidderP=rivalIdx();
+    events.push({kind:"panic",time:"",fromIdx:bidderP,pid:best.id,name:best.name,pos:best.pos,ov:ovr(best),
+      bid:Math.round(best.value*D.panicPremium/1000)*1000,pushed:false,done:false,primaryFn:"dlPanicAccept"});
+  }
+  // 3..) fill toward slots with poaches / a second heist — always a real club behind each
+  const target=D.slots.min+Math.floor(Math.random()*(D.slots.max-D.slots.min+1));
+  const pooled=[...G.squad].filter(p=>!best||p.id!==best.id).sort((a,b)=>b.value-a.value);
+  let pi=0;
+  while(events.length<target){
+    if(Math.random()<0.55&&pi<pooled.length&&G.squad.length>13){
+      const p=pooled[pi++];
+      events.push({kind:"poach",time:"",fromIdx:rivalIdx(),pid:p.id,name:p.name,pos:p.pos,ov:ovr(p),
+        offer:Math.round(p.value*(1+D.poachRaise)/1000)*1000,
+        hold:Math.max(1000,Math.round(p.value*D.holdCost/1000)*1000),done:false,primaryFn:"dlPoachHold"});
+    }else{
+      const h=genMarketPlayer(pick(["GK","DF","MF","FW"]));
+      h.value=Math.max(1000,Math.round(h.value*D.heistDiscount/1000)*1000);
+      h.desperation=D.heistDiscount;h.heist=true;
+      events.push({kind:"heist",time:"",fromIdx:h.fromIdx,player:h,price:h.value,done:false,primaryFn:"dlHeistSign"});
+    }
+  }
+  // stamp the ticking clock, latest bids latest
+  const times=[...BAL.deadline.times];
+  events.forEach((e,i)=>{e.time=times[Math.min(i,times.length-1)];});
+  return events;
+}
+function openDeadline(key){
+  modal={type:"deadline",key,events:buildDeadlineEvents(),closed:false};
   render();
 }
+function dlEvt(i){return modal&&modal.events&&modal.events[i];}
+function dlHeistSign(i){
+  const e=dlEvt(i);if(!e||e.done||e.kind!=="heist")return;
+  if(G.balance<e.price){e.done=true;e.outcome="No funds — he signed elsewhere before midnight.";render();return;}
+  G.balance-=e.price;G.squad.push(e.player);e.done=true;
+  e.outcome="Signed for "+kfmt(e.price)+". "+(e.fromIdx>=0&&G.teams[e.fromIdx]?G.teams[e.fromIdx].name:"They")+" needed the cash more than the player.";
+  addNews("TRANSFER",e.player.name+" signs on deadline day from "+(G.teams[e.fromIdx]?G.teams[e.fromIdx].name:"a skint club")+" for "+kfmt(e.price)+". A steal, chairman.");
+  render();
+}
+function dlPanicAccept(i){
+  const e=dlEvt(i);if(!e||e.done||e.kind!=="panic")return;
+  const p=byId(e.pid);
+  if(!p){e.done=true;e.outcome="He's already gone.";render();return;}
+  if(G.squad.length<=13){e.done=true;e.outcome="The gaffer blocked the door — thirteen men is already too thin to sell from.";render();return;}
+  const club=G.teams[e.fromIdx]?G.teams[e.fromIdx].name:pick(G.teams).name;
+  const dl=modal;                       // executeSale may overwrite modal on refusal — restore the feed
+  const ok=executeSale(p,club,e.bid);
+  modal=dl;e.done=true;
+  e.outcome=ok?("Sold to "+club+" for "+kfmt(e.bid)+" — well over his value. The chequebook won."):"He refused the move flat. The deal is dead.";
+  render();
+}
+function dlPanicReject(i){
+  const e=dlEvt(i);if(!e||e.done||e.kind!=="panic")return;
+  const p=byId(e.pid);
+  if(p)p.conf=clamp(p.conf-4,10,95);   // consequence: his head was turned, briefly
+  e.done=true;e.outcome="You held firm. He stays — a little unsettled ("+(p?"confidence dips":"—")+"), but he stays.";
+  addNews("CLUB","You turned down deadline-day money for "+e.name.split(" ")[1]+". The Shed End approves. His agent does not.");
+  render();
+}
+function dlPanicPush(i){
+  const e=dlEvt(i);if(!e||e.done||e.kind!=="panic"||e.pushed)return;
+  e.pushed=true;
+  if(Math.random()<BAL.deadline.pushChance){e.bid=Math.round(e.bid*BAL.deadline.pushBump/1000)*1000;e.outcome="They blinked — the bid is now "+kfmt(e.bid)+". Accept, or hold.";}
+  else{e.done=true;e.outcome="You pushed. They hung up. The offer is gone — and so is the money.";}
+  render();
+}
+function dlPoachHold(i){
+  const e=dlEvt(i);if(!e||e.done||e.kind!=="poach")return;
+  const p=byId(e.pid);
+  if(!p){e.done=true;e.outcome="He's already gone.";render();return;}
+  if(G.balance<e.hold){e.done=true;e.outcome="You couldn't cover the loyalty bonus — he's weighing the move.";render();return;}
+  G.balance-=e.hold;p.conf=clamp(p.conf+5,10,95);e.done=true;
+  e.outcome="You paid "+kfmt(e.hold)+" to keep him. He signs a loyalty note and stays put.";
+  addNews("CLUB",e.name.split(" ")[1]+" turns down "+(G.teams[e.fromIdx]?G.teams[e.fromIdx].name:"a rival")+" to stay. It cost you "+kfmt(e.hold)+".");
+  render();
+}
+function dlPoachLet(i){
+  const e=dlEvt(i);if(!e||e.done||e.kind!=="poach")return;
+  const p=byId(e.pid);
+  if(!p){e.done=true;e.outcome="He's already gone.";render();return;}
+  if(G.squad.length<=13){e.done=true;e.outcome="Too thin to let anyone leave — the gaffer refuses.";render();return;}
+  const club=G.teams[e.fromIdx]?G.teams[e.fromIdx].name:pick(G.teams).name;
+  const dl=modal;                       // executeSale may overwrite modal on refusal — restore the feed
+  const ok=executeSale(p,club,e.offer);
+  modal=dl;e.done=true;
+  e.outcome=ok?("Let him go to "+club+" for "+kfmt(e.offer)+". Sometimes the money is right."):"He refused to move. He stays after all.";
+  render();
+}
+function dlClose(){modal=null;playMatchday();}
 
 /* ---------- inbox & messages ---------- */
 /* The three replies to a formal bid are the only messages that hold a market
@@ -4695,17 +4805,31 @@ function renderModal(){
   }
   if(modal.type==="deadline"){
     const m=modal;
+    const clubName=ix=>G.teams[ix]?G.teams[ix].name:"a rival";
+    const card=(e,i)=>{
+      if(e.kind==="heist"){
+        const p=e.player,band=potBand(p);
+        return `<div class="card"><div class="rowline" style="border:none;padding-bottom:2px"><span class="kick" style="color:var(--comm)">${e.time} · one-day steal</span><span class="kick">${clubName(e.fromIdx)} · short of cash</span></div>
+          <div class="rowline"><span>${p.name} <small>· ${p.pos} · ${ovr(p)} ovr${band?" · "+potBandText(p):""}</small></span><span class="amt num">${kfmt(e.price)}</span></div>
+          ${e.done?`<div class="why">${e.outcome||"Passed -- you let this one go by."}</div>`:`<button class="abtn comm" onclick="dlHeistSign(${i})">Sign him · ${kfmt(e.price)}</button>`}</div>`;
+      }
+      if(e.kind==="panic"){
+        return `<div class="card"><div class="rowline" style="border:none;padding-bottom:2px"><span class="kick" style="color:var(--comm)">${e.time} · panic bid</span><span class="kick">${clubName(e.fromIdx)} are desperate</span></div>
+          <div class="rowline"><span>${e.name} <small>· ${e.pos} · ${e.ov} ovr</small></span><span class="amt num">${kfmt(e.bid)}</span></div>
+          ${e.done?`<div class="why">${e.outcome||"Passed -- you let this one go by."}</div>`:`<div class="boost"><button onclick="dlPanicAccept(${i})">Accept · ${kfmt(e.bid)}</button><button onclick="dlPanicReject(${i})">Hold firm</button>${e.pushed?"":`<button class="iap" onclick="dlPanicPush(${i})">Push for more</button>`}</div>${e.pushed?`<div class="kick" style="text-transform:none">${e.outcome||""}</div>`:""}`}</div>`;
+      }
+      // poach
+      return `<div class="card"><div class="rowline" style="border:none;padding-bottom:2px"><span class="kick" style="color:var(--comm)">${e.time} · rival circling</span><span class="kick">${clubName(e.fromIdx)} want him</span></div>
+        <div class="rowline"><span>${e.name} <small>· ${e.pos} · ${e.ov} ovr</small></span><span class="amt num">${kfmt(e.offer)}</span></div>
+        ${e.done?`<div class="why">${e.outcome||"Passed -- you let this one go by."}</div>`:`<div class="boost"><button onclick="dlPoachHold(${i})">Hold him · ${kfmt(e.hold)}</button><button onclick="dlPoachLet(${i})">Let him go · ${kfmt(e.offer)}</button></div>`}</div>`;
+    };
+    const openCount=m.events.filter(e=>!e.done).length;
     return `<div class="overlay"><div class="sheet">
       <div class="biglabel">⚡ DEADLINE DAY ⚡</div>
       <h2>The phones are hot</h2>
-      <p>Two things on the table before tonight's window slams shut. Choose fast — the market won't wait.</p>
-      <div class="card"><div class="kick" style="color:var(--comm)">One-day bargain</div>
-        <div class="rowline"><span>${m.bargain.name} <small>· ${m.bargain.pos} · ${ovr(m.bargain)} ovr</small></span><span class="amt num">${kfmt(m.bargain.value)}</span></div>
-        ${m.done.buy?'<div class="kick">Signed ✓</div>':`<button class="abtn" onclick="dlBuy()">Sign him · ${kfmt(m.bargain.value)}</button>`}</div>
-      <div class="card"><div class="kick" style="color:var(--comm)">Panic bid for your star</div>
-        <div class="rowline"><span>${m.best.name} <small>· ${m.best.pos} · ${ovr(m.best)} ovr</small></span><span class="amt num">${kfmt(m.bid)}</span></div>
-        ${m.done.sell?'<div class="kick">Sold ✓</div>':`<button class="abtn comm" onclick="dlSell()">Sell him · ${kfmt(m.bid)}</button>`}</div>
-      <button class="glowbtn" onclick="modal=null;playMatchday()">Close window & play matchday ▸</button>
+      <p>A rolling feed until the window slams shut. ${openCount?openCount+" live — choose fast, each one is gone by midnight.":"All settled. The fax machine finally cools."}</p>
+      ${m.events.map((e,i)=>card(e,i)).join("")}
+      <button class="glowbtn" onclick="dlClose()">Close window & play matchday ▸</button>
     </div></div>`;
   }
   if(modal.type==="bank"){
@@ -5111,19 +5235,6 @@ function renderModal(){
       <button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
   }
   return "";
-}
-function dlBuy(){
-  if(G.balance<modal.bargain.value){modal.done.buy=true;addNews("TRANSFER","The deadline-day bargain slipped away — no funds.");render();return;}
-  G.balance-=modal.bargain.value;G.squad.push(modal.bargain);modal.done.buy=true;
-  addNews("TRANSFER",modal.bargain.name+" signs on deadline day. The fax machine is smoking.");render();
-}
-function dlSell(){
-  if(G.squad.length<=13){modal.done.sell=true;addNews("TRANSFER","The gaffer physically blocked the fax machine. No sale — the squad is too thin.");render();return;}
-  const dl=modal; // executeSale may overwrite modal on refusal
-  const ok=executeSale(dl.best,pick(G.teams).name,dl.bid);
-  dl.done.sell=true;modal=dl;
-  if(!ok)addNews("TRANSFER","The deadline-day sale collapsed — the player refused to move. The fax machine cools.");
-  render();
 }
 
 /* ---------- ticker runtime: two halves, HT choice, FT summary ---------- */
