@@ -624,6 +624,22 @@ const BAL={
     baseSpreadLo:-8, baseSpreadHi:2,  // a market man is usually a fringe player, rarely a standout
     rivalSaleAtt:3           // selling to a promotion rival: the att they carry into spring
   },
+  /* Pakke T2. Skjult potentiale — GDD: "unge spilleres loft er usikkert;
+     scouting indsnævrer intervallet, og det er hele gambling-spændingen i
+     talentkøb." Indtil nu fandtes det ikke: alt var synligt. Nu har hver spiller
+     et SKJULT pot (potentiale-loft ≥ ov). Unge får et bredt spænd, de ældre ~nul.
+     Spilleren ser ALDRIG pot — kun et BÅND afledt af p.scouted (0 = bredt, en
+     read gør det smallere). Udviklingen vokser mod pot og aldrig forbi: to
+     drenge med samme SYNLIGE stats kan udvikle sig vidt forskelligt — gamblen.
+     (Præcisions-NIVEAUER hører til nat 5's scout; her er kun den ene billige read.) */
+  talent:{
+    youngUnder:23,                 // a hidden ceiling only matters, and only shows, below this age
+    potSpread:{young:[6,22], old:[0,4]},  // pot = ov + R(range) — wide for the young, ~nil for the old
+    potCap:88,                     // nobody is generated with a ceiling above this
+    bandByScout:[12,7,3,0],        // half-width of the SHOWN band by p.scouted; the last (0) is a full read
+    devToCeiling:true,             // development stops at pot
+    readNarrow:1                   // one scout report lifts p.scouted by this much
+  },
   /* Which league matches are BIG. `buildMatch` was called with big=false for
      all 26 matchdays, so five things were dead at once: the big screen
      (+10% gate), the Away End (+6%/tier), the `bigExtra` price knob, the
@@ -1365,18 +1381,38 @@ function genPlayer(pos,base,wmult){
   const def=clamp(base+ (pos==="GK"||pos==="DF"?R(2,8):pos==="MF"?R(-2,4):R(-10,-2)),30,90);
   const phy=clamp(base+R(-4,6),30,90);
   const ov=Math.round((att+def+phy)/3);
+  const age=R(18,33);
   const traits=[];
   if(Math.random()<0.35)traits.push(pick(Object.keys(TRAITS)));
   if(Math.random()<0.08)traits.push(pick(Object.keys(TRAITS)));
-  const p={id:PID++,name:pick(FIRST)+" "+pick(LAST),pos,att,def,phy,form:0,age:R(18,33),
+  // pakke T2: the hidden ceiling. Young players get a wide spread above their
+  // current ability; the older get almost none. Stored, never shown.
+  const S=BAL.talent.potSpread,sp=age<BAL.talent.youngUnder?S.young:S.old;
+  const pot=clamp(ov+R(sp[0],sp[1]),ov,BAL.talent.potCap);
+  const p={id:PID++,name:pick(FIRST)+" "+pick(LAST),pos,att,def,phy,form:0,age,
     wage:Math.round((ov*BAL.wages.scale*wmult+R(-70,110))/10)*10,
-    value:0,
+    value:0,pot,scouted:0,
     traits:[...new Set(traits)],gem:false,inj:0,susp:0,sg:0,sapps:0,smotm:0,load:0,
     conf:R(42,60),focus:null,capps:0,promiseMD:null,years:R(1,3),from:null,fromIdx:-1,
     desperation:1,heist:false,valNoise:1+(Math.random()*2-1)*BAL.market.noise,
     listed:false,reqDone:false,renewLockMD:-99};
   p.value=playerValuation(p);
   return p;
+}
+/* Pakke T2: the uncertainty band. A young player never shows his ceiling — only
+   a range that narrows as p.scouted rises. Returns null for anyone who does not
+   carry a meaningful ceiling (the old, or a save from before T2). The RAW pot
+   must never leave this function into the markup — the invariant proves it. */
+function potBand(p){
+  const T=BAL.talent;
+  if(p.pot===undefined||p.age>=T.youngUnder||p.pot<=ovr(p))return null;
+  const hw=T.bandByScout[Math.min(p.scouted||0,T.bandByScout.length-1)];
+  if(hw===0)return {lo:p.pot,hi:p.pot,exact:true};
+  return {lo:clamp(p.pot-hw,ovr(p),99),hi:clamp(p.pot+hw,ovr(p),99),exact:false};
+}
+function potBandText(p){
+  const b=potBand(p);if(!b)return "";
+  return b.exact?("ceiling <b>"+b.hi+"</b> · fully scouted"):("potential <b>"+b.lo+"–"+b.hi+"</b>");
 }
 /* Every market player TILHØRER a named club in G.teams — no clubless ghosts.
    fromIdx is an index (never a reference: G must stay a tree). reseedLeague()
@@ -2560,6 +2596,17 @@ function finishSeason(o){
     p.att=clamp(p.att+dev,25,95);p.def=clamp(p.def+dev,25,95);
     p.phy=clamp(p.phy+(p.age>=30?-R(1,3):dev),25,95);
     if(p.focus&&p.age<28){p[p.focus]=clamp(p[p.focus]+(p.age<24?2:1),25,95);}
+    /* Pakke T2: growth respects the hidden ceiling. A boy grows TOWARD pot, never
+       past it — so two players with identical visible stats but different pots
+       develop into different men. Shave the top attribute until overall sits at
+       or below the ceiling; dev is small, so this trims at most a point or two. */
+    if(BAL.talent.devToCeiling&&p.pot!==undefined){
+      let guard=0;
+      while(ovr(p)>p.pot&&guard++<30){
+        const hi=p.att>=p.def&&p.att>=p.phy?"att":p.def>=p.phy?"def":"phy";
+        p[hi]=Math.max(25,p[hi]-1);
+      }
+    }
     p.value=playerValuation(p);   // pakke T1: the one living valuation, squad and market alike
     p.form=0;p.sg=0;p.sapps=0;p.smotm=0;p.inj=0;p.susp=0;p.promiseMD=null;p.load=0;p.roleWarned=false; // a summer is a summer
     p.conf=clamp(p.conf*0.6+20,10,95); // confidence regresses toward the mean over summer
@@ -3611,11 +3658,22 @@ function grantReward(kind){
   modal=null;render();
 }
 function deliverScout(){
-  const gem=genPlayer(pick(["DF","MF","FW"]),R(60,68),G_DIV_WAGE(G.div));
-  gem.gem=true;gem.value=Math.round(gem.value*0.55/1000)*1000;
-  assignClub(gem);   // even a scouted gem belongs to a named club — no ghosts on the list
-  G.market.unshift(gem);
-  msg("Reg (scout)","R","Scout report: "+gem.name,"\"Best "+gem.pos+" I've seen since the war. Which war is unclear. He's on the market list, and he's CHEAP.\"",null);
+  /* Pakke T2: the read. Reg no longer conjures a cheap gem out of nowhere — he
+     NARROWS the uncertainty on one concrete young prospect you can already see.
+     That is the whole point of scouting in the GDD: it does not create talent,
+     it reveals how much of it a boy already has. Doseret 1/vindue via scoutUsed. */
+  const pool=[...G.market,...G.squad].filter(p=>p.age<BAL.talent.youngUnder&&potBand(p)&&(p.scouted||0)<BAL.talent.bandByScout.length-1);
+  if(!pool.length){
+    msg("Reg (scout)","R","Nothing to report","\"No young prospect worth the petrol this window, chairman — the ones out there are what they are. I'll keep my eyes open.\"",null);
+    return;
+  }
+  // prefer the fuzziest reads (lowest scouted), so the report always tightens something meaningful
+  pool.sort((a,b)=>(a.scouted||0)-(b.scouted||0));
+  const p=pool[Math.floor(Math.random()*Math.min(pool.length,3))];
+  const wide=potBand(p);
+  p.scouted=Math.min(BAL.talent.bandByScout.length-1,(p.scouted||0)+BAL.talent.readNarrow);
+  const now=potBand(p),onList=G.market.includes(p);
+  msg("Reg (scout)","R","Scout report: "+p.name,"\""+p.name+" ("+p.pos+", "+p.age+"), "+(onList?"the one on the market list":"our own boy")+". Watched him again. I had him at "+wide.lo+"–"+wide.hi+"; now I'd say "+(now.exact?("a firm "+now.hi):(now.lo+"–"+now.hi))+". "+(now.exact?"That's as certain as I get.":"Send me again and I'll tighten it further.")+"\"",null);
 }
 function startStandBuild(key){ // direct cash build — the impatient way, no fund bonus
   if(G.standBuild){modal={type:"info",title:"One project at a time",body:"The builders refuse to split the crew. Union rules, apparently."};render();return;}
@@ -4134,7 +4192,7 @@ function marketRow(p,ix,fa){
   return `<div class="prow2"><div class="l1"><span class="posb">${p.pos}</span>
     <span class="nm">${p.name} <small>· ${p.age}${p.from?" · "+p.from:""}</small>${p.gem?' <span class="trait">GEM</span>':''}</span>${btns}</div>
     <div class="statchips"><span class="sc">ATT <b>${p.att}</b></span><span class="sc">DEF <b>${p.def}</b></span><span class="sc">PHY <b>${p.phy}</b></span>
-    <span class="sc">${fa?("wants ~"+kfmt(p.wage)+"/w"):("~"+kfmt(Math.round(p.value*1.15)))}</span></div></div>`;
+    <span class="sc">${fa?("wants ~"+kfmt(p.wage)+"/w"):("~"+kfmt(Math.round(p.value*1.15)))}</span>${potBand(p)?'<span class="sc" style="color:var(--comm)">'+potBandText(p)+'</span>':''}</div></div>`;
 }
 function viewClub(){
   const b=G.standBuild;
@@ -4959,6 +5017,7 @@ function renderModal(){
       <div class="kick">${p.pos} · promised ${ROLES[p.role||"rot"].n.toLowerCase()} football${isCap?" · club captain":""}</div>
       <h2>${p.name}</h2>
       <p>Age ${p.age} · <b>${ovr(p)} ovr</b> · valued ~${kfmt(p.value)}${p.from?" · from "+p.from:""}
+        ${potBand(p)?'<br><span style="color:var(--comm)">Reg\'s read: '+potBandText(p)+' — how high he might climb'+(potBand(p).exact?"":", scout to narrow it")+'</span>':""}
         ${p.traits.length?"<br>"+p.traits.map(t=>TRAITS[t]).join(" · "):""}</p>
       ${p.inj||p.susp||p.listed?`<div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.08)">
         ${p.inj?`<b>Injured</b> — out for ${p.inj} more matchday${p.inj===1?"":"s"}. `:""}${p.susp?"<b>Suspended</b> — misses the next matchday. ":""}${p.listed?"<b>On the transfer list</b> — offers arrive by inbox while the window is open.":""}</div>`:""}
