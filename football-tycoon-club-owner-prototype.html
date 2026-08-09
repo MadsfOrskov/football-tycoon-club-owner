@@ -1408,7 +1408,7 @@ function newGame(name,hue,mode){
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
     myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,sponsorChecked:false,sponsorRiskMD:null,
     personalWealth:0,dividendTaken:true,lastDividend:null,   // N5/R3: ejerfinanser — kortet kommer ved foerste saesonskift
-    owner:{name:"The Chairman",avatar:"🧑‍💼",background:"selfmade"},reputation:BAL.owner.repStart,netWorthHistory:[],ownerLifeMD:0,  // O1/O3: ejer-identitet + ejer-liv
+    owner:{name:"Formanden",avatar:"🧑‍💼",background:"selfmade"},reputation:BAL.owner.repStart,netWorthHistory:[],ownerLifeMD:0,  // O1/O3: ejer-identitet + ejer-liv
     stakes:[],stakeIncome:0,  // M2: andele i pyramidens klubber {wid,pct,paid}
     layer:"owner",  // M2.5: hvilken verden du står i — "owner" (guld, dig) eller "club" (inde i klubben)
 
@@ -1468,7 +1468,7 @@ function reputationRead(){
 }
 function applyOwner(name,avatar,bg){
   const B=BAL.owner,b=B.backgrounds[bg]||B.backgrounds.selfmade;
-  G.owner={name:safeName(name)||"The Chairman",avatar:avatar||"🧑‍💼",background:B.backgrounds[bg]?bg:"selfmade"};
+  G.owner={name:safeName(name)||"Formanden",avatar:avatar||"🧑‍💼",background:B.backgrounds[bg]?bg:"selfmade"};
   G.reputation=clamp(B.repStart+(b.rep||0),B.repFloor,B.repCap);
   G.balance=Math.max(0,G.balance+(b.cash||0));
   G.fanMood=clamp(G.fanMood+(b.fan||0),5,100);
@@ -4394,7 +4394,7 @@ function ownerBar(){
 }
 function header(){
   if(G.layer!=="club"){
-    const o=G.owner||{name:"The Chairman",avatar:"🧑‍💼"};
+    const o=G.owner||{name:"Formanden",avatar:"🧑‍💼"};
     return `<div class="top gold"><div style="font-size:30px;line-height:1">${o.avatar||"🧑‍💼"}</div>
       <div><h1>${o.name}</h1><div class="sub">${reputationRead().label} · Uge ${Math.min(G.md+1,G.rounds)} · S${G.season}</div></div>
       <div class="right"><small>Formue</small><b class="num">${kfmt(netWorth())}</b></div>
@@ -4490,7 +4490,7 @@ function viewBooks(){
     <div class="kick" style="font-size:9px;margin-top:5px;text-transform:none">Tryk på boksen for at markere, kopiér, og gem den et sikkert sted. Sæt den ind på titelskærmen for at gendanne.</div>`:""}</div>`;
 }
 function viewOwner(){
-  const o=G.owner||{name:"The Chairman",avatar:"🧑‍💼",background:"selfmade"};
+  const o=G.owner||{name:"Formanden",avatar:"🧑‍💼",background:"selfmade"};
   const nw=netWorth(),rep=reputationRead(),bg=BAL.owner.backgrounds[o.background];
   const hist=G.netWorthHistory||[],prev=hist.length?hist[hist.length-1].v:null;
   const trend=prev?Math.round((nw-prev)/Math.max(1,Math.abs(prev))*100):null;
@@ -5888,38 +5888,12 @@ const SWATCHES=[{h:85,n:"Græsgrøn"},{h:0,n:"Blodrød"},{h:210,n:"Marineblå"},
 function renderOnboarding(){
   applyTheme(obData.hue,obData.mode);
   let inner="";
+  /* R6: introen starter med DIG — ejer-identiteten før klubben. Rækkefølgen er
+     vendt: (1) dit navn/portræt/baggrund → (2) du arver klubben: navn →
+     (3) farve → (4) look → (5) gaffer. Spillet handler om personen. */
   if(obStep===0){
-    inner=`<div class="letter"><div class="lh">TRIN 1 AF 5 · NAVN</div>
-      Din grandonkel efterlod dig en klub i de lavere rækker, dens gæld og et tomt trofæskab. Giv den et navn.</div>
-      <input id="obname" type="text" value="${obData.name}" maxlength="24" placeholder="Navngiv din klub">
-      <button class="glowbtn" style="margin-top:14px" onclick="obNext()">Skriv under ▸</button>`;
-  }
-  if(obStep===1){
-    const sw=SWATCHES.find(s=>s.h===obData.hue);
-    inner=`<div class="letter"><div class="lh">TRIN 2 AF 5 · FARVE</div>Vælg <b>${obData.name}</b>s farve.</div>
-      <div class="swatches">${SWATCHES.map(s=>`<div class="sw ${obData.hue===s.h?'on':''}" style="background:linear-gradient(135deg,hsl(${s.h},88%,60%),hsl(${s.h},75%,42%))" onclick="obHue(${s.h})" title="${s.n}"></div>`).join("")}</div>
-      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Næste ▸</button>`;
-  }
-  if(obStep===2){
-    inner=`<div class="letter"><div class="lh">TRIN 3 AF 5 · UDSEENDE</div>Mørk eller lys? Skift når som helst.</div>
-      <div class="modes" style="margin-top:14px;flex-direction:column">
-        <button class="${obData.mode==='dark'?'on':''}" onclick="obMode('dark')">◗&nbsp; Mørk</button>
-        <button class="${obData.mode==='light'?'on':''}" onclick="obMode('light')">☀&nbsp; Lys</button></div>
-      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Næste ▸</button>`;
-  }
-  if(obStep===3){
-    const c=obData.coach||(obData.coach=pick(COACHES));
-    inner=`<div class="letter"><div class="lh">TRIN 4 AF 5 · GAFFEREN</div>
-      <b>${c.n}</b> · ${c.style} · TAC ${c.tac} · MAN ${c.man} · DEV ${c.dev}</div>
-      <div class="truth"><span class="n">1</span><span>Truppen: ærlig men begrænset. Byg den.</span></div>
-      <div class="truth"><span class="n">2</span><span>Ingen sponsor · 1,500 souls · £150,000 i kassen.</span></div>
-      <div class="truth"><span class="n">3</span><span>En kamp gemmes i det øjeblik den spilles. Ingen omkampe.</span></div>
-      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Næste ▸</button>`;
-  }
-  if(obStep===4){
-    // O1: who are YOU? — the owner is now a character, not just a club
     const B=BAL.owner.backgrounds,bg=B[obData.ownerBg]||B.selfmade;
-    inner=`<div class="letter"><div class="lh">TRIN 5 AF 5 · DIG</div>Klubben har et navn. Nu, formand — hvem er <b>du</b>?</div>
+    inner=`<div class="letter"><div class="lh">TRIN 1 AF 5 · DIG</div>Før klubben, før pengene, før aviserne — hvem er <b>du</b>?</div>
       <input id="obowner" type="text" value="${obData.ownerName}" maxlength="22" placeholder="Dit navn">
       <div class="kick" style="margin-top:12px">Portræt</div>
       <div class="swatches" style="font-size:26px">${OWNER_AVATARS.map(a=>`<div class="sw ${obData.ownerAvatar===a?'on':''}" style="display:flex;align-items:center;justify-content:center;background:hsl(${obData.hue},30%,20%)" onclick="obAvatar('${a}')">${a}</div>`).join("")}</div>
@@ -5927,16 +5901,45 @@ function renderOnboarding(){
       <div class="modes" style="margin-top:8px;flex-direction:column">
         ${Object.entries(B).map(([k,b])=>`<button class="${obData.ownerBg===k?'on':''}" onclick="obBg('${k}')" style="text-align:left">${b.n} <small style="opacity:.7">· ${b.blurb}</small></button>`).join("")}</div>
       <div class="obwhy"><b>${bg.n}.</b> ${bg.cash>0?"+"+kfmt(bg.cash)+" startkapital":bg.cash<0?kfmt(bg.cash)+" startkapital":"Lige vilkår"}${bg.rep?" · omdømme "+(bg.rep>0?"+":"")+bg.rep:""}${bg.fan?" · fans "+(bg.fan>0?"+":"")+bg.fan:""}${bg.repGain>1?" · bygger omdømme hurtigere":""}.</div>
-      <button class="glowbtn" style="margin-top:14px" onclick="obFinish()">Tag over ▸</button>`;
+      <button class="glowbtn" style="margin-top:14px" onclick="obNext()">Det er mig ▸</button>`;
+  }
+  if(obStep===1){
+    inner=`<div class="letter"><div class="lh">TRIN 2 AF 5 · ARVEN</div>
+      Et advokatbrev: din grandonkel har efterladt <b>dig</b> en klub i de lavere rækker, dens gæld og et tomt trofæskab. Giv den et navn.</div>
+      <input id="obname" type="text" value="${obData.name}" maxlength="24" placeholder="Navngiv din klub">
+      <button class="glowbtn" style="margin-top:14px" onclick="obNext()">Skriv under ▸</button>`;
+  }
+  if(obStep===2){
+    const sw=SWATCHES.find(s=>s.h===obData.hue);
+    inner=`<div class="letter"><div class="lh">TRIN 3 AF 5 · FARVE</div>Vælg <b>${obData.name}</b>s farve.</div>
+      <div class="swatches">${SWATCHES.map(s=>`<div class="sw ${obData.hue===s.h?'on':''}" style="background:linear-gradient(135deg,hsl(${s.h},88%,60%),hsl(${s.h},75%,42%))" onclick="obHue(${s.h})" title="${s.n}"></div>`).join("")}</div>
+      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Næste ▸</button>`;
+  }
+  if(obStep===3){
+    inner=`<div class="letter"><div class="lh">TRIN 4 AF 5 · UDSEENDE</div>Mørk eller lys? Skift når som helst.</div>
+      <div class="modes" style="margin-top:14px;flex-direction:column">
+        <button class="${obData.mode==='dark'?'on':''}" onclick="obMode('dark')">◗&nbsp; Mørk</button>
+        <button class="${obData.mode==='light'?'on':''}" onclick="obMode('light')">☀&nbsp; Lys</button></div>
+      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Næste ▸</button>`;
+  }
+  if(obStep===4){
+    const c=obData.coach||(obData.coach=pick(COACHES));
+    inner=`<div class="letter"><div class="lh">TRIN 5 AF 5 · GAFFEREN</div>
+      <b>${c.n}</b> · ${c.style} · TAC ${c.tac} · MAN ${c.man} · DEV ${c.dev}</div>
+      <div class="truth"><span class="n">1</span><span>Truppen: ærlig men begrænset. Byg den.</span></div>
+      <div class="truth"><span class="n">2</span><span>Ingen sponsor · 1,500 souls · £150,000 i kassen.</span></div>
+      <div class="truth"><span class="n">3</span><span>En kamp gemmes i det øjeblik den spilles. Ingen omkampe.</span></div>
+      <button class="glowbtn" style="margin-top:16px" onclick="obFinish()">Tag over ▸</button>`;
   }
   app().innerHTML=`<div class="ob"><div class="box">
-    <div style="text-align:center;margin-bottom:14px">${svgShield(initials(obData.name),true,52)}
-    <div class="disp" style="font-size:30px;margin-top:8px">${obStep===0?"FOOTBALL TYCOON":obData.name}</div>
-    <div class="kick" style="margin-top:4px">${obStep===0?"En fodboldhistorie, fra bunden":"Kommende ejer: dig"}</div></div>
+    <div style="text-align:center;margin-bottom:14px">${obStep===0?`<div style="font-size:52px;line-height:1">${obData.ownerAvatar}</div>`:svgShield(initials(obData.name),true,52)}
+    <div class="disp" style="font-size:30px;margin-top:8px">${obStep===0?"FOOTBALL TYCOON":obStep===1?(obData.ownerName||"Formanden"):obData.name}</div>
+    <div class="kick" style="margin-top:4px">${obStep===0?"Din historie. Klubben er kapitlet.":obStep===1?"Kommende ejer":"Ejet af "+(obData.ownerName||"dig")}</div></div>
     ${inner}</div></div>`;
 }
 function obNext(){
-  if(obStep===0){obData.name=safeName(document.getElementById("obname").value)||"Ashford Rovers";}
+  if(obStep===0){const el=document.getElementById("obowner");if(el)obData.ownerName=safeName(el.value)||"";}
+  if(obStep===1){obData.name=safeName(document.getElementById("obname").value)||"Ashford Rovers";}
   obStep++;renderOnboarding();
 }
 function obHue(h){obData.hue=h;renderOnboarding();}
@@ -5944,7 +5947,7 @@ function obMode(m){obData.mode=m;renderOnboarding();}
 function obAvatar(a){obData.ownerAvatar=a;renderOnboarding();}   // O1
 function obBg(k){obData.ownerBg=k;renderOnboarding();}           // O1
 function obFinish(){
-  const el=document.getElementById("obowner");if(el)obData.ownerName=el.value;
+  // R6: ejer-navnet læses på trin 1 (obNext) — introen starter med DIG
   newGame(obData.name,obData.hue,obData.mode);
   G.coach={...obData.coach};
   applyOwner(obData.ownerName,obData.ownerAvatar,obData.ownerBg);  // O1: stamp yourself on the club
