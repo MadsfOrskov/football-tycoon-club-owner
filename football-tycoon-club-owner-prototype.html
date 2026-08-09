@@ -4648,7 +4648,6 @@ function teamOverview(){
       </div>
       <div class="venue">${home?`<span>Expected gate ~${attendance(bigNow).toLocaleString("en-GB")}</span>${bigNow?"·<b style=\"color:var(--comm)\">BIG</b>":""}·<b>Under the lights</b>`:`<span>Away day</span>·<b>The minibus leaves at nine</b>`}</div>
       <button class="glowbtn" onclick="playMatchday()">${dl?"⚡ Deadline Day":"▶&nbsp; Play Matchday"}</button>
-      ${G.quickMode?`<div class="kick" style="text-align:center;margin-top:8px;font-size:9px;cursor:pointer" onclick="G.quickMode=false;render()">Quick results: ON — tap to watch matches in full</div>`:""}
     </div></div>`;
   }else if(G.phase==="playoff_semi"){
     h+=`<div class="hero"><div class="inner">
@@ -5251,14 +5250,6 @@ function renderModal(){
       <div id="tsummary" style="display:none"></div>
       <button class="abtn ghost" id="tskip" onclick="skipTicker()">Skip ▸</button>
       <button class="glowbtn" id="tdone" style="display:none" onclick="closeTicker()">Continue</button>
-    </div></div>`;
-  }
-  if(modal.type==="quickOffer"){
-    return `<div class="overlay"><div class="sheet">
-      <h2>In a hurry, chairman?</h2>
-      <p>You've skipped three matches straight. Want <b>quick results</b> for routine games — instant score + highlights? Big matches (playoffs, deadline drama) always play in full. You can turn it off any time on the Home screen.</p>
-      <button class="glowbtn" onclick="G.quickMode=true;modal=null;afterMatchday()">Yes — quick results</button>
-      <button class="abtn ghost" onclick="modal=null;afterMatchday()">No — I like the drama</button>
     </div></div>`;
   }
   if(modal.type==="nego"){
@@ -5876,11 +5867,8 @@ function pushEv(e){
 }
 function runTicker(){
   const M=modal.match;
-  if(G.quickMode&&!M.big){ // adaptive quick mode: instant for routine matches
-    M.htDone=true;modal.half=2;
-    [...M.events,...M.h2events].forEach(pushEv);
-    showFT();return;
-  }
+  // R1a: quick mode er fjernet — "Next week" hjemmefra ER hurtigvejen (M2.5),
+  // og inde i klubben ser man kampen (skip-knappen bestaar).
   startTickLoop();
 }
 function startTickLoop(){
@@ -5954,7 +5942,6 @@ function showFT(){
     else{M.h2.ga++;pushEv({m:"ET",goal:"them",txt:"Extra time — "+M.opp+" break your hearts.",sub:"Football is a cruel sport played in the rain."});}
   }
   modal.ft=true;
-  if(modal.usedSkip)G.skipStreak=(G.skipStreak||0)+1;else G.skipStreak=0;
   const res=finalizeMatch(M);
   G.formHist=G.formHist||[];
   if(!M.isPlayoff){G.formHist.push(res.gf>res.ga?"w":res.gf===res.ga?"d":"l");if(G.formHist.length>10)G.formHist.shift();}
@@ -5983,10 +5970,6 @@ function closeTicker(){
   const M=modal.match;const wasFT=modal.ft;
   modal=null;
   if(!wasFT){render();return;}
-  if((G.skipStreak||0)>=3&&!G.quickOffered&&!G.quickMode){
-    G.quickOffered=true;
-    modal={type:"quickOffer"};render();return;
-  }
   if(M.isPlayoff&&M.postKind){playoffPost(M,{gf:M.h1.gf+M.h2.gf,ga:M.h1.ga+M.h2.ga,opp:M.opp});return;}
   afterMatchday();
 }
