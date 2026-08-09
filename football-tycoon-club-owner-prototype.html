@@ -703,6 +703,19 @@ const BAL={
     repCharity:6, repCap:100, repFloor:0, repGainDefault:1.0,
     dividendGreedyFrac:0.6   // a dividend above this share of the cap reads as greedy
   },
+  /* O3: ejer-livet — events om DIG. En strøm af mogul-livbegivenheder mellem
+     kampene: forfængeligheds-/livsstilsforbrug, velgørenhed, rivaliserende
+     ejere, skandaler. ALT tager af DIN personlige formue (personalWealth),
+     ALDRIG klubkassen (G.balance) — den tunede kluboekonomi er urørt. Omdømme er
+     valutaen der bygges. */
+  ownerLife:{
+    every:{min:3, max:6},       // matchdays between owner-life events
+    chance:0.55,                // ... and a roll, so it is not clockwork
+    vanityCost:[40000,180000], vanityRep:6,
+    charityCost:[20000,90000], charityRep:8, charityFan:6,
+    rivalDrink:[5000,20000], rivalClapRep:4, rivalIgnoreRep:-4, rivalDrinkRep:2,
+    scandalPr:[15000,60000], scandalIgnoreRep:-8, scandalSpinRep:-3
+  },
   /* Which league matches are BIG. `buildMatch` was called with big=false for
      all 26 matchdays, so five things were dead at once: the big screen
      (+10% gate), the Away End (+6%/tier), the `bigExtra` price knob, the
@@ -1316,7 +1329,7 @@ function newGame(name,hue,mode){
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
     myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,sponsorRiskMD:null,
     personalWealth:0,dividendDue:false,lastDividend:null,   // N5: ejerfinanser
-    owner:{name:"The Chairman",avatar:"🧑‍💼",background:"selfmade"},reputation:BAL.owner.repStart,netWorthHistory:[],  // O1: ejer-identitet
+    owner:{name:"The Chairman",avatar:"🧑‍💼",background:"selfmade"},reputation:BAL.owner.repStart,netWorthHistory:[],ownerLifeMD:0,  // O1/O3: ejer-identitet + ejer-liv
 
     netEwma:0,trust:BAL.owners.trustStart,admins:0,valHistory:[],commitments:[],protest:0,flavourSeen:[],
     /* Whose return leg is a big match. Stored as {opp,md,by} — an INDEX and two
@@ -1370,6 +1383,50 @@ function applyOwner(name,avatar,bg){
   G.balance=Math.max(0,G.balance+(b.cash||0));
   G.fanMood=clamp(G.fanMood+(b.fan||0),5,100);
 }
+/* ---------- O3: the owner's life — events about YOU ----------
+   Everything below spends YOUR fortune (personalWealth), never the club's cash.
+   Reputation is the currency you build. */
+function ownerSpend(n){const p=Math.min(n,G.personalWealth||0);G.personalWealth=(G.personalWealth||0)-p;return p;}
+function maybeOwnerLife(){
+  if(G.phase!=="season"||G.md<2||G.md>=G.rounds)return;
+  const E=BAL.ownerLife.every;
+  if(!G.ownerLifeMD||G.ownerLifeMD>G.rounds)G.ownerLifeMD=G.md+R(E.min,E.max);
+  if(G.md<G.ownerLifeMD)return;
+  G.ownerLifeMD=G.md+R(E.min,E.max);
+  if(Math.random()<BAL.ownerLife.chance)openOwnerLife();
+}
+function openOwnerLife(force){
+  const L=BAL.ownerLife;
+  const kind=force||pick(["vanity","vanity","charity","charity","rival","scandal"]);
+  modal={type:"ownerLife",kind,done:false,outcome:""};
+  const m=modal;
+  if(kind==="vanity"){m.item=pick(["a yacht","a vintage Ferrari","a racehorse","a wing of modern art","a private box at the opera"]);m.cost=Math.round(R(L.vanityCost[0],L.vanityCost[1])/1000)*1000;m.rep=L.vanityRep;}
+  if(kind==="charity"){m.cause=pick(["the children's hospital","the town food bank","the youth academy fund","the flood relief appeal"]);m.cost=Math.round(R(L.charityCost[0],L.charityCost[1])/1000)*1000;m.rep=L.charityRep;m.fan=L.charityFan;}
+  if(kind==="rival"){m.rivalIdx=Math.floor(Math.random()*G.teams.length);m.rival=G.teams[m.rivalIdx].name;m.drink=Math.round(R(L.rivalDrink[0],L.rivalDrink[1])/1000)*1000;}
+  if(kind==="scandal"){m.pr=Math.round(R(L.scandalPr[0],L.scandalPr[1])/1000)*1000;}
+  render();
+}
+function ownerLifeAct(choice){
+  const m=modal,L=BAL.ownerLife;if(!m||m.type!=="ownerLife"||m.done)return;
+  if(m.kind==="vanity"){
+    if(choice==="buy"){if((G.personalWealth||0)<m.cost)m.outcome="Your fortune isn't quite what the press thinks. Not this time.";
+      else{ownerSpend(m.cost);bumpRep(m.rep);m.outcome="You bought "+m.item+". The photographs do the rest.";addNews("OWNER","The chairman is spotted with "+m.item+". A name grows; a fortune shrinks.");}}
+    else m.outcome="You passed. Nobody writes columns about restraint.";
+  }else if(m.kind==="charity"){
+    if(choice==="give"){if((G.personalWealth||0)<m.cost)m.outcome="A grand gesture you can't cover right now.";
+      else{ownerSpend(m.cost);bumpRep(m.rep);G.fanMood=clamp(G.fanMood+m.fan,5,100);m.outcome="You funded "+m.cause+". The town remembers who did it.";addNews("OWNER","The chairman donates to "+m.cause+". The Shed End stands and sings your name.");}}
+    else m.outcome="You declined. Quietly noted in the town.";
+  }else if(m.kind==="rival"){
+    if(choice==="clap"){const win=Math.random()<0.5;bumpRep(win?L.rivalClapRep:-L.rivalClapRep);m.outcome=win?"Your comeback lands — the room laughs with you.":"It backfires. You look rattled in print.";}
+    else if(choice==="drink"){ownerSpend(m.drink);bumpRep(L.rivalDrinkRep);m.outcome="You buy "+m.rival+"'s owner a drink. Rivals, but civil.";}
+    else{bumpRep(L.rivalIgnoreRep);m.outcome="You say nothing. Some read silence as weakness.";}
+  }else if(m.kind==="scandal"){
+    if(choice==="spin"){ownerSpend(m.pr);bumpRep(L.scandalSpinRep);m.outcome="Your PR team earns their fee. It fades by Tuesday.";}
+    else{bumpRep(L.scandalIgnoreRep);m.outcome="You let it run. It runs, and runs.";}
+  }
+  m.done=true;render();
+}
+function ownerLifeClose(){modal=null;render();}
 /* ---------- stands, facilities, capacity ---------- */
 /* ---------- pakke 7: every promise below is BUILT from BAL ----------
    The failure class this fixes is the sponsor clause that said 20% while the
@@ -2542,6 +2599,7 @@ function afterMatchday(){
   if(G.md===13&&!G.midwayDone){openMidway();return;}
   if(G.sponsorDue){modal={type:"sponsorOffer",after:"matchday"};render();return;}
   if(G.md%4===0&&!isDeadlineDay()){G.adCount++;modal={type:"interstitial"};}  // pakke T4: deadline day er annoncefri
+  if(!modal)maybeOwnerLife();   // O3: et ejer-liv-event dukker op mellem kampene
   saveGame();
   render();
 }
@@ -2756,7 +2814,7 @@ function finishSeason(o){
   G.dividendDue=true;   // N5: a dividend decision waits before the new season's budget
   G.me={pts:0,gd:0,pl:0};for(const t of G.teams){t.pts=0;t.gd=0;t.pl=0;}
   G.fixtures=makeFixtures();refreshMarket();
-  G.scoutUsed=false;G.sponsorBoost=false;G.coachAsked=false;G.deadlineDone={};G.playoff=null;
+  G.scoutUsed=false;G.sponsorBoost=false;G.coachAsked=false;G.deadlineDone={};G.playoff=null;G.ownerLifeMD=0;  // O3: nyt ejer-liv-ur pr. sæson
   // pakke T3: goodwill cools a little each summer — a relationship is kept up, not banked once
   if(G.agentRel)for(const k in G.agentRel)G.agentRel[k]=Math.max(0,G.agentRel[k]-BAL.agents.relDecay);
   G.bids=[];G.callbacks=[];G.midwayDone=false;G.stuntDone=false;G.sponsorChecked=false;G.sponsorRiskMD=null;G.capRaiseUsed=false;G.fundRaided=false;G.lastXI=[];
@@ -5139,6 +5197,33 @@ function renderModal(){
       <div class="kick" style="margin-top:12px">Monetisation placeholder</div>
       <p style="font-size:12px"><b>TYCOON PRO · 49 kr.</b> — no ads · 3 save slots · full career history. <span style="opacity:.7">(Vises netop her, efter en stor sæsonafslutning.)</span></p>
       <button class="glowbtn" onclick="modal=null;openBudgetMeeting()">Start season ${G.season} — to the boardroom ▸</button></div></div>`;
+  }
+  if(modal.type==="ownerLife"){
+    const m=modal;
+    const clubName=ix=>G.teams[ix]?G.teams[ix].name:"a rival";
+    const head={vanity:"The good life",charity:"A cause comes calling",rival:"A rival owner",scandal:"The press has a story"}[m.kind];
+    let body="",btns="";
+    if(m.kind==="vanity"){
+      body=`Word reaches you that <b>${m.item}</b> is quietly for sale — <b>${kfmt(m.cost)}</b> of your own money. The kind of thing owners are photographed with.`;
+      btns=m.done?"":`<div class="boost"><button onclick="ownerLifeAct('buy')">Buy it · ${kfmt(m.cost)}</button><button onclick="ownerLifeAct('pass')">Pass</button></div>`;
+    }else if(m.kind==="charity"){
+      body=`<b>${m.cause[0].toUpperCase()+m.cause.slice(1)}</b> needs a benefactor. <b>${kfmt(m.cost)}</b> from your fortune would do it — and the town would know your name.`;
+      btns=m.done?"":`<div class="boost"><button onclick="ownerLifeAct('give')">Donate · ${kfmt(m.cost)}</button><button onclick="ownerLifeAct('decline')">Not now</button></div>`;
+    }else if(m.kind==="rival"){
+      body=`The owner of <b>${clubName(m.rivalIdx)}</b> calls you "a tourist with a chequebook" in the back pages. The room is watching how you take it.`;
+      btns=m.done?"":`<div class="boost"><button onclick="ownerLifeAct('clap')">Clap back <small>· a gamble</small></button><button onclick="ownerLifeAct('drink')">Buy him a drink · ${kfmt(m.drink)}</button><button onclick="ownerLifeAct('ignore')">Ignore it</button></div>`;
+    }else{
+      body=`A tabloid has photographs and a headline ready. <b>${kfmt(m.pr)}</b> to your PR people would bury most of it; do nothing and it runs all week.`;
+      btns=m.done?"":`<div class="boost"><button onclick="ownerLifeAct('spin')">Spin it · ${kfmt(m.pr)}</button><button onclick="ownerLifeAct('ignore')">Let it run</button></div>`;
+    }
+    return `<div class="overlay"><div class="sheet">
+      <div class="biglabel">${m.avatarLine||"Your life"}</div>
+      <h2>${head}</h2>
+      <div class="card"><div class="rowline" style="border:none"><span>Your fortune</span><span class="amt num" style="color:var(--acc)">${kfmt(G.personalWealth||0)}</span></div>
+      <div class="rowline" style="border:none;padding-top:0"><span>Reputation</span><span class="amt">${reputationRead().label}</span></div></div>
+      <p>${body}</p>
+      ${m.done?`<div class="why">${m.outcome}</div><button class="glowbtn" onclick="ownerLifeClose()">Onward ▸</button>`:btns}
+    </div></div>`;
   }
   if(modal.type==="dividend"){
     const m=modal,mine=Math.round((m.amount||0)*G.myShare/100),others=(m.amount||0)-mine;
