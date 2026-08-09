@@ -24,6 +24,19 @@
 **d) Omtale:** press-tallet (M1) vises på alle kort; dit eget omdømme (O1) er personens omtale.
 **Invariant:** en andel koster personalWealth (aldrig G.balance), udbytter lander i personalWealth, netWorth() medregner andele; konflikt-reglen blokerer kontrol-køb i egen division; adgangskrav blokerer under tærsklen. Sabotér hver.
 
+# Pakke M2.5 — Det todelte interface (skallen, med ÉN klub)
+*Designet er låst med Mads 9/8 (aften) og mocket op: artifact "Football Tycoon — To lag: Dig & Klubben" (claude.ai/code/artifact/03249c8f-9436-47f6-af34-e2f1bd8f1590). Byg skallen FØR M3 — den virker allerede med én klub.*
+
+**De fire låste beslutninger:**
+1. **Tiden bor hos DIG:** én "▶ Næste uge"-knap på Kontoret driver hele verden frem. Står du inde i en klub når ugen ruller, spilles DENS kamp for øjnene af dig (prematch-ordrer, halvleg, ticker); alle andre kampe afvikles abstrakt.
+2. **Implicit tilstedeværelse:** du ER i den klub du senest er "gået ind i". Ingen ugentligt ritual-valg. (Rejseomkostning kan tilføjes senere hvis zapping bliver et problem.)
+3. **Kun eskaleringer hjemmefra:** direktøren driver fraværende klubber efter mandat og lægger kun STORE ting på dit bord (profil-salg, krise, klubkøbstilbud). Alt andet kræver at du går ind. Et besøg BETYDER noget.
+4. **Delt post:** DIN Post (guld: mægler, udbytter, skandaler, eskaleringer) er adskilt fra KLUBBENS indbakke (agenter, bud, gaffer, sponsor).
+
+**UI-sproget (fra mock-uppen):** Guld = ejer-laget (egen nav: Kontor · Imperium · Invest · Bøger · Post). Klubbens farve = klublaget (nuværende nav: Klub · Trup · Marked · Tabel · Indbakke). Man GÅR IND i en klub fra et imperium-kort ("GÅ IND I KLUBBEN ▸") og hjem via en tynd guld-linje øverst: **"‹ DIG · formue · uge N"** — altid synlig inde i klubben, aldrig i vejen. Skiftet skal MÆRKES (farve + ramme).
+
+**Byggeplan for skallen:** `G.layer` ("owner"/"club") styrer hvilken nav+skærmsæt der tegnes. Ejer-nav genbruger O2/M2-indholdet (Desk→Kontor, Empire→Imperium, Books→Bøger; Post udskilles fra klub-indbakken ved afsender-typen). "Næste uge" = playMatchday flyttet op (med én klub er ugens kamp altid "din klubs kamp — vises fordi du står i den" ELLER afvikles quick hvis du står hjemme; quick-afvikling af egen kamp genbruger quickMode-vejen). Harness: botten skal spille BEGGE veje (hjemme→afvikl, inde→fuld kamp); invariant: at spille ugen hjemmefra og inde giver samme verdens-fremdrift (md++, alle divisioner spiller).
+
 # Pakke M3 — Tilstedeværelse & direktører (multi-klub for alvor)
 Flere FULDE klub-tilstande (G omstruktureres: `P` = personen, `P.clubs[]` = fulde klub-verdener, aktive klub = den du besøger). Ugentligt tilstedeværelses-valg · direktører som personer med mandat og tålmodighed · eskaleringspapirer på skrivebordet · den globale "næste uge"-knap afløser "Play matchday" som fremdrift. Dette er den tungeste pakke — kræver sit eget nat-design (harness'ens bot skal drive to klubber!).
 
