@@ -372,7 +372,7 @@ const BAL={
        mindretal (≤ majorityAt) bestemmer medejerne — efter deres appetit
        (slagteren vil have penge ud, advokaten er forsigtig) — og de kan tømme
        klubben. Din andel af ethvert udbytte bliver din PERSONLIGE formue. */
-    majorityAt:50, dividendMaxFrac:0.55,
+    majorityAt:50, dividendMaxFrac:0.55, dividendRemindFrom:20,  // R3: kortet markeres "last chance" fra denne uge
     dividendAppetite:{butcher:0.55, "pie magnate":0.32, solicitor:0.16}
   },
   fund:{bonusPerMD:0.015, bonusCap:0.15},
@@ -1405,7 +1405,7 @@ function newGame(name,hue,mode){
     fund:0,fundBonus:0,fundTarget:null,fundRaided:false,seasonTix:{price:150,sold:0},bigExtra:2,jerseyFactor:1,jerseyName:null,
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
     myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,sponsorRiskMD:null,
-    personalWealth:0,dividendDue:false,lastDividend:null,   // N5: ejerfinanser
+    personalWealth:0,dividendTaken:true,lastDividend:null,   // N5/R3: ejerfinanser — kortet kommer ved foerste saesonskift
     owner:{name:"The Chairman",avatar:"🧑‍💼",background:"selfmade"},reputation:BAL.owner.repStart,netWorthHistory:[],ownerLifeMD:0,  // O1/O3: ejer-identitet + ejer-liv
     stakes:[],stakeIncome:0,  // M2: andele i pyramidens klubber {wid,pct,paid}
     layer:"owner",  // M2.5: hvilken verden du står i — "owner" (guld, dig) eller "club" (inde i klubben)
@@ -3021,7 +3021,9 @@ function finishSeason(o){
   // sponsor expiry
   if(G.sponsor){G.sponsor.seasonsLeft--;if(G.sponsor.seasonsLeft<=0){G.sponsor=null;sponsorRenewal();}}
   G.season++;G.md=0;G.phase="season";
-  G.dividendDue=true;   // N5: a dividend decision waits before the new season's budget
+  // R3 (variant B+): udbyttet er et KORT paa bordet, ikke en tvungen modal.
+  if(isMajority())G.dividendTaken=false;   // kortet ligger paa bordet hele saesonen
+  else settleBoardDividend();              // mindretal: bestyrelsen tager sit — automatisk, med besked
   G.me={pts:0,gd:0,pl:0};for(const t of G.teams){t.pts=0;t.gd=0;t.pl=0;}
   G.fixtures=makeFixtures();refreshMarket();
   G.scoutUsed=false;G.sponsorBoost=false;G.coachAsked=false;G.deadlineDone={};G.playoff=null;G.ownerLifeMD=0;  // O3: nyt ejer-liv-ur pr. sæson
@@ -3219,6 +3221,19 @@ function openDividend(){
   render();
 }
 function dividendSet(frac){const m=modal;if(!m||!m.majority)return;m.amount=Math.round(m.cap*frac/1000)*1000;render();}
+/* R3: mindretals-udbyttet sker AUTOMATISK ved sæsonskiftet — en besked på
+   bordet, ikke en modal. Egen funktion, så den kan måles udefra. */
+function settleBoardDividend(){
+  const D=Math.max(0,Math.min(boardDividend(),Math.max(0,G.balance)));
+  const mine=Math.round(D*G.myShare/100);
+  if(D>0){
+    G.balance-=D;
+    G.personalWealth=(G.personalWealth||0)+mine;
+    addNews("OWNER","The board voted itself a "+kfmt(D)+" dividend. Your "+G.myShare+"% — "+kfmt(mine)+" — landed quietly in your account.");
+  }
+  G.lastDividend={total:D,mine,season:G.season-1,forced:true};
+  G.dividendTaken=true;
+}
 function dividendConfirm(){
   const m=modal;if(!m||m.type!=="dividend")return;
   const D=Math.max(0,Math.min(m.amount||0,Math.max(0,G.balance)));
@@ -3231,11 +3246,9 @@ function dividendConfirm(){
     addNews("CLUB",(m.majority?"You declared":"The board forced through")+" a "+kfmt(D)+" dividend. "+kfmt(mine)+" of it is yours.");
   }
   G.lastDividend={total:D,mine,season:G.season-1,forced:!m.majority};
-  G.dividendDue=false;modal=null;
-  openBudgetMeeting();
+  G.dividendTaken=true;modal=null;render();
 }
 function openBudgetMeeting(){
-  if(G.dividendDue){openDividend();return;}   // N5: udbytte før budgettet
   modal={type:"budget",step:0,tixPrice:G.seasonTix.price,fundAdd:0,jersey:null,capAsked:false,capMsg:null,
     target:G.fundTarget?G.fundTarget.key:null,
     /* Forhandlingen starter fra DIVISIONENS ramme, ikke fra sidste saesons
@@ -4589,15 +4602,20 @@ function viewOwner(){
   // M2.5: bordet — stående beslutninger + dørklokken for hastende klubpost.
   // Bordet er en dørklokke, ikke en svarknap: trykket hopper dig IND i klubben.
   const dec=[];
-  if(G.dividendDue)dec.push("A dividend decision is waiting.");
   if(!isMajority())dec.push("You are a minority owner — buy back above "+BAL.owners.majorityAt+"%.");
   if(G.owners.length&&G.ownerBoughtSeason!==G.season)dec.push("You could buy out a co-owner this season.");
   if(G.fireSale)dec.push("Administration: a fire sale is running.");
   const bell=deskDoorbell();
-  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">On your desk${dec.length+bell.length?" · <b>"+(dec.length+bell.length)+"</b>":""}</div>
+  // R3 (variant B+): udbyttet er et frivilligt kort — én gang pr. sæson, og fra
+  // dividendRemindFrom markeres det, så man ikke glemmer at betale sig selv.
+  const divi=isMajority()&&G.dividendTaken===false&&G.balance>0;
+  const late=divi&&G.md>=BAL.owners.dividendRemindFrom;
+  const deskN=dec.length+bell.length+(divi?1:0);
+  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">On your desk${deskN?" · <b>"+deskN+"</b>":""}</div>
+    ${divi?`<div class="newsline" style="cursor:pointer${late?";color:var(--comm)":""}" onclick="openDividend()">💰 Declare a dividend — ${kfmt(Math.max(0,G.balance))} in the till${late?" · <b>last chance this season</b>":""}</div>`:""}
     ${dec.map(d=>`<div class="newsline">${d}</div>`).join("")}
     ${bell.map(b=>`<div class="newsline" style="cursor:pointer${b.urgent?";color:var(--comm)":""}" onclick="enterClub('inbox')">✉ ${G.club}: ${b.title}${b.urgent?" · <b>expires soon</b>":""} — go in ▸</div>`).join("")}
-    ${dec.length+bell.length?"":'<div class="newsline">A clean desk. Enjoy it while it lasts.</div>'}</div>`;
+    ${deskN?"":'<div class="newsline">A clean desk. Enjoy it while it lasts.</div>'}</div>`;
   if(G.phase==="season"&&G.md<G.rounds){
     const dl=(G.md===5&&!G.deadlineDone.summer)||(G.md===14&&!G.deadlineDone.winter);
     h+=`<div class="card"><div class="kick">The week</div>
