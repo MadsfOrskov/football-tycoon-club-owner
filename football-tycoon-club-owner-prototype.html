@@ -688,6 +688,21 @@ const BAL={
       {key:"sunny", feeBias:-0.02, extraRound:0, giveIn:0.91, chaos:0}     // fast and fair — easy to build with
     ]
   },
+  /* O1: ejer-redesignet. Du er en mogul-karakter, ikke bare en klub. Din
+     identitet (navn/portræt/baggrund), dit imperium (nettoformue) og dit
+     omdømme lever her. Baggrunden giver en lille, målbar start-forskel; omdømmet
+     drives af dine handlinger og bruges af O3's ejer-liv. Ejer-livet flytter kun
+     DIN formue (personalWealth), aldrig klubkassen — kluboekonomien er urørt. */
+  owner:{
+    backgrounds:{
+      heir:{n:"Heir", cash:60000, rep:-8, fan:0, repGain:1.0, blurb:"Family money — cushioned, but unproven."},
+      selfmade:{n:"Self-made", cash:0, rep:0, fan:0, repGain:1.35, blurb:"Built it yourself. Nothing handed to you."},
+      localhero:{n:"Local hero", cash:-30000, rep:6, fan:12, repGain:1.0, blurb:"One of their own — the town adores you, the bank less so."}
+    },
+    repStart:30, repTrophy:10, repPromotion:3, repDividendGreedy:-5, repFairDeal:1,
+    repCharity:6, repCap:100, repFloor:0, repGainDefault:1.0,
+    dividendGreedyFrac:0.6   // a dividend above this share of the cap reads as greedy
+  },
   /* Which league matches are BIG. `buildMatch` was called with big=false for
      all 26 matchdays, so five things were dead at once: the big screen
      (+10% gate), the Away End (+6%/tier), the `bigExtra` price knob, the
@@ -847,6 +862,7 @@ function bumpAgentRel(key){
   if(!key)return;
   if(!G.agentRel)G.agentRel={};
   G.agentRel[key]=Math.min(BAL.agents.relCap,agentRelOf(key)+BAL.agents.relGain);
+  bumpRep(BAL.owner.repFairDeal);   // O1: a fair, completed deal builds your name in the game
 }
 /* ================= pakke 6: TEKSTBIBLIOTEKET =================
    GDD linje 214: "Stort tekstbibliotek (300-500 event-linjer), tonet efter
@@ -1263,7 +1279,8 @@ const sponsorCopy=o=>{const c={...o};delete c.stunt;return c;};
 const coachOvr=c=>Math.round((c.tac+c.man+c.dev)/3);
 
 /* ---------- state ---------- */
-let G=null, screen="home", modal=null, obStep=0, obData={name:"Ashford Rovers",hue:85,mode:"dark"};
+let G=null, screen="home", modal=null, obStep=0, obData={name:"Ashford Rovers",hue:85,mode:"dark",ownerName:"",ownerAvatar:"🧑‍💼",ownerBg:"selfmade"};
+const OWNER_AVATARS=["🧑‍💼","👩‍💼","🎩","🧔","👑","🕶️"];
 
 /* Players are identified by ID, never by name. There are only 28×26 = 728
    possible names, so with 15+ players on the books duplicates are near
@@ -1299,6 +1316,7 @@ function newGame(name,hue,mode){
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
     myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,sponsorRiskMD:null,
     personalWealth:0,dividendDue:false,lastDividend:null,   // N5: ejerfinanser
+    owner:{name:"The Chairman",avatar:"🧑‍💼",background:"selfmade"},reputation:BAL.owner.repStart,netWorthHistory:[],  // O1: ejer-identitet
 
     netEwma:0,trust:BAL.owners.trustStart,admins:0,valHistory:[],commitments:[],protest:0,flavourSeen:[],
     /* Whose return leg is a big match. Stored as {opp,md,by} — an INDEX and two
@@ -1334,6 +1352,24 @@ function newGame(name,hue,mode){
   addNews("LEAGUE","The "+G.divNames[G.div]+" season kicks off. Twenty-six matchdays. One dream. Several dodgy pitches.");
 }
 function G_DIV_WAGE(div){return {3:1,2:1.8,1:3.2,0:6}[div]||1;}
+/* ---------- O1: the owner as a character ----------
+   Imperium = din kontante formue + din equity i klubben (andel × klubværdi).
+   Egen funktion, så den kan måles udefra som netWorth/reputation. */
+function netWorth(){return (G.personalWealth||0)+Math.round(clubValuation()*G.myShare/100);}
+function repGainMult(){const b=BAL.owner.backgrounds[G.owner&&G.owner.background];return (b&&b.repGain)||BAL.owner.repGainDefault;}
+function bumpRep(d){G.reputation=clamp((G.reputation===undefined?BAL.owner.repStart:G.reputation)+(d>0?d*repGainMult():d),BAL.owner.repFloor,BAL.owner.repCap);}
+function reputationRead(){
+  const r=G.reputation===undefined?BAL.owner.repStart:G.reputation;
+  const label=r>=80?"Revered":r>=60?"Respected":r>=40?"Known":r>=20?"Unproven":"Notorious";
+  return {value:Math.round(r),label};
+}
+function applyOwner(name,avatar,bg){
+  const B=BAL.owner,b=B.backgrounds[bg]||B.backgrounds.selfmade;
+  G.owner={name:safeName(name)||"The Chairman",avatar:avatar||"🧑‍💼",background:B.backgrounds[bg]?bg:"selfmade"};
+  G.reputation=clamp(B.repStart+(b.rep||0),B.repFloor,B.repCap);
+  G.balance=Math.max(0,G.balance+(b.cash||0));
+  G.fanMood=clamp(G.fanMood+(b.fan||0),5,100);
+}
 /* ---------- stands, facilities, capacity ---------- */
 /* ---------- pakke 7: every promise below is BUILT from BAL ----------
    The failure class this fixes is the sponsor clause that said 20% while the
@@ -2589,7 +2625,7 @@ function playoffPost(match,res){
 function finishSeason(o){
   const pos=myPos();
   const crown=(G.div===0&&pos===1);        // champions of England — nothing above this
-  if(crown)G.titles=(G.titles||0)+1;
+  if(crown){G.titles=(G.titles||0)+1;bumpRep(BAL.owner.repTrophy);}  // O1: a title lifts your standing
   let prize=divPrize(BAL.prize.missed),txt;
   if(o.how==="champions"){prize=divPrize(BAL.prize.champions);txt="CHAMPIONS. The town has run out of bunting.";}
   else if(o.how==="runners-up"){prize=divPrize(BAL.prize.runnersUp);txt="Promoted as runners-up. The champagne is mid-range but plentiful.";}
@@ -2728,6 +2764,8 @@ function finishSeason(o){
   G.revenge=null;   // last year's grudge died with last year's fixture list
   // the curve the boardroom reads: one point per season, kept for the career
   G.valHistory=(G.valHistory||[]).concat([{s:G.season-1,v:clubValuation()}]).slice(-30);
+  G.netWorthHistory=(G.netWorthHistory||[]).concat([{s:G.season-1,v:netWorth()}]).slice(-30);  // O1: imperium-trend
+  if(o.promoted)bumpRep(BAL.owner.repPromotion);   // O1: climbing the pyramid builds your name
   modal={type:"seasonDone",txt,promoted,pos,prize,crown};
   saveGame();
   render();
@@ -2920,6 +2958,8 @@ function dividendConfirm(){
   if(D>0){
     G.balance-=D;
     G.personalWealth=(G.personalWealth||0)+mine;
+    // O1: a greedy dividend (majority stripping the club) costs you standing
+    if(m.majority&&m.cap>0&&D>=BAL.owner.dividendGreedyFrac*m.cap)bumpRep(BAL.owner.repDividendGreedy);
     addNews("CLUB",(m.majority?"You declared":"The board forced through")+" a "+kfmt(D)+" dividend. "+kfmt(mine)+" of it is yours.");
   }
   G.lastDividend={total:D,mine,season:G.season-1,forced:!m.majority};
@@ -5536,19 +5576,19 @@ function renderOnboarding(){
   applyTheme(obData.hue,obData.mode);
   let inner="";
   if(obStep===0){
-    inner=`<div class="letter"><div class="lh">STEP 1 OF 4 · NAME</div>
+    inner=`<div class="letter"><div class="lh">STEP 1 OF 5 · NAME</div>
       Your great-uncle left you a lower-league club, its debts, and an empty trophy cabinet. Name it.</div>
       <input id="obname" type="text" value="${obData.name}" maxlength="24" placeholder="Name your club">
       <button class="glowbtn" style="margin-top:14px" onclick="obNext()">Sign ▸</button>`;
   }
   if(obStep===1){
     const sw=SWATCHES.find(s=>s.h===obData.hue);
-    inner=`<div class="letter"><div class="lh">STEP 2 OF 4 · COLOUR</div>Pick <b>${obData.name}</b>'s colour.</div>
+    inner=`<div class="letter"><div class="lh">STEP 2 OF 5 · COLOUR</div>Pick <b>${obData.name}</b>'s colour.</div>
       <div class="swatches">${SWATCHES.map(s=>`<div class="sw ${obData.hue===s.h?'on':''}" style="background:linear-gradient(135deg,hsl(${s.h},88%,60%),hsl(${s.h},75%,42%))" onclick="obHue(${s.h})" title="${s.n}"></div>`).join("")}</div>
       <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Next ▸</button>`;
   }
   if(obStep===2){
-    inner=`<div class="letter"><div class="lh">STEP 3 OF 4 · LOOK</div>Dark or light? Flip it any time.</div>
+    inner=`<div class="letter"><div class="lh">STEP 3 OF 5 · LOOK</div>Dark or light? Flip it any time.</div>
       <div class="modes" style="margin-top:14px;flex-direction:column">
         <button class="${obData.mode==='dark'?'on':''}" onclick="obMode('dark')">◗&nbsp; Dark</button>
         <button class="${obData.mode==='light'?'on':''}" onclick="obMode('light')">☀&nbsp; Light</button></div>
@@ -5556,12 +5596,25 @@ function renderOnboarding(){
   }
   if(obStep===3){
     const c=obData.coach||(obData.coach=pick(COACHES));
-    inner=`<div class="letter"><div class="lh">STEP 4 OF 4 · THE GAFFER</div>
+    inner=`<div class="letter"><div class="lh">STEP 4 OF 5 · THE GAFFER</div>
       <b>${c.n}</b> · ${c.style} · TAC ${c.tac} · MAN ${c.man} · DEV ${c.dev}</div>
       <div class="truth"><span class="n">1</span><span>Squad: honest but limited. Build it.</span></div>
       <div class="truth"><span class="n">2</span><span>No sponsor · 1,500 seats · £150,000 in the bank.</span></div>
       <div class="truth"><span class="n">3</span><span>A match is saved the moment it's played. No reloads.</span></div>
-      <button class="glowbtn" style="margin-top:16px" onclick="obFinish()">Take over ▸</button>`;
+      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Next ▸</button>`;
+  }
+  if(obStep===4){
+    // O1: who are YOU? — the owner is now a character, not just a club
+    const B=BAL.owner.backgrounds,bg=B[obData.ownerBg]||B.selfmade;
+    inner=`<div class="letter"><div class="lh">STEP 5 OF 5 · YOU</div>The club has a name. Now, chairman — who are <b>you</b>?</div>
+      <input id="obowner" type="text" value="${obData.ownerName}" maxlength="22" placeholder="Your name">
+      <div class="kick" style="margin-top:12px">Portrait</div>
+      <div class="swatches" style="font-size:26px">${OWNER_AVATARS.map(a=>`<div class="sw ${obData.ownerAvatar===a?'on':''}" style="display:flex;align-items:center;justify-content:center;background:hsl(${obData.hue},30%,20%)" onclick="obAvatar('${a}')">${a}</div>`).join("")}</div>
+      <div class="kick" style="margin-top:12px">Where you came from</div>
+      <div class="modes" style="margin-top:8px;flex-direction:column">
+        ${Object.entries(B).map(([k,b])=>`<button class="${obData.ownerBg===k?'on':''}" onclick="obBg('${k}')" style="text-align:left">${b.n} <small style="opacity:.7">· ${b.blurb}</small></button>`).join("")}</div>
+      <div class="obwhy"><b>${bg.n}.</b> ${bg.cash>0?"+"+kfmt(bg.cash)+" start cash":bg.cash<0?kfmt(bg.cash)+" start cash":"Even footing"}${bg.rep?" · reputation "+(bg.rep>0?"+":"")+bg.rep:""}${bg.fan?" · fans "+(bg.fan>0?"+":"")+bg.fan:""}${bg.repGain>1?" · builds reputation faster":""}.</div>
+      <button class="glowbtn" style="margin-top:14px" onclick="obFinish()">Take over ▸</button>`;
   }
   app().innerHTML=`<div class="ob"><div class="box">
     <div style="text-align:center;margin-bottom:14px">${svgShield(initials(obData.name),true,52)}
@@ -5575,9 +5628,13 @@ function obNext(){
 }
 function obHue(h){obData.hue=h;renderOnboarding();}
 function obMode(m){obData.mode=m;renderOnboarding();}
+function obAvatar(a){obData.ownerAvatar=a;renderOnboarding();}   // O1
+function obBg(k){obData.ownerBg=k;renderOnboarding();}           // O1
 function obFinish(){
+  const el=document.getElementById("obowner");if(el)obData.ownerName=el.value;
   newGame(obData.name,obData.hue,obData.mode);
   G.coach={...obData.coach};
+  applyOwner(obData.ownerName,obData.ownerAvatar,obData.ownerBg);  // O1: stamp yourself on the club
   applyTheme(G.hue,G.mode);
   screen="home";
   openBudgetMeeting(); // the first board meeting is part of taking over
