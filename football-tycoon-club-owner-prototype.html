@@ -798,7 +798,13 @@ const BAL={
        altså tal, ikke stemninger. Under dette er forskellen støj. */
     analysisMin:3,      // points of attribute gap worth naming
     analysisMax:2,      // how many factors the gaffer bothers to mention
-    disallowed:0.03     // chance per half of a goal being chalked off
+    disallowed:0.03,    // chance per half of a goal being chalked off
+    /* R4: kommentaren blev for lang — ~12-18 linjer pr. kamp læses ikke, den
+       scrolles. Loftet gælder HELE kampen; mål og konsekvenser (kort, skader)
+       tæller med men droppes ALDRIG — kun flavor viger. */
+    tickerMax:8,        // ticker events per match, flavour trimmed to fit
+    momentumChance:0.15,// follow-up line after a goal (was a hardcoded 0.4)
+    nearmissBase:1      // near misses per half; big matches get one extra
   }
 };
 
@@ -1094,7 +1100,7 @@ const GOALDESC=[
  "meets it on the half-volley and never looks up",
  "wins the second ball, the third ball, and then the game",
  T("mud","slides half the length of the six-yard box and takes the ball in with him"),
- T("mud","scores out of a puddle. There is no other way to describe it"),
+ T("mud","scores out of a puddle"),
  T("mud","wins a header nobody else fancied in that swamp"),
  T("mud","hits one that stops dead in the mud, then trickles over the line"),
  T("frost","slips, falls, and toe-pokes it in off the floor"),
@@ -1113,40 +1119,40 @@ const GOALDESC=[
  T("behind","halves it, and the bench is off the seats"),
  T("level","breaks the deadlock at long last"),
  T("lead","adds another and the away end starts looking for the exit"),
- T("rout","helps himself to another. Nobody is counting now"),
+ T("rout","helps himself to another — nobody is counting now"),
  T("low","scores past a keeper who also drives the club minibus"),
  T("low","finishes past a centre-half who is plainly a plumber on Saturdays"),
  T("silent","scores into a silence so complete you can hear the net")
 ];
 /* Straffespark havde ÉN linje. GDD kalder det "høj-dramatisk
    ticker-øjeblik", og et øjeblik man har læst fyrre gange er ikke et. */
-const PENDESC=[
+const PENDESC=[   // R4: strammet til én sætning pr. linje
  "{P} steps up… breathes… buries it.",
- "{P} puts it exactly where he was always going to put it. The keeper knew. It didn't help.",
+ "{P} puts it exactly where he was always going to put it.",
  "{P} takes an age over it, then rolls it in like a man paying a bill.",
- "{P} sends the keeper the wrong way and does not celebrate. Consummate.",
- "{P} smashes it. No placement, no nerves, no need.",
+ "{P} sends the keeper the wrong way and does not celebrate.",
+ "{P} smashes it — no placement, no nerves, no need.",
  "{P} waits for the keeper to move and passes it into the other corner.",
- "The keeper gets a hand to it. {P} has hit it too hard for that to matter.",
- "{P} slips as he strikes it and it goes in off his shin. He will take it.",
- T("big","{P} stands over the biggest kick of his life and puts it in the corner. Some men are just built for it."),
- T("late","{P} scores it in the last minute of the game. The ground does not know what to do with itself."),
- T("mud","{P} has to dig the spot out of the mud before he can even place the ball. Then he scores."),
- T("silent","{P} scores it into total silence. Even the penalty gets no noise.")
+ "The keeper gets a hand to it — {P} has hit it too hard.",
+ "{P} slips as he strikes it and it goes in off his shin.",
+ T("big","{P} stands over the biggest kick of his life and puts it in the corner."),
+ T("late","{P} scores it in the last minute of the game."),
+ T("mud","{P} digs the spot out of the mud, places the ball, scores."),
+ T("silent","{P} scores it into total silence.")
 ];
-const OPPGOAL=[
+const OPPGOAL=[   // R4: strammet til én sætning pr. linje
  "They celebrate like they've won the league.",
- "Nobody picks it up. Two of ours are still arguing about who was marking him.",
+ "Two of ours are still arguing about who was marking him.",
  "A goal against the run of play, and the run of play carries on regardless.",
- "Well worked. Nobody in the ground pretends otherwise.",
- "Our keeper stands with his hands on his hips, looking at the defence. Fair enough.",
- "Straight through the middle of us. It was never going to be complicated.",
- "Deflected in off a shin. It will be in the record books as a good goal.",
- "A free header from six yards. Somebody will be asked about that on Monday.",
- T("mud","Nobody could get near him in that. Their striker looks like he has been dredged."),
+ "Well worked — nobody in the ground pretends otherwise.",
+ "Our keeper stands with his hands on his hips, looking at the defence.",
+ "Straight through the middle of us.",
+ "Deflected in off a shin.",
+ "A free header from six yards.",
+ T("mud","Nobody could get near him in that mud."),
  T("frost","Our defender's feet went from under him and that was the game's turning point."),
  T("late","Late. Very late. The worst kind."),
- T("big","On this of all afternoons. You can feel the ground sag.")
+ T("big","On this of all afternoons.")
 ];
 /* Den bortsolgte spiller der scorer mod dig havde EN linje i hver tone. Han kan
    score to gange i samme kamp, og saa laeste man den samme saetning to gange --
@@ -1168,19 +1174,19 @@ const GHOSTWARM=[
  "{P} gets a hug from his old centre-half at the restart. Nobody minds.",
  "{P} apologises to Reg on the way past the dugout. Reg waves him off."
 ];
-const MOMENTUM=[
- "They smell blood now. The whole ground can feel it.",
+const MOMENTUM=[   // R4: strammet til én sætning pr. linje
+ "They smell blood now.",
  "The gaffer is off his seat and shouting one word, over and over.",
  "The tempo has gone up a gear and nobody on the pitch decided it.",
- "Second balls are dropping our way. That is usually a sign.",
+ "Second balls are dropping our way.",
  "Their bench has gone very quiet.",
- "Three corners in two minutes. Something is going to give.",
+ "Three corners in two minutes — something is going to give.",
  "Their centre-half has started kicking it long and hoping.",
  T("home","The Shed End has found a song and will not be letting it go."),
  T("away","Two hundred travelling fans are making the noise of a thousand."),
  T("lead","Their manager is on the touchline gesturing at nobody in particular."),
  T("behind","We have nothing to lose now, and the crowd knows it before the players do."),
- T("silent","Still nothing from the stands. The players glance up and look away again.")
+ T("silent","Still nothing from the stands.")
 ];
 /* Pakke 13: det annullerede maal var EN hardkodet linje, pushet direkte ind i
    ev[] uden om pickLine() -- altsaa uden om dublettvagten. halfEvents() kaldes
@@ -1188,64 +1194,64 @@ const MOMENTUM=[
    vits to gange, og regressionstesten var derfor tilfaeldigt roed i ~0,3 % af
    alle seeds. Nu er den en pulje som alt andet. Utaggede med vilje: et
    annulleret maal kan ske i al slags vejr og ved enhver stilling. */
-const DISALLOWED=[
- "GOAL — no, WAIT. Flag's up. The linesman is the least popular man in the county.",
- "The net bulges, the ground erupts, and then everyone sees the flag. Silence, then swearing.",
- "Ruled out. Offside by the length of a boot, if you believe the man with the flag.",
- "Disallowed — a shove in the back, apparently. Nobody in the ground saw it except the referee.",
- "Chalked off. The celebration had already reached the corner flag before anyone looked back.",
- "The flag stays up. Eleven men surround the official and achieve precisely nothing.",
- "No goal. Something happened in the build-up that only two people in Lancashire noticed.",
- "Offside. The linesman jogs back up the touchline pretending he cannot hear any of it."
+const DISALLOWED=[   // R4: strammet til én sætning pr. linje
+ "GOAL — no, WAIT. The flag is up.",
+ "The net bulges — then everyone sees the flag.",
+ "Ruled out — offside by the length of a boot.",
+ "Disallowed — a shove only the referee saw.",
+ "Chalked off — the celebration had already reached the corner flag.",
+ "The flag stays up; surrounding the linesman achieves nothing.",
+ "No goal — a foul in the build-up, apparently.",
+ "Offside — the linesman pretends not to hear any of it."
 ];
-const NEARMISS=[
- "Chance! {P} drags it wide. The Shed End groans in unison.",
- "{P} hits the bar! The woodwork is still shaking.",
+const NEARMISS=[   // R4: strammet til én sætning pr. linje
+ "Chance! {P} drags it wide.",
+ "{P} hits the bar!",
  "Their keeper pulls off a save he'll tell his grandkids about.",
- "Corner comes to nothing. The pigeons on the roof remain unimpressed.",
+ "Corner comes to nothing.",
  "{P} goes on a mazy run and then remembers where he plays his football.",
- "{P} skies it. Somewhere in the car park a windscreen holds its breath.",
- "{P} is through — and the flag goes up. Nobody in the ground agrees about it.",
- "{P} shoots straight at the keeper's chest. Comfortable. Infuriating.",
- "A scramble on the six-yard line ends with the ball trickling wide and four men on the floor.",
- "{P} squares it when he should have shot. The gaffer's hands go to his face.",
+ "{P} skies it into the car park.",
+ "{P} is through — and the flag goes up.",
+ "{P} shoots straight at the keeper's chest.",
+ "A goalmouth scramble ends with the ball trickling wide.",
+ "{P} squares it when he should have shot.",
  "{P} beats the keeper and finds the side netting from a yard out.",
  "Their defender clears off the line with his knee and does not know it.",
  "{P} wins the header and puts it a foot over.",
- "Free kick from twenty yards. {P} hits the first man. Then does it again.",
+ "Free kick from twenty yards — {P} hits the first man.",
  "{P} nutmegs a defender, gets his applause, and loses the ball immediately.",
- "Penalty appeal, waved away. The bench is up. The referee is unmoved.",
- "{P} turns and volleys. It clears the stand.",
- "Two shots blocked in a row. Their keeper has not touched the ball in ten minutes and looks bored.",
+ "Penalty appeal, waved away.",
+ "{P} turns and volleys it over the stand.",
+ "Two shots blocked in a row.",
  "{P} rounds the keeper and runs out of pitch.",
- "The corner finds nobody at all. Reg will be repainting that line either way.",
- "{P} lets fly from thirty. Not far off. Not close, either.",
+ "The corner finds nobody at all.",
+ "{P} lets fly from thirty — not far off.",
  "Their keeper claws one out from under the bar and gets up grinning.",
- "{P} is clean through and slips. No contact, no excuse, no goal.",
- "The cross comes in with three men waiting. All three leave it for each other.",
+ "{P} is clean through and slips.",
+ "Three men wait on the cross and all three leave it for each other.",
  "{P} hits the post, then the other post, then a defender hoofs it clear.",
- "Handball, says the whole ground. Shoulder, says the referee.",
+ "Handball, says the whole ground; shoulder, says the referee.",
  "{P} tries the spectacular and achieves the ridiculous.",
  "Their goalkeeper punches a cross into his own centre-half and survives it.",
  "{P} shows a defender the ball for four full seconds and still loses it.",
- "A shot, a block, a rebound, another block. The ball ends up with the linesman.",
+ "A shot, a block, a rebound, another block — nothing.",
  "{P} works half a yard of space and puts it into the second row.",
- "Their full-back hacks {P} down twenty yards out and gets a talking-to and nothing else.",
+ "Their full-back hacks {P} down and gets a talking-to.",
  T("mud","{P} strikes it perfectly and the ball simply stops in the mud."),
- T("mud","A shot from {P} sticks in a puddle on the goal line. Nobody can reach it."),
- T("mud","Nobody can stay upright in the six-yard box. It ends in a throw-in and two bookings."),
+ T("mud","A shot from {P} sticks in a puddle on the goal line."),
+ T("mud","Nobody can stay upright in the six-yard box."),
  T("frost","{P} shapes to shoot and his standing foot goes from under him."),
  T("frost","The ball skids off the frost away from everybody, keeper included."),
  T("wind","{P} floats a cross and the wind returns it to sender."),
- T("wind","A corner from {P} nearly goes straight in. The wind is having a day out."),
+ T("wind","A corner from {P} nearly goes straight in."),
  T("rain","The keeper spills it, {P} pounces, and a defender hacks it off his shin."),
- T("late","Last chance — {P} heads it over from four yards. He will see that one tonight."),
- T("late","Deep into the last minute {P} forces a save. That is that, then."),
- T("big","{P} has the afternoon in his boot and puts it over the bar. Silence, then a groan you can feel."),
- T("big","On any other day nobody remembers that miss. Today {P} will."),
+ T("late","Last chance — {P} heads it over from four yards."),
+ T("late","Deep into the last minute {P} forces a save."),
+ T("big","{P} has the afternoon in his boot and puts it over the bar."),
+ T("big","On any other day nobody remembers that miss — today {P} will."),
  T("behind","{P} goes close and for a second the ground believes."),
  T("behind","{P} hits one from distance in hope rather than expectation."),
- T("lead","{P} might have had another. He tried to walk it in."),
+ T("lead","{P} tried to walk it in and might have had another."),
  T("low","{P} beats the keeper, the defender AND the advertising hoarding.")
 ];
 const FLAVOR=[
@@ -2013,7 +2019,7 @@ function halfEvents(match,half,gf,ga){
     ev.push({m,goal:"me",scorerId:p.id,txt:(pen?"PENALTY! ":"GOAL! ")+surname(p).toUpperCase()+"!",
       sub:pen?fillName(pickLine(PENDESC,ctx,match.used),surname(p))
              :p.name+" "+pickLine(GOALDESC,ctx,match.used)+"."});
-    if(Math.random()<0.4){const m2=Math.min(hi,m+R(2,5));ev.push({m:m2,txt:pickLine(MOMENTUM,at(m2),match.used)});}
+    if(Math.random()<BAL.text.momentumChance){const m2=Math.min(hi,m+R(2,5));ev.push({m:m2,txt:pickLine(MOMENTUM,at(m2),match.used)});}
   }
   const ghost=G.soldTo.find(x=>x.club===match.opp);
   for(let i=0;i<ga;i++){
@@ -2023,8 +2029,8 @@ function halfEvents(match,half,gf,ga){
         sub:fillName(pickLine(ghost.bitter?GHOSTBITTER:GHOSTWARM,at(m),match.used),ghost.name)});
     }else ev.push({m,goal:"them",txt:"Goal — "+match.opp,sub:pickLine(OPPGOAL,at(m),match.used)});
   }
-  const nm=match.big?2:1;
-  for(let i=0;i<nm+1;i++){
+  const nm=BAL.text.nearmissBase+(match.big?1:0);   // R4: udtyndet — før 2-3 pr. halvleg
+  for(let i=0;i<nm;i++){
     const p=pick(scorers.length?scorers:G.squad),m=mkMin();
     ev.push({m,txt:fillName(pickLine(NEARMISS,at(m),match.used),surname(p))});
   }
@@ -2037,13 +2043,25 @@ function halfEvents(match,half,gf,ga){
    pakke 25: at jagte en sejr haever skades- OG kortrisiko. Skaderne var koblet
    (winInjury), kortene var et fladt tal der ignorerede ordren. */
 function cardRisk(order){const O=BAL.orders;return O.cardBase*(1+(order==="win"?O.winCard:0));}
+/* R4: loftet paa kommentaren. Maal og keep-events (kort, skader) overlever
+   ALTID — kun flavour (nearmiss/momentum/annulleret) viger, i kronologisk
+   orden paa tvaers af halvlegene, til kampen er nede paa BAL.text.tickerMax. */
+function trimTicker(match){
+  const isCore=e=>!!(e.goal||e.keep);
+  let slots=Math.max(0,BAL.text.tickerMax-[...match.events,...match.h2events].filter(isCore).length);
+  const trim=list=>list.filter(e=>isCore(e)||slots-->0);
+  match.events=trim(match.events);
+  match.h2events=trim(match.h2events);
+}
 function matchIncidents(match){ // red cards & injuries with consequences
   const out=[];
   if(Math.random()<cardRisk(match.order)){
     // jagter du sejren, falder de ekstra kort mest paa DINE spillere
     const mine=Math.random()<(match.order==="win"?BAL.orders.winCardMine:0.5);
-    if(mine){const p=pick(xiList());p.susp=1;out.push({m:R(20,85),txt:"RED CARD! "+p.name.split(" ")[1]+" sees red. The referee's notebook has a new enemy.",sub:"Suspended next matchday."});}
-    else out.push({m:R(20,85),txt:"RED CARD — "+match.opp+" down to ten! Their bench is furious. Lovely stuff."});
+    // R4: konsekvensen staar I linjen (ingen sub uden for maal), og keep-flaget
+    // holder kort/skader fri af flavour-trimmet — de aendrer truppen.
+    if(mine){const p=pick(xiList());p.susp=1;out.push({m:R(20,85),keep:true,txt:"RED CARD! "+p.name.split(" ")[1]+" sees red — suspended next matchday."});}
+    else out.push({m:R(20,85),keep:true,txt:"RED CARD — "+match.opp+" down to ten!"});
   }
   /* The loop that closes itself: thin squad → no rotation → tired legs → injury
      → thinner squad. It stops hurting the moment you buy depth. */
@@ -2054,8 +2072,8 @@ function matchIncidents(match){ // red cards & injuries with consequences
       const risk=(G.fac.clinic?F.injClinic:F.injBase)*(1+(100-freshOf(p))/100*scale)*(1+(match.order==="win"?BAL.orders.winInjury:0));
       if(Math.random()<risk){
         p.inj=Math.max(1,R(2,4)-(G.fac.clinic?BAL.fresh.clinicInjDays:0));
-        out.push({m:R(10,80),txt:"Injury: "+p.name.split(" ")[1]+" pulls up. The physio's sponge is out.",
-          sub:"Out for "+p.inj+" matchdays."+(freshOf(p)<F.bandUsed?" He was running on empty.":"")});
+        out.push({m:R(10,80),keep:true,txt:"Injury: "+p.name.split(" ")[1]+" pulls up — out "+p.inj+" matchday"+(p.inj===1?"":"s")+
+          (freshOf(p)<F.bandUsed?" (he was running on empty)":"")+"."});
       }
     }
   }
@@ -2229,6 +2247,7 @@ function choosePrematch(appr){
   // kopier: samme haendelsesobjekt maa ikke ligge i baade inc2 og h2events --
   // G er et traee, og htChoice() bygger h2events op igen fra inc2
   match.h2events=[...halfEvents(match,2,match.h2.gf,match.h2.ga),...match.inc2.map(e=>({...e}))].sort((a,b)=>a.m-b.m);
+  trimTicker(match);   // R4: flavour viger til loftet holder
   /* Pakke 20. Resultatet staar fast. Fra dette oejeblik ER kampen spillet --
      baade halvlege, alle haendelser og resten af divisionens runde er
      beregnet. saveGame() blev foerst kaldt i afterMatchday(), altsaa EFTER
@@ -2248,6 +2267,7 @@ function htChoice(c){
   // N1: "fury"/hairdryeren er fjernet — kun den roligere "steady" er tilbage.
   if(c==="steady"&&(match.h1.gf<match.h1.ga)&&Math.random()<0.5)match.h2.gf++; // trailing desperation push
   match.h2events=[...halfEvents(match,2,match.h2.gf,match.h2.ga),...(match.inc2||[]).map(e=>({...e}))].sort((a,b)=>a.m-b.m);
+  trimTicker(match);   // R4: anden halvleg er rullet om — loftet skal holde igen
   // pakke 20: pausetalen ER en ny beslutning, saa den anden halvleg rulles om
   // her -- og skal derfor staa fast fra netop dette oejeblik og ikke foer.
   G.pendingMatch=match;
