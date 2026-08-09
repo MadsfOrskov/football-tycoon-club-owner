@@ -820,6 +820,47 @@ function saveGame(){
 function readSave(){
   try{const raw=localStorage.getItem(SAVE_KEY);return raw?JSON.parse(raw):null;}catch(e){return null;}
 }
+/* ---------- R2: karrieren skal kunne overleve alt ----------
+   iOS Safari kan rydde localStorage efter ~7 dages inaktivitet — så karrieren
+   SKAL kunne bæres ud som tekst og ind igen. Import validerer FØR den rører
+   det eksisterende gem: en ødelagt kode må aldrig koste en karriere. */
+function exportCareerText(){
+  saveGame();
+  const raw=(typeof localStorage!=="undefined")?localStorage.getItem(SAVE_KEY):null;
+  return raw||JSON.stringify({v:1,club:G.club,season:G.season,div:G.div,G});
+}
+function importCareerText(txt){
+  try{
+    const d=JSON.parse(txt);
+    if(!d||d.v!==1||!d.G||!d.G.club||!Array.isArray(d.G.squad)||!Array.isArray(d.G.teams))return false;
+    localStorage.setItem(SAVE_KEY,JSON.stringify(d));
+    return loadGame();
+  }catch(e){return false;}
+}
+function doImportCareer(){
+  const el=document.getElementById("impcode");
+  if(el&&importCareerText(String(el.value||"").trim())){bootSave=null;screen="home";render();}
+  else{modal={type:"info",title:"Invalid career code",body:"That code could not be read. Nothing was changed — your existing save is untouched."};render();}
+}
+function toggleExport(){G.showExport=!G.showExport;render();}
+/* R2: aldrig hvid død. Går noget galt, vises en genstartsskærm — det seneste
+   gem (skrevet ved hver kampdag) er urørt, og genindlæsning samler det op. */
+let crashShown=false;
+function showCrashScreen(msg){
+  if(crashShown)return;crashShown=true;
+  try{
+    const a=document.getElementById("app");
+    if(a)a.innerHTML='<div style="padding:44px 24px;font-family:system-ui,sans-serif;color:#E9EEF3;background:#10151B;min-height:100vh">'
+      +'<h2 style="margin:0 0 8px;font-style:italic">SOMETHING BROKE</h2>'
+      +'<p style="opacity:.75;font-size:13px;margin:0 0 4px">Your last save is untouched — reloading picks the career straight back up.</p>'
+      +'<p style="opacity:.45;font-size:11px;word-break:break-all;margin:0 0 20px">'+String(msg).slice(0,180)+'</p>'
+      +'<button onclick="location.reload()" style="padding:13px 20px;border-radius:11px;border:0;background:#9FE24A;color:#10151B;font-weight:800;font-size:14px">Reload the game ▸</button></div>';
+  }catch(e){}
+}
+if(typeof window!=="undefined"&&window.addEventListener){
+  window.addEventListener("error",e=>showCrashScreen((e&&e.message)||"unknown error"));
+  window.addEventListener("unhandledrejection",e=>showCrashScreen((e&&e.reason)||"unhandled rejection"));
+}
 function loadGame(){
   const d=readSave();
   if(!d||!d.G)return false;
@@ -4515,7 +4556,11 @@ function viewBooks(){
     <div class="rowline"><span>Last dividend from ${G.club}</span><span class="amt num">${G.lastDividend&&G.lastDividend.mine?kfmt(G.lastDividend.mine):"—"}</span></div>
     <div class="rowline"><span>Stake dividends last season</span><span class="amt num">${G.stakeIncome?kfmt(G.stakeIncome):"—"}</span></div></div>
   <div class="card"><div class="kick" style="margin-bottom:2px">Net worth by season</div>
-    ${hist.map(x=>`<div class="rowline"><span>Season ${x.s}</span><span class="amt num">${kfmt(x.v)}</span></div>`).join("")||'<div class="newsline">Your first season is still being written.</div>'}</div>`;
+    ${hist.map(x=>`<div class="rowline"><span>Season ${x.s}</span><span class="amt num">${kfmt(x.v)}</span></div>`).join("")||'<div class="newsline">Your first season is still being written.</div>'}</div>
+  <div class="card"><div class="kick" style="margin-bottom:2px">Career backup <small>· phones lose saves — codes don't</small></div>
+    <button class="abtn" onclick="toggleExport()">${G.showExport?"Hide the code":"Export career code"}</button>
+    ${G.showExport?`<textarea readonly onclick="this.select()" style="width:100%;min-height:70px;margin-top:8px;background:rgba(0,0,0,.25);color:inherit;border:1px solid rgba(150,175,205,.25);border-radius:9px;padding:8px;font-size:10px">${exportCareerText().replace(/&/g,"&amp;").replace(/</g,"&lt;")}</textarea>
+    <div class="kick" style="font-size:9px;margin-top:5px;text-transform:none">Tap the box to select it, copy, and keep it somewhere safe. Paste it on the title screen to restore.</div>`:""}</div>`;
 }
 function viewOwner(){
   const o=G.owner||{name:"The Chairman",avatar:"🧑‍💼",background:"selfmade"};
@@ -5942,6 +5987,9 @@ function renderTitle(){
       <b>${d.club||"Your club"}</b> — ${divName}, season ${d.season||1}. The kettle is still warm.</div>
     <button class="glowbtn" style="margin-top:16px" onclick="continueCareer()">Continue ▸</button>
     <button class="abtn ghost" onclick="newCareer()">Start a new career <small style="opacity:.7">— this deletes the one above</small></button>
+    <div class="kick" style="margin-top:18px">Restore from a career code</div>
+    <textarea id="impcode" placeholder="Paste a career code here…" style="width:100%;min-height:54px;margin-top:6px;background:rgba(0,0,0,.25);color:inherit;border:1px solid rgba(150,175,205,.25);border-radius:9px;padding:8px;font-size:11px"></textarea>
+    <button class="abtn" style="margin-top:6px" onclick="doImportCareer()">Import career ▸</button>
   </div></div>`;
 }
 function continueCareer(){
