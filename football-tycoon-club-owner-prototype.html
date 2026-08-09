@@ -592,6 +592,38 @@ const BAL={
     promoDiscount:0.30, promoBonus:0.55, promoSeasons:2,
     goalsDiscount:0.22, goalsPer:0.06, goalsSeasons:2
   },
+  /* Pakke T1. Markedet var en ren deterministisk kurve: value = ov²·14, ét hårdt
+     loft på base ≤ 61, og hver markedsspiller var et klubløst spøgelse med et
+     tilfældigt klubnavn klistret på. GDD: "Alle spillere på markedet TILHØRER
+     navngivne ligaklubber ... at lære markedet er en færdighed."
+     Nu findes playerValuation(p) — en egen funktion (som loanRate/cardRisk), så
+     den kan MÅLES udefra. Prisen får RANGE af seks kilder i stedet for én kurve:
+     overall, positionsknaphed, alderskurve, form, restkontrakt, sælgerklubbens
+     desperation, plus en skjult støj der er FAST fra generering (ellers ville en
+     invariant der beder om prisen to gange få to tal). ovrExp bærer den gamle
+     14-kurve; alle øvrige led er centreret om 1, så MIDDELprisen er uændret og
+     den nøje tunede økonomi ikke skrider — kun spredningen er ny. */
+  market:{
+    ovrExp:15.1,             // base curve: value ≈ ovr² × this. Lifted from the old 14 so
+                             // that after the age/contract/heist modifiers (which average
+                             // ~0,93×) the MEAN price lands back on the tuned economy — only
+                             // the spread is new, not the average fee the bot pays.
+    posScarcity:0.20,        // how hard a short-supplied position lifts the price
+    /* Alderskurven (GDD): peak 25-29. Prospekt-premien for de helt unge lever i
+       T2's pot, ikke her — her stiger værdien mod peak og falder fra 31. Alle
+       tal centreret så snittet over 18-33 ligger nær 1,0. */
+    ageCurve:{prime:1.12, primeLo:25, primeHi:29, youngAt24:1.05, youngSlope:0.012,
+              shoulder:1.06, declineFrom:31, declineRate:0.06, floor:0.60},
+    formWeight:0.10,         // confidence swing on the price
+    contractYearsWeight:0.07,// per contract year above one; 1 year left = Bosman-cheap
+    noise:0.14,              // hidden spread, fixed once at generation
+    /* Kuppet. En klub uden likviditet dumper en god mand billigt — sjældent og
+       situationsbestemt, ikke en fast rabat. weakBelow/weakBias binder den til
+       verdenen: de svage klubber er oftere trængte. */
+    desperation:{chance:0.04, discount:0.62, weakBias:0.06, weakBelow:54},
+    baseSpreadLo:-8, baseSpreadHi:2,  // a market man is usually a fringe player, rarely a standout
+    rivalSaleAtt:3           // selling to a promotion rival: the att they carry into spring
+  },
   /* Which league matches are BIG. `buildMatch` was called with big=false for
      all 26 matchdays, so five things were dead at once: the big screen
      (+10% gate), the Away End (+6%/tier), the `bigExtra` price knob, the
@@ -1295,6 +1327,39 @@ function trustLevel(){return clamp(G.trust===undefined?BAL.owners.trustStart:G.t
 function bumpTrust(d){G.trust=clamp(trustLevel()+d,0,100);}
 function initials(n){return n.split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase();}
 
+/* ---------- pakke T1: en levende pris ----------
+   Egen funktion, så den kan måles udefra — som loanRate(), cardRisk(), easeMood().
+   ovr() er deklareret længere nede, men funktions-deklarationer hejses, og
+   playerValuation kaldes først på køretid (efter hele scriptet er evalueret),
+   så opslaget er trygt. */
+function ageValueFactor(age){
+  const A=BAL.market.ageCurve;
+  if(age>=A.primeLo&&age<=A.primeHi)return A.prime;          // 25-29: peak
+  if(age<A.primeLo)return A.youngAt24-(A.primeLo-1-age)*A.youngSlope; // toward peak, a touch under
+  if(age<A.declineFrom)return A.shoulder;                    // 30: shoulder
+  return Math.max(A.floor,A.shoulder-(age-A.declineFrom+1)*A.declineRate); // 31+ falls
+}
+function contractValueFactor(years){
+  // one year left = Bosman-cheap; each year above one adds value
+  return 1+BAL.market.contractYearsWeight*((years||2)-2);
+}
+function posScarcity(pos){
+  const m=G&&G.market;if(!m||!m.length)return 0;
+  const share=m.filter(p=>p.pos===pos).length/m.length;
+  const expected=1/5;                       // a six-slot market spread over ~five position groups
+  return clamp((expected-share)/expected,-1,1);   // positive when the position is short
+}
+function playerValuation(p){
+  const M=BAL.market,o=ovr(p);
+  let v=o*o*M.ovrExp;                        // the old curve, still the spine
+  v*=1+M.posScarcity*posScarcity(p.pos);     // a shortage lifts the price
+  v*=ageValueFactor(p.age);                  // peak 25-29, falls from 31
+  v*=1+M.formWeight*((p.conf-50)/50);        // form/confidence
+  v*=contractValueFactor(p.years);           // 1 year left is cheap; 4 is dear
+  v*=(p.desperation||1);                     // the skint seller's discount (the heist)
+  v*=(p.valNoise||1);                        // hidden spread, fixed at generation
+  return Math.max(1000,Math.round(v/1000)*1000);
+}
 function genPlayer(pos,base,wmult){
   const att=clamp(base+ (pos==="FW"?R(2,8):pos==="MF"?R(-2,4):R(-10,-2)),30,90);
   const def=clamp(base+ (pos==="GK"||pos==="DF"?R(2,8):pos==="MF"?R(-2,4):R(-10,-2)),30,90);
@@ -1303,22 +1368,54 @@ function genPlayer(pos,base,wmult){
   const traits=[];
   if(Math.random()<0.35)traits.push(pick(Object.keys(TRAITS)));
   if(Math.random()<0.08)traits.push(pick(Object.keys(TRAITS)));
-  return {id:PID++,name:pick(FIRST)+" "+pick(LAST),pos,att,def,phy,form:0,age:R(18,33),
+  const p={id:PID++,name:pick(FIRST)+" "+pick(LAST),pos,att,def,phy,form:0,age:R(18,33),
     wage:Math.round((ov*BAL.wages.scale*wmult+R(-70,110))/10)*10,
-    value:Math.round((ov*ov*14+R(-4000,9000))/1000)*1000,
+    value:0,
     traits:[...new Set(traits)],gem:false,inj:0,susp:0,sg:0,sapps:0,smotm:0,load:0,
-    conf:R(42,60),focus:null,capps:0,promiseMD:null,years:R(1,3),from:null,listed:false,reqDone:false,renewLockMD:-99};
+    conf:R(42,60),focus:null,capps:0,promiseMD:null,years:R(1,3),from:null,fromIdx:-1,
+    desperation:1,heist:false,valNoise:1+(Math.random()*2-1)*BAL.market.noise,
+    listed:false,reqDone:false,renewLockMD:-99};
+  p.value=playerValuation(p);
+  return p;
+}
+/* Every market player TILHØRER a named club in G.teams — no clubless ghosts.
+   fromIdx is an index (never a reference: G must stay a tree). reseedLeague()
+   mutates the team objects in place and never rebuilds the array, so an index
+   stays valid across a whole career. */
+function assignClub(pl,idx){
+  if(!(idx>=0&&idx<G.teams.length))idx=Math.floor(Math.random()*G.teams.length);
+  pl.fromIdx=idx;pl.from=G.teams[idx].name;
+  return pl;
+}
+function marketBase(t){
+  // a market man is usually a club's fringe player, rarely a standout — so a
+  // strong club's spare is dear and a weak club's key man is within reach
+  const core=Math.round((t.att+t.def+t.phy)/3);
+  return clamp(core+R(BAL.market.baseSpreadLo,BAL.market.baseSpreadHi),34,84);
+}
+function genMarketPlayer(pos){
+  const idx=Math.floor(Math.random()*G.teams.length);
+  const t=G.teams[idx];
+  const pl=genPlayer(pos,marketBase(t),G_DIV_WAGE(G.div));
+  assignClub(pl,idx);
+  // the heist: a skint club dumps a good man cheap. Rare, and likelier at the
+  // clubs that have least — a last-minute coup, not a standing discount.
+  const D=BAL.market.desperation,core=Math.round((t.att+t.def+t.phy)/3);
+  if(Math.random()<D.chance+(core<D.weakBelow?D.weakBias:0)){
+    pl.desperation=D.discount;pl.heist=true;pl.value=playerValuation(pl);
+  }
+  return pl;
 }
 function refreshMarket(){
-  G.market=["GK","DF","DF","MF","MF","FW"].map(p=>{const pl=genPlayer(p,R(45,60),G_DIV_WAGE(G.div));pl.from=pick(G.teams).name;return pl;});
-  G.freeAgents=["DF","MF","FW"].map(p=>{const pl=genPlayer(p,R(44,56),G_DIV_WAGE(G.div));pl.wage=Math.round(pl.wage*BAL.wages.freeAgentMult/10)*10;pl.free=true;pl.from=pick(G.teams).name;return pl;});
+  G.market=["GK","DF","DF","MF","MF","FW"].map(p=>genMarketPlayer(p));
+  G.freeAgents=["DF","MF","FW"].map(p=>{const pl=genMarketPlayer(p);pl.desperation=1;pl.heist=false;pl.wage=Math.round(pl.wage*BAL.wages.freeAgentMult/10)*10;pl.free=true;pl.value=playerValuation(pl);return pl;});
 }
 function marketFlow(){ // the living market: names in, names out — window days are worth checking
   if(!windowOpen())return;
   if(G.market.length<8&&Math.random()<0.35){
-    const pl=genPlayer(pick(["GK","DF","DF","MF","MF","FW"]),R(45,61),G_DIV_WAGE(G.div));
-    pl.from=pick(G.teams).name;G.market.push(pl);
-    addNews("MARKET",pl.from+" quietly make "+pl.name+" available. Reg has already circled the name.");
+    const pl=genMarketPlayer(pick(["GK","DF","DF","MF","MF","FW"]));
+    G.market.push(pl);
+    addNews("MARKET",pl.from+(pl.heist?" — short of cash — quietly make "+pl.name+" available BELOW value. Reg is already reaching for his coat.":" quietly make "+pl.name+" available. Reg has already circled the name."));
   }
   if(G.market.length>3&&Math.random()<0.22){
     const ix=G.market.findIndex(p=>!p.pendingBid&&!p.gem);
@@ -1328,8 +1425,8 @@ function marketFlow(){ // the living market: names in, names out — window days
       addNews("MARKET",buyer.name+" sign "+pl.name+" from "+pl.from+". One you looked at, chairman. Just saying.");}
   }
   if(G.freeAgents.length<4&&Math.random()<0.2){
-    const pl=genPlayer(pick(["DF","MF","FW"]),R(43,56),G_DIV_WAGE(G.div));
-    pl.wage=Math.round(pl.wage*BAL.wages.freeAgentMult/10)*10;pl.free=true;pl.from=pick(G.teams).name;
+    const pl=genMarketPlayer(pick(["DF","MF","FW"]));
+    pl.desperation=1;pl.heist=false;pl.wage=Math.round(pl.wage*BAL.wages.freeAgentMult/10)*10;pl.free=true;pl.value=playerValuation(pl);
     G.freeAgents.push(pl);
     addNews("MARKET",pl.name+" released by "+pl.from+" — a free agent with a point to prove.");
   }
@@ -2327,7 +2424,13 @@ const DIV_OBJECTIVE={3:8,2:10,1:9,0:7};
 /* A new division means new opponents. Shared by promotion and relegation so
    the two directions cannot drift apart. */
 function reseedLeague(){
-  for(const t of G.teams){t.name=pick(TOWN1)+" "+pick(TOWN2);t.att=R(50,66)+(3-G.div)*2;t.def=R(50,66)+(3-G.div)*2;}
+  /* Pakke T1 raised the coefficient 2→3. Since the market now scales to the
+     division a club sits in, a promoted chairman can keep arming himself with
+     league-appropriate players — which used to be impossible above the old
+     base≤61 cap and was what made the late career plateau. The higher divisions
+     therefore have to be harder to hold the "derefter 1-3 oprykninger" target;
+     League Three (newGame, not reseeded) is untouched, so season 1 is unchanged. */
+  for(const t of G.teams){t.name=pick(TOWN1)+" "+pick(TOWN2);t.att=R(50,66)+(3-G.div)*4;t.def=R(50,66)+(3-G.div)*4;}
 }
 function relegationSpot(pos,rows){
   const RG=BAL.relegation;
@@ -2457,7 +2560,7 @@ function finishSeason(o){
     p.att=clamp(p.att+dev,25,95);p.def=clamp(p.def+dev,25,95);
     p.phy=clamp(p.phy+(p.age>=30?-R(1,3):dev),25,95);
     if(p.focus&&p.age<28){p[p.focus]=clamp(p[p.focus]+(p.age<24?2:1),25,95);}
-    p.value=Math.max(1000,Math.round((ovr(p)*ovr(p)*14*(p.age<24?1.3:p.age>30?0.6:1))/1000)*1000);
+    p.value=playerValuation(p);   // pakke T1: the one living valuation, squad and market alike
     p.form=0;p.sg=0;p.sapps=0;p.smotm=0;p.inj=0;p.susp=0;p.promiseMD=null;p.load=0;p.roleWarned=false; // a summer is a summer
     p.conf=clamp(p.conf*0.6+20,10,95); // confidence regresses toward the mean over summer
   }
@@ -3510,6 +3613,7 @@ function grantReward(kind){
 function deliverScout(){
   const gem=genPlayer(pick(["DF","MF","FW"]),R(60,68),G_DIV_WAGE(G.div));
   gem.gem=true;gem.value=Math.round(gem.value*0.55/1000)*1000;
+  assignClub(gem);   // even a scouted gem belongs to a named club — no ghosts on the list
   G.market.unshift(gem);
   msg("Reg (scout)","R","Scout report: "+gem.name,"\"Best "+gem.pos+" I've seen since the war. Which war is unclear. He's on the market list, and he's CHEAP.\"",null);
 }
@@ -3696,6 +3800,14 @@ function table(){
   return rows;
 }
 function myPos(){return table().findIndex(r=>r.i===0)+1;}
+/* Pakke T1: is this club a promotion rival right now? — at/above the playoff cut
+   and no worse-placed than you, i.e. a club you are actually racing. */
+function isPromotionRival(name){
+  if(G.div<=0)return false;
+  const rows=table();
+  const rank=rows.findIndex(r=>r.n===name),mine=rows.findIndex(r=>r.i===0);
+  return rank>=0&&rank<BAL.big.cuts[1]&&rank<=mine;
+}
 function windowOpen(){return (G.md>=0&&G.md<6)||(G.md>=12&&G.md<15);}
 function windowLabel(){
   if(G.md<6)return {open:true,txt:"SUMMER WINDOW OPEN · "+(6-G.md)+" MD LEFT"};
@@ -3965,7 +4077,16 @@ function executeSale(p,club,bid){
   G.squad=G.squad.filter(x=>x!==p);
   G.soldTo.push({name:p.name,club,pos:p.pos,ovr:ovr(p),bitter:promiseBroken});
   if(G.soldTo.length>40)G.soldTo.shift();   // old ghosts stop haunting eventually
-  const t=G.teams.find(x=>x.name===club);if(t)t.att=clamp(t.att+1,40,78);
+  const t=G.teams.find(x=>x.name===club);
+  if(t){
+    /* Pakke T1, konsekvens: sælger du til en oprykningsrival, bliver den klub
+       målbart stærkere til foråret — GDD's "en pris, du møder i foråret". En
+       almindelig køber får det gamle +1; en rival over dig i løbet får hele
+       rivalSaleAtt, og du får det at vide, så salget har en synlig følge. */
+    const rival=isPromotionRival(club);
+    t.att=clamp(t.att+(rival?BAL.market.rivalSaleAtt:1),40,78);
+    if(rival)addNews("LEAGUE",club+", right in the promotion race with you, have signed "+p.name.split(" ")[1]+". You will meet a stronger "+club+" in the spring.");
+  }
   if(p.traits.includes("localhero")){G.fanMood=clamp(G.fanMood-12,5,100);bumpTrust(BAL.owners.trustFavourite);addNews("FANS","You sold a local hero. The banners are being repainted. Angrily.");}
   if(promiseBroken){
     G.fanMood=clamp(G.fanMood-3,5,100);
