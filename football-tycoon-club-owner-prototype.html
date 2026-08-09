@@ -359,7 +359,14 @@ const BAL={
        der ikke tror paa klubben faar ikke lov at koebe den billigt.
        `objectivePrize` er praemiepengenes andel af det samme. */
     objectiveStake:2.5, objectiveTimid:0.05, objectivePrize:0.18,
-    objectiveMoodStep:1, objectiveTrustAt:60, objectiveTrustStep:1
+    objectiveMoodStep:1, objectiveTrustAt:60, objectiveTrustStep:1,
+    /* N5, ejerfinanser. Ejer du FLERTAL (> majorityAt) bestemmer du selv
+       sæsonslut-udbyttet, op til dividendMaxFrac af klubkassen. Falder du til
+       mindretal (≤ majorityAt) bestemmer medejerne — efter deres appetit
+       (slagteren vil have penge ud, advokaten er forsigtig) — og de kan tømme
+       klubben. Din andel af ethvert udbytte bliver din PERSONLIGE formue. */
+    majorityAt:50, dividendMaxFrac:0.55,
+    dividendAppetite:{butcher:0.55, "pie magnate":0.32, solicitor:0.16}
   },
   fund:{bonusPerMD:0.015, bonusCap:0.15},
   /* Pakke 21b. Stemningens smaa tal. De var alle sammen korrekte i teksten --
@@ -523,7 +530,9 @@ const BAL={
     rescueShare:[5,10],      // the slice they want, by how badly they are needed
     rescueCash:70000,        // what a slice buys, before the club's own standing
     rescueTrustFloor:25,     // below this they drive a harder bargain
-    controlAt:50,            // your stake at or below this and it is over
+    controlAt:0,             // N5: you only lose the club when fully bought out (0%);
+                             // ≤ owners.majorityAt is now a playable minority downturn
+    majorityGone:50,         // (kept for messaging: the share where you lose the boardroom)
     /* Trin 3, det interaktive: administrationen er ikke et fladt lønnedslag
        laengere -- den er et brandudsalg med ur. "Skaer denne andel af lønsummen
        inden fireClockMD kampdage. DU vaelger hvem -- eller administratoren
@@ -1287,6 +1296,8 @@ function newGame(name,hue,mode){
     fund:0,fundBonus:0,fundTarget:null,fundRaided:false,seasonTix:{price:150,sold:0},bigExtra:2,jerseyFactor:1,jerseyName:null,
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
     myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,sponsorRiskMD:null,
+    personalWealth:0,dividendDue:false,lastDividend:null,   // N5: ejerfinanser
+
     netEwma:0,trust:BAL.owners.trustStart,admins:0,valHistory:[],commitments:[],protest:0,flavourSeen:[],
     /* Whose return leg is a big match. Stored as {opp,md,by} — an INDEX and two
        numbers, never a team reference: G must stay a tree. Cleared every summer,
@@ -2704,6 +2715,7 @@ function finishSeason(o){
   // sponsor expiry
   if(G.sponsor){G.sponsor.seasonsLeft--;if(G.sponsor.seasonsLeft<=0){G.sponsor=null;sponsorRenewal();}}
   G.season++;G.md=0;G.phase="season";
+  G.dividendDue=true;   // N5: a dividend decision waits before the new season's budget
   G.me={pts:0,gd:0,pl:0};for(const t of G.teams){t.pts=0;t.gd=0;t.pl=0;}
   G.fixtures=makeFixtures();refreshMarket();
   G.scoutUsed=false;G.sponsorBoost=false;G.coachAsked=false;G.deadlineDone={};G.playoff=null;
@@ -2877,7 +2889,43 @@ function ownerDemandPos(){
   if(protestLevel()>=2)d+=O.objectiveMoodStep;
   return clamp(Math.round(d),2,rows-1);
 }
+/* N5: ejerfinanser. Din andel af klubben afgør om DU bestemmer udbyttet.
+   Flertal (> majorityAt): du vælger, op til dividendMaxFrac af kassen.
+   Mindretal (≤ majorityAt): medejerne bestemmer efter deres appetit — de kan
+   tømme klubben. Din andel af ethvert udbytte bliver personlig formue. */
+function isMajority(){return G.myShare>BAL.owners.majorityAt;}
+function boardDividend(){
+  const cash=Math.max(0,G.balance),A=BAL.owners.dividendAppetite;
+  let wsum=0,asum=0;
+  for(const o of G.owners){const a=A[o.role]!==undefined?A[o.role]:0.3;wsum+=o.share;asum+=a*o.share;}
+  const frac=wsum?asum/wsum:0.3;
+  return Math.round(cash*frac/1000)*1000;
+}
+function dividendCap(){return Math.round(Math.max(0,G.balance)*BAL.owners.dividendMaxFrac/1000)*1000;}
+function openDividend(){
+  const maj=isMajority();
+  const forced=maj?null:boardDividend();
+  // majority's default suggestion: a modest slice of the cap
+  modal={type:"dividend",majority:maj,cash:Math.max(0,G.balance),cap:dividendCap(),forced,
+    amount:maj?Math.round(dividendCap()*0.35/1000)*1000:forced};
+  render();
+}
+function dividendSet(frac){const m=modal;if(!m||!m.majority)return;m.amount=Math.round(m.cap*frac/1000)*1000;render();}
+function dividendConfirm(){
+  const m=modal;if(!m||m.type!=="dividend")return;
+  const D=Math.max(0,Math.min(m.amount||0,Math.max(0,G.balance)));
+  const mine=Math.round(D*G.myShare/100);
+  if(D>0){
+    G.balance-=D;
+    G.personalWealth=(G.personalWealth||0)+mine;
+    addNews("CLUB",(m.majority?"You declared":"The board forced through")+" a "+kfmt(D)+" dividend. "+kfmt(mine)+" of it is yours.");
+  }
+  G.lastDividend={total:D,mine,season:G.season-1,forced:!m.majority};
+  G.dividendDue=false;modal=null;
+  openBudgetMeeting();
+}
 function openBudgetMeeting(){
+  if(G.dividendDue){openDividend();return;}   // N5: udbytte før budgettet
   modal={type:"budget",step:0,tixPrice:G.seasonTix.price,fundAdd:0,jersey:null,capAsked:false,capMsg:null,
     target:G.fundTarget?G.fundTarget.key:null,
     /* Forhandlingen starter fra DIVISIONENS ramme, ikke fra sidste saesons
@@ -3195,8 +3243,9 @@ function rescueAccept(){
   if(!backer){modal=null;administration();return;}
   G.balance+=m.cash;G.myShare-=m.share;backer.share+=m.share;
   addNews("CLUB",m.who+" has put "+kfmt(m.cash)+" into the club for "+m.share+"% of it. Your stake: "+G.myShare+"%.");
+  const nowMinority=G.myShare<=BAL.owners.majorityAt;
   msg("The co-owners","CO","Rescue capital, and what it costs",
-    "\""+m.who+" has found "+kfmt(m.cash)+". The paperwork moves "+m.share+"% across the table. You still run this club, chairman — you just own less of it. There is a number below which you do not run it at all, and it is "+BAL.ladder.controlAt+"%.\"",null);
+    "\""+m.who+" has found "+kfmt(m.cash)+". "+m.share+"% moves across the table. "+(nowMinority?"You are a minority owner now, chairman — you keep your seat, but the board sets the dividend. Below "+BAL.ladder.controlAt+"% you lose the club entirely.":"You still run this club — you just own less of it.")+"\"",null);
   modal=null;
   if(G.myShare<=BAL.ladder.controlAt){loseControl(m.who);return;}
   if(G.md>=G.rounds){startPostSeason();return;}
@@ -3226,7 +3275,8 @@ function eraSummary(){
     best:h.length?h.reduce((a,x)=>x.pos<a.pos?x:a,h[0]):null,
     peak:(G.valHistory||[]).reduce((a,x)=>Math.max(a,x.v),clubValuation()),
     div:G.divNames[G.div],
-    share:G.myShare
+    share:G.myShare,
+    wealth:G.personalWealth||0   // N5: the career score you actually walk away with
   };
 }
 function wageBill(){return G.squad.reduce((s,p)=>s+p.wage,0);}
@@ -4437,6 +4487,10 @@ function viewClub(){
       <div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Relegation, losses, a bank loan, sour fans and administration all take value OUT. Promotion, profit, building and a growing town put it back. That is what makes a shareholding worth owning.</div></div>`;
   })()}
   <div class="card"><div class="kick" style="margin-bottom:4px">Ownership · you hold <b>${G.myShare}%</b> · boardroom trust <b>${Math.round(trustLevel())}%</b></div>
+    <div class="rowline"><span>Club cash</span><span class="amt num">${kfmt(G.balance)}</span></div>
+    <div class="rowline"><span><b>Your personal wealth</b> <small>· from dividends</small></span><span class="amt num" style="color:var(--acc)">${kfmt(G.personalWealth||0)}</span></div>
+    ${G.lastDividend&&G.lastDividend.total>0?`<div class="rowline"><span>Last dividend${G.lastDividend.forced?" <small>· board's call</small>":""}</span><span class="amt num">${kfmt(G.lastDividend.total)} <small>· ${kfmt(G.lastDividend.mine)} yours</small></span></div>`:""}
+    ${!isMajority()?'<div class="why" style="border-left-color:rgba(243,179,60,.5);background:rgba(243,179,60,.08);font-size:11px"><b>Minority owner.</b> The board sets the dividend. Buy back above '+BAL.owners.majorityAt+'% to take control.</div>':""}
     ${G.owners.map((o,i)=>{
       const fair=Math.round(clubValuation()*o.share/100/1000)*1000;
       const prem=ownerPremium(o);
@@ -4911,9 +4965,9 @@ function renderModal(){
       <p>"${modal.role==="butcher"?"I have had a good year. Sausages, chairman. Sausages have been very good to me.":modal.role==="solicitor"?"I have consulted myself, and I am prepared to be reasonable.":"I have money and a pie empire. You have a football club and a problem."} ${kfmt(modal.cash)} into the account tonight. For ${modal.share}% of the club."</p>
       <div class="card">
         <div class="rowline"><span>Into the account</span><span class="amt num" style="color:var(--acc)">+${kfmt(modal.cash)}</span></div>
-        <div class="rowline"><span>Your stake</span><span class="amt num">${G.myShare}% → <b style="color:${after<=BAL.ladder.controlAt?"#E07A6A":"inherit"}">${after}%</b></span></div>
-        <div class="rowline"><span>You stop being chairman at</span><span class="num">${BAL.ladder.controlAt}%</span></div></div>
-      ${modal.fatal?`<div class="why" style="border-left-color:rgba(224,90,74,.6);background:rgba(224,90,74,.08)"><b>This one ends it.</b> Take this and you are a shareholder, not the chairman. The club survives. You do not run it.</div>`:`<div class="why">The club survives the winter either way. The question is who owns it in the spring.</div>`}
+        <div class="rowline"><span>Your stake</span><span class="amt num">${G.myShare}% → <b style="color:${modal.fatal?"#E07A6A":(G.myShare>BAL.owners.majorityAt&&after<=BAL.owners.majorityAt)?"var(--comm)":"inherit"}">${after}%</b></span></div>
+        <div class="rowline"><span>You lose the club at</span><span class="num">${BAL.ladder.controlAt}%</span></div></div>
+      ${modal.fatal?`<div class="why" style="border-left-color:rgba(224,90,74,.6);background:rgba(224,90,74,.08)"><b>This one ends it.</b> Below ${BAL.ladder.controlAt}% you own nothing. The club is no longer yours.</div>`:(G.myShare>BAL.owners.majorityAt&&after<=BAL.owners.majorityAt)?`<div class="why" style="border-left-color:rgba(243,179,60,.6);background:rgba(243,179,60,.09)"><b>You drop to a minority.</b> You keep your seat and play on — but the board takes control of the dividend and can strip the club. Buy back above ${BAL.owners.majorityAt}% to take it back.</div>`:`<div class="why">The club survives the winter either way. The question is who owns it in the spring.</div>`}
       <button class="glowbtn" onclick="rescueAccept()">Take the money · −${modal.share}%</button>
       <button class="abtn ghost" onclick="rescueDecline()">Refuse · let the administrators in</button>
     </div></div>`;
@@ -4934,8 +4988,9 @@ function renderModal(){
         <div class="rowline"><span>Administrations</span><span class="amt num">${e.admins}</span></div>
         ${e.best?`<div class="rowline"><span>Best finish</span><span class="amt">${ord(e.best.pos)} · ${e.best.div}</span></div>`:""}
         <div class="rowline"><span>Peak club value</span><span class="amt num">${kfmt(e.peak)}</span></div>
+        <div class="rowline" style="border-top:1px solid rgba(255,255,255,.12)"><span><b>Your personal fortune</b></span><span class="amt num" style="color:var(--acc)">${kfmt(e.wealth)}</span></div>
         <div class="rowline"><span>Where it ended</span><span class="amt">${e.div}</span></div></div>
-      <div class="why">You did not lose the club by losing matches. You sold it, a slice at a time, to keep it alive — and that is a different kind of story.</div>
+      <div class="why">You did not lose the club by losing matches. You sold it, a slice at a time, to keep it alive — and walked away with ${kfmt(e.wealth)} of your own. That is a different kind of story.</div>
       <button class="glowbtn" onclick="newCareer()">Start again ▸</button>
     </div></div>`;
   }
@@ -4974,6 +5029,28 @@ function renderModal(){
       <div class="kick" style="margin-top:12px">Monetisation placeholder</div>
       <p style="font-size:12px"><b>TYCOON PRO · 49 kr.</b> — no ads · 3 save slots · full career history. <span style="opacity:.7">(Vises netop her, efter en stor sæsonafslutning.)</span></p>
       <button class="glowbtn" onclick="modal=null;openBudgetMeeting()">Start season ${G.season} — to the boardroom ▸</button></div></div>`;
+  }
+  if(modal.type==="dividend"){
+    const m=modal,mine=Math.round((m.amount||0)*G.myShare/100),others=(m.amount||0)-mine;
+    return `<div class="overlay"><div class="sheet">
+      <div class="biglabel">Season's end · the books</div>
+      <h2>${m.majority?"The dividend — your call":"The board takes its cut"}</h2>
+      <div class="card">
+        <div class="rowline"><span>Club cash</span><span class="amt num">${kfmt(m.cash)}</span></div>
+        <div class="rowline"><span>Club value</span><span class="amt num">${kfmt(clubValuation())}</span></div>
+        <div class="rowline"><span>Your stake</span><span class="amt num">${G.myShare}%</span></div>
+        <div class="rowline"><span>Your wealth so far</span><span class="amt num">${kfmt(G.personalWealth||0)}</span></div></div>
+      ${m.majority
+        ?`<div class="kick" style="margin-top:10px">How much leaves the club?</div>
+          <div class="modes" style="margin-top:8px">
+            <button class="${m.amount===0?'on':''}" onclick="dividendSet(0)">Nothing</button>
+            <button onclick="dividendSet(0.35)">Modest</button>
+            <button onclick="dividendSet(0.7)">Big</button>
+            <button onclick="dividendSet(1)">Max</button></div>
+          <div class="why"><b>${kfmt(m.amount||0)} out.</b> ${kfmt(mine)} to you (${G.myShare}%), ${kfmt(others)} to the co-owners. Money out is money the squad and the ground never see.</div>`
+        :`<div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.08)"><b>You are a minority owner.</b> The board voted a <b>${kfmt(m.forced)}</b> dividend. Your ${G.myShare}% — <b>${kfmt(mine)}</b> — is yours; the rest lines their pockets. Buy back above ${BAL.owners.majorityAt}% and the call is yours again.</div>`}
+      <button class="glowbtn" onclick="dividendConfirm()">${m.majority?(m.amount>0?"Pay it ▸":"Take nothing ▸"):"Noted ▸"}</button>
+    </div></div>`;
   }
   if(modal.type==="budget"){
     const m=modal;const st=m.step||0;
