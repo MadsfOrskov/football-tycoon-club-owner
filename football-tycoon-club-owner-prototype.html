@@ -639,7 +639,8 @@ const BAL={
     potCap:88,                     // nobody is generated with a ceiling above this
     bandByScout:[12,7,3,0],        // half-width of the SHOWN band by p.scouted; the last (0) is a full read
     devToCeiling:true,             // development stops at pot
-    readNarrow:1                   // one scout report lifts p.scouted by this much
+    readNarrow:1,                  // one scout report lifts p.scouted by this much
+    ownedNarrow:0.45               // N4: your OWN players show a tighter band — you know them
   },
   /* Pakke T3. GDD: "Agenterne er tonens bedste våben." Forhandlingen var
      ansigtsløs — agenten var ren kosmetik (kun replikker), og feeMin, accept og
@@ -1461,16 +1462,23 @@ function genPlayer(pos,base,wmult){
    a range that narrows as p.scouted rises. Returns null for anyone who does not
    carry a meaningful ceiling (the old, or a save from before T2). The RAW pot
    must never leave this function into the markup — the invariant proves it. */
-function potBand(p){
-  const T=BAL.talent;
-  if(p.pot===undefined||p.age>=T.youngUnder||p.pot<=ovr(p))return null;
-  const hw=T.bandByScout[Math.min(p.scouted||0,T.bandByScout.length-1)];
+/* N4: `owned` = én af DINE spillere. Så viser vi altid et loft — også for de
+   ældre (hvor båndet er "at his ceiling") — og et SNÆVRERE bånd, fordi du kender
+   dine egne folk. Markedet (owned falsk) er som før: kun de unge, bredere bånd. */
+function potBand(p,owned){
+  const T=BAL.talent,o=ovr(p);
+  if(p.pot===undefined)return null;
+  if(!owned&&(p.age>=T.youngUnder||p.pot<=o))return null;
+  if(p.pot<=o)return {lo:o,hi:o,exact:true,atCeiling:true};   // owned & fully grown
+  let hw=T.bandByScout[Math.min(p.scouted||0,T.bandByScout.length-1)];
+  if(owned)hw=Math.max(1,Math.round(hw*T.ownedNarrow));       // you know your own players
   if(hw===0)return {lo:p.pot,hi:p.pot,exact:true};
-  return {lo:clamp(p.pot-hw,ovr(p),99),hi:clamp(p.pot+hw,ovr(p),99),exact:false};
+  return {lo:clamp(p.pot-hw,o,99),hi:clamp(p.pot+hw,o,99),exact:false};
 }
-function potBandText(p){
-  const b=potBand(p);if(!b)return "";
-  return b.exact?("ceiling <b>"+b.hi+"</b> · fully scouted"):("potential <b>"+b.lo+"–"+b.hi+"</b>");
+function potBandText(p,owned){
+  const b=potBand(p,owned);if(!b)return "";
+  if(b.atCeiling)return "at his ceiling — grown";
+  return b.exact?("ceiling <b>"+b.hi+"</b>"):("potential <b>"+b.lo+"–"+b.hi+"</b>");
 }
 /* Every market player TILHØRER a named club in G.teams — no clubless ghosts.
    fromIdx is an index (never a reference: G must stay a tree). reseedLeague()
@@ -5194,8 +5202,8 @@ function renderModal(){
       <div class="kick">${p.pos} · promised ${ROLES[p.role||"rot"].n.toLowerCase()} football${isCap?" · club captain":""}</div>
       <h2>${p.name}</h2>
       <p>Age ${p.age} · <b>${ovr(p)} ovr</b> · valued ~${kfmt(p.value)}${p.from?" · from "+p.from:""}
-        ${potBand(p)?'<br><span style="color:var(--comm)">Reg\'s read: '+potBandText(p)+' — how high he might climb'+(potBand(p).exact?"":", scout to narrow it")+'</span>':""}
         ${p.traits.length?"<br>"+p.traits.map(t=>TRAITS[t]).join(" · "):""}</p>
+      <div class="rowline" style="border:none;padding:2px 0"><span class="kick" style="color:var(--comm)">Potential</span><span class="amt">${potBandText(p,true)||"—"}${potBand(p,true)&&!potBand(p,true).exact&&(p.scouted||0)<BAL.talent.bandByScout.length-1?' <small style="opacity:.6">· scout to narrow</small>':""}</span></div>
       ${p.inj||p.susp||p.listed?`<div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.08)">
         ${p.inj?`<b>Injured</b> — out for ${p.inj} more matchday${p.inj===1?"":"s"}. `:""}${p.susp?"<b>Suspended</b> — misses the next matchday. ":""}${p.listed?"<b>On the transfer list</b> — offers arrive by inbox while the window is open.":""}</div>`:""}
       <div class="card">
