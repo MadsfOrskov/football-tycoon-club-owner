@@ -622,7 +622,8 @@ const BAL={
        verdenen: de svage klubber er oftere trængte. */
     desperation:{chance:0.04, discount:0.62, weakBias:0.06, weakBelow:54},
     baseSpreadLo:-8, baseSpreadHi:2,  // a market man is usually a fringe player, rarely a standout
-    rivalSaleAtt:3           // selling to a promotion rival: the att they carry into spring
+    rivalSaleAtt:3,          // selling to a promotion rival: the att they carry into spring
+    freeAgentGrace:2         // N2: free agents can be registered this many matchdays past the window
   },
   /* Pakke T2. Skjult potentiale — GDD: "unge spilleres loft er usikkert;
      scouting indsnævrer intervallet, og det er hele gambling-spændingen i
@@ -3440,6 +3441,7 @@ const ROLES={key:{n:"Key player",f:0.90},rot:{n:"Rotation",f:1.00},pro:{n:"Prosp
 const YEARF={1:1.12,2:1.03,3:1.00,4:0.95};
 function startBuyNego(ix,freeAgent,opts){
   opts=opts||{};
+  if(freeAgent&&!freeAgentSignable()){modal={type:"info",title:"Window shut",body:"Free agents can be registered for a short grace after the window — that has passed. They'll be here when it reopens."};render();return;}
   const p=freeAgent?G.freeAgents[ix]:G.market[ix];
   const agent=agentOf(p.agentKey);   // pakke T3: the player's OWN agent, with his measurable style
   const rel=agentRelOf(agent.key);
@@ -4024,6 +4026,9 @@ function isPromotionRival(name){
   return rank>=0&&rank<BAL.big.cuts[1]&&rank<=mine;
 }
 function windowOpen(){return (G.md>=0&&G.md<6)||(G.md>=12&&G.md<15);}
+/* N2: free agents har intet gebyr og kan derfor registreres en kort NÅDE efter
+   vinduet lukker — men ikke hele sæsonen. Uden for vindue+nåde er de utilgængelige. */
+function freeAgentSignable(){const g=BAL.market.freeAgentGrace||0;return (G.md>=0&&G.md<6+g)||(G.md>=12&&G.md<15+g);}
 function windowLabel(){
   if(G.md<6)return {open:true,txt:"SUMMER WINDOW OPEN · "+(6-G.md)+" MD LEFT"};
   if(G.md>=12&&G.md<15)return {open:true,txt:"JANUARY WINDOW OPEN · "+(15-G.md)+" MD LEFT"};
@@ -4342,7 +4347,7 @@ function viewMarket(){
 }
 function marketRow(p,ix,fa){
   let btns;
-  if(fa)btns=`<button class="sellb" style="color:var(--acc);border-color:var(--strokeAcc)" onclick="startBuyNego(${ix},true)">Sign</button>`;
+  if(fa)btns=freeAgentSignable()?`<button class="sellb" style="color:var(--acc);border-color:var(--strokeAcc)" onclick="startBuyNego(${ix},true)">Sign</button>`:`<span class="sc" style="opacity:.5">window shut</span>`;
   else if(p.pendingBid)btns=`<span class="sc" style="color:var(--comm)">BID PENDING</span>`;
   else btns=`<button class="sellb" style="color:var(--comm);border-color:rgba(243,179,60,.4)" onclick="startBuyNego(${ix},false,{quick:true})" title="Live talks now — costs a premium">Quick</button>
     <button class="sellb" style="color:var(--acc);border-color:var(--strokeAcc)" onclick="openFormalBid(${ix})" title="Formal bid — answer next matchday, rivals may bid">Offer</button>`;
