@@ -640,6 +640,25 @@ const BAL={
     devToCeiling:true,             // development stops at pot
     readNarrow:1                   // one scout report lifts p.scouted by this much
   },
+  /* Pakke T3. GDD: "Agenterne er tonens bedste våben." Forhandlingen var
+     ansigtsløs — agenten var ren kosmetik (kun replikker), og feeMin, accept og
+     rundeantal var ens uanset hvem der sad over for dig. Nu har hver agent en
+     MÅLBAR stil: feeBias hæver/sænker smertegrænsen, extraRound koster en runde
+     mere, giveIn er hvor tæt på sit tal han giver hånd på et finalt bud, og
+     chaos er den uforudsigelige (Dex). Tallene bor her; AGENTS holder kun
+     replikkerne. Relation bygges: handler du ofte og fair med en agent,
+     blødgøres han (relSoften × G.agentRel[key]) — "for DIG, chairman…". */
+  agents:{
+    relGain:0.12, relDecay:0.03, relSoften:0.06, relCap:1,
+    list:[
+      {key:"barry", feeBias:0.10,  extraRound:0, giveIn:0.90, chaos:0},    // greedy, but quick to shake
+      {key:"trevor",feeBias:-0.05, extraRound:1, giveIn:0.96, chaos:0},    // soft, but costs a round
+      {key:"dex",   feeBias:0.00,  extraRound:0, giveIn:0.94, chaos:0.15}, // ±15% unpredictable
+      {key:"marcus",feeBias:0.03,  extraRound:0, giveIn:0.93, chaos:0},    // smooth, fair
+      {key:"nev",   feeBias:0.14,  extraRound:1, giveIn:0.97, chaos:0.04}, // greedier, digs in
+      {key:"sunny", feeBias:-0.02, extraRound:0, giveIn:0.91, chaos:0}     // fast and fair — easy to build with
+    ]
+  },
   /* Which league matches are BIG. `buildMatch` was called with big=false for
      all 26 matchdays, so five things were dead at once: the big screen
      (+10% gate), the Away End (+6%/tier), the `bigExtra` price knob, the
@@ -773,11 +792,33 @@ const TOWN2=["Town","United","Rovers","Athletic","County","Wanderers","Albion","
 const FIRST=["Danny","Lee","Callum","Jordan","Kyle","Ryan","Aaron","Josh","Connor","Billy","Reece","Nathan","Liam","Curtis","Dean","Marcus","Tommy","Sam","Jake","Harry","Ollie","Frankie","Stevie","Wes","Ashley","Micky","Gareth","Paddy"];
 const LAST=["Hobbs","Slater","Cartwright","Dunmore","Pickering","Rowntree","Batty","Ferris","Ogden","Sillitoe","Trencher","Mallory","Quigley","Barrowclough","Hutton","Speed","Nairn","Tunstall","Weekes","Priddy","Cobb","Marsh","Lythgoe","Beckwith","Aldous","Renshaw"];
 const TRAITS={leader:"Leader",glass:"Glass body",biggame:"Big-game player",localhero:"Local hero",grafter:"Grafter",whinger:"Whinger",dreamer:"Dreamer",party:"Party animal"};
+/* Pakke T3: agenterne. `key` binder replikkerne til de målbare tal i
+   BAL.agents.list. n/av/replikker her; feeBias/extraRound/giveIn/chaos dér. */
 const AGENTS=[
- {n:"Barry Nussbaum",av:"B",style:"greedy",open:["Barry here. My client is very happy where he is. VERY happy. Anyway — what's your offer?","Barry. Before you speak: he's worth double whatever you're thinking."],counter:["Barry laughs for a full ten seconds. 'Add a bit and we'll talk.'","'Cute. The number starts with a bigger digit.'"],accept:["'You've got yourself a player. Barry OUT.'","'Deal. My invoice is in the post. It's substantial.'"],walk:["Barry hangs up. You hear him dial someone else before the line dies.","'We're done here. Lovely stadium by the way. Shame.'"]},
- {n:"Trevor Weep",av:"T",style:"weepy",open:["Trevor here. My client is being treated TERRIBLY where he is. Save him.","It's Trevor. *sniff* Have you ever seen a winger cry? I have."],counter:["'That offer made him cry. Again. A bit more?'","'He has a family, you know. And a boat payment.'"],accept:["'Oh THANK you. He'll be so happy. I'm welling up.'","'Deal! This is the happiest day of my week. It's been a bad week.'"],walk:["'I can't take this to him. He's fragile. Goodbye.'","Trevor hangs up mid-sniffle."]},
- {n:"Dex Mangle",av:"D",style:"chaotic",open:["DEX. Talk fast, I've got three windows open and one of them is a car deal.","Dex Mangle. Wait — which player is this about? Doesn't matter. Numbers."],counter:["'Hmm no. Counter. Also do you want a hot tub? Separate deal.'","'Higher. My gut says higher. My gut is never wrong. Often wrong.'"],accept:["'DONE. Wait, which club are you again? Doesn't matter. DONE.'","'Deal! Papers tomorrow. Or Thursday. One of those.'"],walk:["'This bores me now. Bye.' *click*","Dex hangs up. You suspect he already forgot the whole thing."]}
+ {key:"barry",n:"Barry Nussbaum",av:"B",style:"greedy",open:["Barry here. My client is very happy where he is. VERY happy. Anyway — what's your offer?","Barry. Before you speak: he's worth double whatever you're thinking."],counter:["Barry laughs for a full ten seconds. 'Add a bit and we'll talk.'","'Cute. The number starts with a bigger digit.'"],accept:["'You've got yourself a player. Barry OUT.'","'Deal. My invoice is in the post. It's substantial.'"],walk:["Barry hangs up. You hear him dial someone else before the line dies.","'We're done here. Lovely stadium by the way. Shame.'"]},
+ {key:"trevor",n:"Trevor Weep",av:"T",style:"weepy",open:["Trevor here. My client is being treated TERRIBLY where he is. Save him.","It's Trevor. *sniff* Have you ever seen a winger cry? I have."],counter:["'That offer made him cry. Again. A bit more?'","'He has a family, you know. And a boat payment.'"],accept:["'Oh THANK you. He'll be so happy. I'm welling up.'","'Deal! This is the happiest day of my week. It's been a bad week.'"],walk:["'I can't take this to him. He's fragile. Goodbye.'","Trevor hangs up mid-sniffle."]},
+ {key:"dex",n:"Dex Mangle",av:"D",style:"chaotic",open:["DEX. Talk fast, I've got three windows open and one of them is a car deal.","Dex Mangle. Wait — which player is this about? Doesn't matter. Numbers."],counter:["'Hmm no. Counter. Also do you want a hot tub? Separate deal.'","'Higher. My gut says higher. My gut is never wrong. Often wrong.'"],accept:["'DONE. Wait, which club are you again? Doesn't matter. DONE.'","'Deal! Papers tomorrow. Or Thursday. One of those.'"],walk:["'This bores me now. Bye.' *click*","Dex hangs up. You suspect he already forgot the whole thing."]},
+ {key:"marcus",n:"Marcus Sterling",av:"M",style:"smooth",open:["Marcus Sterling. A pleasure. Let's be professionals about this — what are we thinking?","Sterling here. My client rates your project. Give me a fair number and we won't be here long."],counter:["'Close. Meet me part-way and it's done, chairman.'","'A touch light, if I'm honest. Nudge it.'"],accept:["'Handsome. He'll be delighted, and so am I. Pleasure doing business.'","'Agreed. Clean deal, clean handshake. That's how I like them.'"],walk:["'A shame. Perhaps another window.' He's already gone.","'Not today, I think. No hard feelings.'"]},
+ {key:"nev",n:"Nev Grewcock",av:"N",style:"greedy",open:["Grewcock. I don't do small talk and I don't do small numbers.","Nev. My client's phone hasn't stopped. You're not the only one. Impress me."],counter:["'That's an insult with a decimal point. Again.'","'No. And the longer this takes, the more he costs.'"],accept:["'Fine. FINE. You've bled me dry. Send the paperwork.'","'Deal — and don't come back for the next one so cheap.'"],walk:["'Wasting my minutes. Gone.'","Nev's already dialling a bigger club. You can hear it."]},
+ {key:"sunny",n:"Sunny Dhillon",av:"S",style:"fair",open:["Sunny here — good to talk, chairman. My lad likes the sound of you. What's the offer?","Sunny Dhillon. Straight and quick, that's me. Let's find a number that works."],counter:["'Nearly there. Little bit more and we shake.'","'He's worth a touch over that — you know it.'"],accept:["'Lovely. For YOU, chairman, that's a yes. He's yours.'","'Done and done. Always a pleasure — call me first next time.'"],walk:["'No worries, we'll talk again. Door's open.'","'Not this time. Keep my number, though.'"]}
 ];
+/* The measurable style behind a face. agentOf merges the BAL numbers onto the
+   AGENTS entry (numbers live in BAL, per Claude.md). Never overrides the lines. */
+function agentParams(key){return BAL.agents.list.find(a=>a.key===key)||BAL.agents.list[0];}
+function agentOf(key){const l=AGENTS.find(a=>a.key===key)||AGENTS[0];return {...l,...agentParams(l.key)};}
+function agentRelOf(key){return (G.agentRel&&G.agentRel[key])||0;}
+/* Deterministic core of the asking floor — no random, so an invariant can prove
+   Barry and Trevor differ on the SAME deal. feeBias is the agent's pain
+   threshold; a warm relationship softens it (relSoften × relation). */
+function agentFeeMin(value,key){
+  const a=agentParams(key),soften=1-BAL.agents.relSoften*agentRelOf(key);
+  return Math.max(1000,Math.round(value*(1+a.feeBias)*soften/1000)*1000);
+}
+function bumpAgentRel(key){
+  if(!key)return;
+  if(!G.agentRel)G.agentRel={};
+  G.agentRel[key]=Math.min(BAL.agents.relCap,agentRelOf(key)+BAL.agents.relGain);
+}
 /* ================= pakke 6: TEKSTBIBLIOTEKET =================
    GDD linje 214: "Stort tekstbibliotek (300-500 event-linjer), tonet efter
    kontekst — derby, bundkamp, regn, rival — så selv 0-0 har karakter."
@@ -1240,7 +1281,7 @@ function newGame(name,hue,mode){
     squad:posPlan.map(p=>genPlayer(p,R(42,58),G_DIV_WAGE(3))),
     market:[],freeAgents:[],scoutPending:0,scoutUsed:false,sponsorBoost:false,
     wageCap:BAL.wages.cap,bids:[],callbacks:[],lastXI:[],
-    captain:null,captSuggested:false,talkCooldown:0,mentors:[],soldTo:[],
+    captain:null,captSuggested:false,talkCooldown:0,mentors:[],soldTo:[],agentRel:{},
     teams:[],me:{pts:0,gd:0,pl:0},fixtures:[],
     inbox:[],news:[],msgId:1,lastResult:null,deadlineDone:{},playoff:null,
     history:[],adCount:0,titles:0
@@ -1391,7 +1432,7 @@ function genPlayer(pos,base,wmult){
   const pot=clamp(ov+R(sp[0],sp[1]),ov,BAL.talent.potCap);
   const p={id:PID++,name:pick(FIRST)+" "+pick(LAST),pos,att,def,phy,form:0,age,
     wage:Math.round((ov*BAL.wages.scale*wmult+R(-70,110))/10)*10,
-    value:0,pot,scouted:0,
+    value:0,pot,scouted:0,agentKey:BAL.agents.list[Math.floor(Math.random()*BAL.agents.list.length)].key,
     traits:[...new Set(traits)],gem:false,inj:0,susp:0,sg:0,sapps:0,smotm:0,load:0,
     conf:R(42,60),focus:null,capps:0,promiseMD:null,years:R(1,3),from:null,fromIdx:-1,
     desperation:1,heist:false,valNoise:1+(Math.random()*2-1)*BAL.market.noise,
@@ -2638,6 +2679,8 @@ function finishSeason(o){
   G.me={pts:0,gd:0,pl:0};for(const t of G.teams){t.pts=0;t.gd=0;t.pl=0;}
   G.fixtures=makeFixtures();refreshMarket();
   G.scoutUsed=false;G.sponsorBoost=false;G.coachAsked=false;G.deadlineDone={};G.playoff=null;
+  // pakke T3: goodwill cools a little each summer — a relationship is kept up, not banked once
+  if(G.agentRel)for(const k in G.agentRel)G.agentRel[k]=Math.max(0,G.agentRel[k]-BAL.agents.relDecay);
   G.bids=[];G.callbacks=[];G.midwayDone=false;G.stuntDone=false;G.sponsorChecked=false;G.sponsorRiskMD=null;G.capRaiseUsed=false;G.fundRaided=false;G.lastXI=[];
   G.seasonTix.sold=0;G.jerseyFactor=1;
   G.revenge=null;   // last year's grudge died with last year's fixture list
@@ -3297,25 +3340,32 @@ const YEARF={1:1.12,2:1.03,3:1.00,4:0.95};
 function startBuyNego(ix,freeAgent,opts){
   opts=opts||{};
   const p=freeAgent?G.freeAgents[ix]:G.market[ix];
-  const agent=pick(AGENTS);
-  nego={p,agent,ix,freeAgent,round:0,cround:0,years:2,role:"rot",finalUsed:false,
+  const agent=agentOf(p.agentKey);   // pakke T3: the player's OWN agent, with his measurable style
+  const rel=agentRelOf(agent.key);
+  nego={p,agent,agentKey:agent.key,ix,freeAgent,round:0,cround:0,years:2,role:"rot",finalUsed:false,
+        maxRounds:3+(agent.extraRound||0),giveIn:agent.giveIn,
         wageOffer:Math.round(p.wage*0.9/100)*100};
+  const warm=rel>0.3?" \"And for YOU, chairman — I'll keep this civil.\"":"";
   if(freeAgent){
     nego.stage="contract";
-    nego.line=pick(agent.open)+" No fee on this one — straight to personal terms.";
+    nego.line=pick(agent.open)+" No fee on this one — straight to personal terms."+warm;
   }else{
     nego.stage="fee";
     const disc=opts.discount||1;
     const rush=opts.quick?1.07:1; // quick talks cost a premium
-    nego.feeAsk=Math.round(p.value*1.15*disc/1000)*1000;
-    nego.feeMin=Math.round(p.value*(0.98+Math.random()*0.12)*disc*rush/1000)*1000;
+    // agent style sets the floor; chaos (Dex) wobbles it; disc/rush/relation apply on top
+    const chaos=agent.chaos?(1+(Math.random()*2-1)*agent.chaos):1;
+    nego.feeAsk=Math.round(p.value*(1.15+(agent.feeBias||0))*disc/1000)*1000;
+    nego.feeMin=Math.round(agentFeeMin(p.value,agent.key)*disc*rush*chaos/1000)*1000;
     nego.fee=Math.round(p.value*0.9/1000)*1000;
-    nego.line=(opts.discount?"\"Alright, alright. He's still available — and the price has come DOWN. Don't tell him I said that.\"":pick(agent.open))+(opts.quick?" \"And chairman — quick deals cost quick money.\"":"");
+    nego.line=(opts.discount?"\"Alright, alright. He's still available — and the price has come DOWN. Don't tell him I said that.\"":pick(agent.open))+(opts.quick?" \"And chairman — quick deals cost quick money.\"":"")+warm;
   }
   modal={type:"nego"};render();
 }
 function startContractTalks(p,fee){
-  nego={p,agent:pick(AGENTS),ix:-1,freeAgent:false,fromInbox:true,round:0,cround:0,years:2,role:"rot",finalUsed:false,
+  const agent=agentOf(p.agentKey);
+  nego={p,agent,agentKey:agent.key,ix:-1,freeAgent:false,fromInbox:true,round:0,cround:0,years:2,role:"rot",finalUsed:false,
+        maxRounds:3+(agent.extraRound||0),giveIn:agent.giveIn,
         wageOffer:Math.round(p.wage*0.9/100)*100,stage:"contract",agreedFee:fee,
         line:"\"The clubs have agreed "+kfmt(fee)+".\" Now the personal terms: years, wages — and what role you're promising him."};
   modal={type:"nego"};render();
@@ -3389,9 +3439,11 @@ function demandVisible(){return !!nego.renewal||nego.cround>=1;}
 function startRenewal(id){
   const p=byId(id);if(!p)return;
   if(G.md<p.renewLockMD){modal={type:"info",title:"\"Not yet.\"",body:"Talks with "+p.name.split(" ")[1]+" collapsed recently. Both sides agreed to revisit later — in "+(p.renewLockMD-G.md)+" matchdays."};render();return;}
-  nego={p,agent:pick(AGENTS),ix:-1,freeAgent:true,renewal:true,round:0,cround:0,years:2,role:p.role||"rot",finalUsed:false,
+  {const agent=agentOf(p.agentKey);
+  nego={p,agent,agentKey:agent.key,ix:-1,freeAgent:true,renewal:true,round:0,cround:0,years:2,role:p.role||"rot",finalUsed:false,
+        maxRounds:3+(agent.extraRound||0),giveIn:agent.giveIn,
         wageOffer:Math.round(p.wage/100)*100,stage:"contract",
-        line:pick(AGENTS[0].open).split(".")[0]+". \"Renewal talks, is it? "+(p.years<=1?"He can walk for FREE next summer, chairman. We both know what that does to the number.":p.age>=31?"He's no spring chicken and he knows it. Be fair, he'll sign.":"He's happy here. Happy still has a price.")+"\""};
+        line:pick(agent.open).split(".")[0]+". \"Renewal talks, is it? "+(p.years<=1?"He can walk for FREE next summer, chairman. We both know what that does to the number.":p.age>=31?"He's no spring chicken and he knows it. Be fair, he'll sign.":"He's happy here. Happy still has a price.")+"\""};}
   modal={type:"nego"};render();
 }
 function roleRefused(){
@@ -3427,11 +3479,13 @@ function negoSubmit(finalOffer){
   if(finalOffer)n.finalUsed=true;
   if(n.stage==="fee"){
     n.round++;
-    const threshold=finalOffer?n.feeMin*0.94:n.feeMin;
+    // pakke T3: giveIn (how close to his floor he shakes on a final push) and
+    // maxRounds (Trevor/Nev cost an extra round) are the agent's, not constants.
+    const threshold=finalOffer?n.feeMin*(n.giveIn||0.94):n.feeMin;
     if(n.fee>=threshold){
       n.stage="contract";n.agreedFee=n.fee;
       n.line="\"The clubs have shaken hands at "+kfmt(n.fee)+".\" Now the personal terms: years, wages — and what role you're promising him.";
-    }else if(finalOffer||n.round>=3||n.fee<n.feeMin*0.82){
+    }else if(finalOffer||n.round>=(n.maxRounds||3)||n.fee<n.feeMin*0.82){
       n.line=finalOffer?"\"Final offer? Then the answer is final too: no.\" *click*":pick(n.agent.walk);
       n.dead=true;
       negoCollapse();
@@ -3459,7 +3513,7 @@ function negoSubmit(finalOffer){
     const threshold=finalOffer?Math.round(demand*0.91/100)*100:Math.round(demand*0.97/100)*100;
     if(n.wageOffer>=threshold){
       n.line=pick(n.agent.accept);n.doneDeal=true;
-    }else if(finalOffer||n.cround>=3||n.wageOffer<demand*0.75){
+    }else if(finalOffer||n.cround>=(n.maxRounds||3)||n.wageOffer<demand*0.75){
       n.line=finalOffer?"\"Take it or leave it? He leaves it. Good day.\"":(n.renewal?"\"We'll talk again another time, chairman. The door stays open. Barely.\"":pick(n.agent.walk));
       n.dead=true;
       if(!n.renewal)negoCollapse();
@@ -3551,6 +3605,7 @@ function negoFinish(){
   if(n.doneDeal&&n.renewal){
     const p=n.p;
     p.wage=n.wageOffer;p.years=n.years;p.role=n.role;p.conf=clamp(p.conf+5,10,95);
+    bumpAgentRel(n.agentKey);   // pakke T3: a fair renewal warms the relationship
     addNews("CLUB",p.name+" signs a new "+n.years+"-year deal at "+kfmt(n.wageOffer)+"/w. The pen barely touched the paper before the Shed End knew.");
     nego=null;modal=null;render();return;
   }
@@ -3566,6 +3621,7 @@ function negoFinish(){
     G.balance-=due;
     if(t)recordDeal(p,p.from||"the selling club",t);
     p.wage=n.wageOffer;p.years=n.years;p.role=n.role;p.pendingBid=false;
+    bumpAgentRel(n.agentKey);   // pakke T3: a completed, fair deal earns his goodwill next time
     G.squad.push(p);
     if(n.freeAgent)G.freeAgents.splice(n.ix,1);
     else{const mi=G.market.indexOf(p);if(mi>=0)G.market.splice(mi,1);}
@@ -4539,8 +4595,9 @@ function renderModal(){
   }
   if(modal.type==="nego"){
     const n=nego;
-    const head=n.renewal?`Renewal talks · ${n.p.years<=1?"FINAL YEAR — his leverage":"contract running"} · round ${Math.min(n.cround+1,3)}/3`
-      :n.stage==="fee"?`Fee negotiation · ${n.agent.n} · round ${Math.min(n.round+1,3)}/3`:`Contract talks · ${n.agent.n} · round ${Math.min(n.cround+1,3)}/3`;
+    const mr=n.maxRounds||3;
+    const head=n.renewal?`Renewal talks · ${n.p.years<=1?"FINAL YEAR — his leverage":"contract running"} · round ${Math.min(n.cround+1,mr)}/${mr}`
+      :n.stage==="fee"?`Fee negotiation · ${n.agent.n} · round ${Math.min(n.round+1,mr)}/${mr}`:`Contract talks · ${n.agent.n} · round ${Math.min(n.cround+1,mr)}/${mr}`;
     const regTake=n.stage==="fee"?(n.feeMin<n.p.value*1.02?"“Smells like a bargain, chairman.”":n.feeMin>n.p.value*1.12?"“They're at the high end. Just so you know.”":"“Fair price, give or take.”"):null;
     let body="";
     if(n.doneDeal){
