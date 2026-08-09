@@ -705,9 +705,9 @@ const BAL={
      DIN formue (personalWealth), aldrig klubkassen — kluboekonomien er urørt. */
   owner:{
     backgrounds:{
-      heir:{n:"Heir", cash:60000, rep:-8, fan:0, repGain:1.0, blurb:"Family money — cushioned, but unproven."},
-      selfmade:{n:"Self-made", cash:0, rep:0, fan:0, repGain:1.35, blurb:"Built it yourself. Nothing handed to you."},
-      localhero:{n:"Local hero", cash:-30000, rep:6, fan:12, repGain:1.0, blurb:"One of their own — the town adores you, the bank less so."}
+      heir:{n:"Arving", cash:60000, rep:-8, fan:0, repGain:1.0, blurb:"Familiepenge — polstret, men uprøvet."},
+      selfmade:{n:"Selfmade", cash:0, rep:0, fan:0, repGain:1.35, blurb:"Byggede det selv. Intet forærende."},
+      localhero:{n:"Lokal helt", cash:-30000, rep:6, fan:12, repGain:1.0, blurb:"En af deres egne — byen elsker dig, banken mindre."}
     },
     repStart:30, repTrophy:10, repPromotion:3, repDividendGreedy:-5, repFairDeal:1,
     repCharity:6, repCap:100, repFloor:0, repGainDefault:1.0,
@@ -849,7 +849,7 @@ function importCareerText(txt){
 function doImportCareer(){
   const el=document.getElementById("impcode");
   if(el&&importCareerText(String(el.value||"").trim())){bootSave=null;screen="home";render();}
-  else{modal={type:"info",title:"Invalid career code",body:"That code could not be read. Nothing was changed — your existing save is untouched."};render();}
+  else{modal={type:"info",title:"Ugyldig karriere-kode",body:"Koden kunne ikke læses. Intet er ændret — dit eksisterende gem er urørt."};render();}
 }
 function toggleExport(){G.showExport=!G.showExport;render();}
 /* R2: aldrig hvid død. Går noget galt, vises en genstartsskærm — det seneste
@@ -860,10 +860,10 @@ function showCrashScreen(msg){
   try{
     const a=document.getElementById("app");
     if(a)a.innerHTML='<div style="padding:44px 24px;font-family:system-ui,sans-serif;color:#E9EEF3;background:#10151B;min-height:100vh">'
-      +'<h2 style="margin:0 0 8px;font-style:italic">SOMETHING BROKE</h2>'
-      +'<p style="opacity:.75;font-size:13px;margin:0 0 4px">Your last save is untouched — reloading picks the career straight back up.</p>'
+      +'<h2 style="margin:0 0 8px;font-style:italic">NOGET GIK I STYKKER</h2>'
+      +'<p style="opacity:.75;font-size:13px;margin:0 0 4px">Dit seneste gem er urørt — genindlæsning samler karrieren op igen.</p>'
       +'<p style="opacity:.45;font-size:11px;word-break:break-all;margin:0 0 20px">'+String(msg).slice(0,180)+'</p>'
-      +'<button onclick="location.reload()" style="padding:13px 20px;border-radius:11px;border:0;background:#9FE24A;color:#10151B;font-weight:800;font-size:14px">Reload the game ▸</button></div>';
+      +'<button onclick="location.reload()" style="padding:13px 20px;border-radius:11px;border:0;background:#9FE24A;color:#10151B;font-weight:800;font-size:14px">Genindlæs spillet ▸</button></div>';
   }catch(e){}
 }
 if(typeof window!=="undefined"&&window.addEventListener){
@@ -942,7 +942,7 @@ const TOWN1=["Ashford","Millbrook","Redgate","Harlow","Oakwell","Stanmore","Kett
 const TOWN2=["Town","United","Rovers","Athletic","County","Wanderers","Albion","Victoria"];
 const FIRST=["Danny","Lee","Callum","Jordan","Kyle","Ryan","Aaron","Josh","Connor","Billy","Reece","Nathan","Liam","Curtis","Dean","Marcus","Tommy","Sam","Jake","Harry","Ollie","Frankie","Stevie","Wes","Ashley","Micky","Gareth","Paddy"];
 const LAST=["Hobbs","Slater","Cartwright","Dunmore","Pickering","Rowntree","Batty","Ferris","Ogden","Sillitoe","Trencher","Mallory","Quigley","Barrowclough","Hutton","Speed","Nairn","Tunstall","Weekes","Priddy","Cobb","Marsh","Lythgoe","Beckwith","Aldous","Renshaw"];
-const TRAITS={leader:"Leader",glass:"Glass body",biggame:"Big-game player",localhero:"Local hero",grafter:"Grafter",whinger:"Whinger",dreamer:"Dreamer",party:"Party animal"};
+const TRAITS={leader:"Leder",glass:"Glaskrop",biggame:"Storkampsspiller",localhero:"Lokal helt",grafter:"Slider",whinger:"Brokkehoved",dreamer:"Drømmer",party:"Festabe"};
 /* Pakke T3: agenterne. `key` binder replikkerne til de målbare tal i
    BAL.agents.list. n/av/replikker her; feeBias/extraRound/giveIn/chaos dér. */
 const AGENTS=[
@@ -1463,7 +1463,7 @@ function repGainMult(){const b=BAL.owner.backgrounds[G.owner&&G.owner.background
 function bumpRep(d){G.reputation=clamp((G.reputation===undefined?BAL.owner.repStart:G.reputation)+(d>0?d*repGainMult():d),BAL.owner.repFloor,BAL.owner.repCap);}
 function reputationRead(){
   const r=G.reputation===undefined?BAL.owner.repStart:G.reputation;
-  const label=r>=80?"Revered":r>=60?"Respected":r>=40?"Known":r>=20?"Unproven":"Notorious";
+  const label=r>=80?"Æret":r>=60?"Respekteret":r>=40?"Kendt":r>=20?"Uprøvet":"Berygtet";
   return {value:Math.round(r),label};
 }
 function applyOwner(name,avatar,bg){
@@ -1532,11 +1532,11 @@ function buyStake(wid,pct){
   if(to>100)return;
   // control comes with rules: the league vets you, and no man owns two clubs in one division
   if(to>BAL.owners.majorityAt){
-    if(c.div===G.div){modal={type:"info",title:"The league says no",body:"You cannot control two clubs in the same division. Sell down, or look elsewhere in the pyramid."};render();return;}
-    if((G.personalWealth||0)<S.gateWealth||reputationRead().value<S.gateRep){modal={type:"info",title:"\"Not yet, chairman.\"",body:"The league requires a fortune of "+kfmt(S.gateWealth)+" and a reputation of "+S.gateRep+" before it approves control of a second club."};render();return;}
+    if(c.div===G.div){modal={type:"info",title:"Ligaen siger nej",body:"Du kan ikke kontrollere to klubber i samme division. Sælg ned, eller kig andre steder i pyramiden."};render();return;}
+    if((G.personalWealth||0)<S.gateWealth||reputationRead().value<S.gateRep){modal={type:"info",title:"\"Ikke endnu, formand.\"",body:"Ligaen kræver en formue på "+kfmt(S.gateWealth)+" og et omdømme på "+S.gateRep+" før den godkender kontrol med klub nummer to."};render();return;}
   }
   const cost=Math.round(stakeValue(c)*pct/100*S.premium/1000)*1000;
-  if((G.personalWealth||0)<cost){modal={type:"info",title:"Your fortune is short",body:"That slice costs "+kfmt(cost)+" of your own money — the club's account cannot buy it for you."};render();return;}
+  if((G.personalWealth||0)<cost){modal={type:"info",title:"Din formue rækker ikke",body:"Den skive koster "+kfmt(cost)+" af dine egne penge — klubbens konto kan ikke købe den for dig."};render();return;}
   G.personalWealth-=cost;
   const st=(G.stakes||[]).find(x=>x.wid===wid);
   if(st){st.pct=to;st.paid+=cost;}else{G.stakes=G.stakes||[];G.stakes.push({wid,pct,paid:cost});}
@@ -1575,25 +1575,25 @@ function settleStakes(){
 const pct=n=>Math.round(n*100)+"%";
 const perHead=n=>"£"+n.toFixed(2)+" per spectator, every home game";
 const STANDS={
- shed:{n:"The Shed End",role:"Atmosphere — home advantage +"+BAL.stands.shedHome.toFixed(2)+" per tier",cap:[0,1000,2000]},
+ shed:{n:"The Shed End",role:"Atmosfære — hjemmebanefordel +"+BAL.stands.shedHome.toFixed(2)+" pr. etage",cap:[0,1000,2000]},
  /* Pakke 15, decided by Mads 7/8. "Seats & boardroom gravitas" once promised
     something the code never did, so nat 2 cut the promise back to the truth and
     put the question in DECISIONS-NEEDED. The answer came back: BOTH effects.
     The stand now unlocks the VIP boxes (which the stadium drawing has always
     hung off it) and pays a small, honest amount of board trust per tier. */
- main:{n:"Main Stand",role:"Seats — the biggest capacity step per tier · unlocks the VIP boxes · +"+BAL.owners.trustMainStand+" board trust per tier",cap:[0,1500,3000]},
- family:{n:"Family Stand",role:"Fan growth: +"+pct(BAL.demand.familyStand)+" town demand, mood +"+BAL.mood.familyPerTier+" a matchday per tier",cap:[0,1000,2000]},
- away:{n:"Away End",role:"Gate +"+pct(BAL.matchday.awayEndBigGate)+" per tier in big matches",cap:[0,800,1600]}
+ main:{n:"Main Stand",role:"Sæder — det største kapacitetsspring pr. etage · låser VIP-boksene op · +"+BAL.owners.trustMainStand+" bestyrelsestillid pr. etage",cap:[0,1500,3000]},
+ family:{n:"Family Stand",role:"Fanvækst: +"+pct(BAL.demand.familyStand)+" efterspørgsel i byen, humør +"+BAL.mood.familyPerTier+" pr. kampdag pr. etage",cap:[0,1000,2000]},
+ away:{n:"Away End",role:"Gate +"+pct(BAL.matchday.awayEndBigGate)+" pr. etage i store kampe",cap:[0,800,1600]}
 };
 const STANDCOST=[0,70000,150000];
 const FACS={
- shop:{n:"Club shop",cost:35000,txt:"+merch & matchday income"},
- pub:{n:"The Ground's pub",cost:30000,txt:"+matchday income, +mood drift"},
- screen:{n:"Big screen",cost:25000,txt:"+"+pct(BAL.matchday.bigScreenGate)+" gate in big matches"},
- clinic:{n:"Medical clinic",cost:45000,txt:"shorter, rarer injuries"},
- training:{n:"Training ground",cost:55000,txt:"young players develop faster, and recover faster"},
- basics:{n:"The unsexy basics",cost:15000,txt:"parking, loos, lights — small mood & gate lift"},
- vip:{n:"VIP boxes",cost:60000,txt:"+"+kfmt(BAL.matchday.vipFlat)+" per home game. The fans call it the prawn sandwich brigade"}
+ shop:{n:"Klubshoppen",cost:35000,txt:"+merch- & kampdagsindtægt"},
+ pub:{n:"Stadionpubben",cost:30000,txt:"+kampdagsindtægt, +humør"},
+ screen:{n:"Storskærmen",cost:25000,txt:"+"+pct(BAL.matchday.bigScreenGate)+" gate i store kampe"},
+ clinic:{n:"Klinikken",cost:45000,txt:"kortere, sjældnere skader"},
+ training:{n:"Træningsanlægget",cost:55000,txt:"unge udvikler sig hurtigere og restituerer hurtigere"},
+ basics:{n:"Det usexede basale",cost:15000,txt:"parkering, toiletter, lys — lille løft i humør & gate"},
+ vip:{n:"VIP-boksene",cost:60000,txt:"+"+kfmt(BAL.matchday.vipFlat)+" pr. hjemmekamp. Fansene kalder det rejemadsbrigaden"}
 };
 /* Pakke 15a: which stands a facility needs before it can be built. The VIP
    boxes have always been DRAWN hanging off the Main Stand; now they are gated
@@ -1820,9 +1820,9 @@ const WEATHERS=[
  {n:"Howling wind",phys:0.4,txt:"long balls will do whatever they please"}
 ];
 const APPROACHES={
- caut:{n:"Cautious",own:-0.22,opp:-0.33,txt:"Park it tight, frustrate them, nick something."},
- bal:{n:"Balanced",own:0,opp:0,txt:"Play our game. Whatever that is this week."},
- allout:{n:"All-out",own:0.30,opp:0.28,txt:"Throw everything at them. Back door's open, mind."}
+ caut:{n:"Forsigtig",own:-0.22,opp:-0.33,txt:"Parkér bussen, frustrér dem, nap noget med hjem."},
+ bal:{n:"Balanceret",own:0,opp:0,txt:"Spil vores spil. Hvad det så end er i denne uge."},
+ allout:{n:"Alt frem",own:0.30,opp:0.28,txt:"Kast alt efter dem. Bagdøren står åben, vel at mærke."}
 };
 /* ---------- freshness ----------
    p.load is what is STORED; freshness is derived from it. Storing the derived
@@ -2152,9 +2152,9 @@ function gafferRead(match){
 /* ---------- nat 4, pakke 25: formandens ord foer kampen ----------
    Du beder om et RESULTAT. Han vaelger tilgangen. */
 const ORDERS={
- win:{n:"We need three points",txt:"Go and win it. I do not care how it looks."},
- point:{n:"A point will do",txt:"Take the draw if it is there. Do not throw it away chasing."},
- free:{n:"Your call",txt:"You watch them all week. You decide."}
+ win:{n:"Vi skal have tre point",txt:"Gå ud og vind den. Jeg er ligeglad med hvordan det ser ud."},
+ point:{n:"Et point er nok",txt:"Tag uafgjort hvis det ligger der. Smid det ikke væk på en jagt."},
+ free:{n:"Din afgørelse",txt:"Du ser dem hele ugen. Du bestemmer."}
 };
 /* Hans stil farver hvordan han LAESER ordren -- en forsigtig gaffer hedger
    stadig, naar han faar besked paa at jagte sejren.
@@ -3076,7 +3076,7 @@ function pickCaptain(){
   if(G.captain)addNews("CLUB",G.coach.n.split(" ")[0]+" hands the armband to "+nameOf(G.captain)+". \"My call. Always my call,\" he adds, looking at you.");
 }
 function suggestCaptain(id){
-  if(G.captSuggested){modal={type:"info",title:"Once per season",body:"You've had your say on the armband this season. The gaffer's door is closed on the subject."};render();return;}
+  if(G.captSuggested){modal={type:"info",title:"Én gang pr. sæson",body:"Du har haft dit ord om armbindet i denne sæson. Gafferens dør er lukket om emnet."};render();return;}
   const p=byId(id);if(!p)return;
   G.captSuggested=true;
   const accepts=p.traits.includes("leader")||ovr(p)>=Math.max(...G.squad.map(ovr))-2||Math.random()<0.3;
@@ -3091,7 +3091,7 @@ function suggestCaptain(id){
 }
 function openChat(id){
   if(!byId(id))return;
-  if(G.talkCooldown>0){modal={type:"info",title:"The office is busy",body:"One conversation per few matchdays — these things need weight. Next chat available in "+G.talkCooldown+" MD."};render();return;}
+  if(G.talkCooldown>0){modal={type:"info",title:"Kontoret er optaget",body:"Én samtale med et par kampdages mellemrum — de her ting skal have vægt. Næste samtale om "+G.talkCooldown+" kampdage."};render();return;}
   modal={type:"chat",pid:id};render();
 }
 function doChat(kind){
@@ -3151,7 +3151,7 @@ function seasonTixEstimate(price){
    opsummeringen skal kunne vise hvad man gik med til. Arbejdsordren sagde
    "femte trin"; den er femte i antal og fjerde i raekken, og det er den eneste
    afvigelse. */
-const BUDGET_STEPS=["Season tickets","The kit","The objective","The frame"];   // R1b: fondstrinnet er ude
+const BUDGET_STEPS=["Sæsonkort","Trøjen","Målsætningen","Rammen"];   // R1b: fondstrinnet er ude
 /* Hvad medejerne SELV forventer. Skjult i foerste runde -- samme pokerprincip
    som kontraktforhandlingen, hvor modpartens krav ikke er synligt foer man har
    budt. Helt uden terning: aabner man moedet igen, staar det samme tal der, saa
@@ -3372,7 +3372,7 @@ function ownerNegoSubmit(){
   const m=modal;const o=G.owners[m.i];
   m.round++;
   if(m.offer>=m.min){
-    if(G.balance<m.offer){modal={type:"info",title:"Agreed — and unaffordable",body:"You shook hands on "+kfmt(m.offer)+" and the bank said no. "+o.n.split(" ")[0]+" will dine out on this."};render();return;}
+    if(G.balance<m.offer){modal={type:"info",title:"Aftalt — og uden dækning",body:"I gav hånd på "+kfmt(m.offer)+", og banken sagde nej. "+o.n.split(" ")[0]+" kommer til at fortælle den her historie længe."};render();return;}
     G.balance-=m.offer;G.myShare+=o.share;
     G.ownerBoughtSeason=G.season;          // one empty chair per season
     const name=o.n,role=o.role,share=o.share;
@@ -3389,7 +3389,7 @@ function ownerNegoSubmit(){
   // only a genuinely insulting number kills it outright — a collapse costs two seasons
   if(m.round>=3||m.offer<m.min*BAL.owners.insultBelow){
     o.lockedUntil=G.season+BAL.owners.lockSeasons;
-    modal={type:"info",title:"\"We're done here.\"",body:o.n.split(" ")[0]+" closes the folder. \"Not this season, chairman. Nor the next one.\" The door clicks politely, and stays shut until season "+o.lockedUntil+"."};render();return;
+    modal={type:"info",title:"\"Vi er færdige her.\"",body:o.n.split(" ")[0]+" lukker mappen. \"Ikke i denne sæson, formand. Heller ikke den næste.\" Døren klikker høfligt, og forbliver lukket til sæson "+o.lockedUntil+"."};render();return;
   }
   m.ask=Math.round(((m.min*1.08+m.offer)/2)/1000)*1000;
   m.line="\"Closer. But my number starts with "+kfmt(m.ask).slice(0,3)+"…\" (wants ~"+kfmt(m.ask)+")";
@@ -3792,11 +3792,11 @@ function unreadCount(){return G.inbox.filter(m=>m.unread&&!m.done).length;}
 
 /* ---------- negotiation: fee stage → contract stage ---------- */
 let nego=null;
-const ROLES={key:{n:"Key player",f:0.90},rot:{n:"Rotation",f:1.00},pro:{n:"Prospect",f:1.18}};
+const ROLES={key:{n:"Nøglespiller",f:0.90},rot:{n:"Rotation",f:1.00},pro:{n:"Talent",f:1.18}};
 const YEARF={1:1.12,2:1.03,3:1.00,4:0.95};
 function startBuyNego(ix,freeAgent,opts){
   opts=opts||{};
-  if(freeAgent&&!freeAgentSignable()){modal={type:"info",title:"Window shut",body:"Free agents can be registered for a short grace after the window — that has passed. They'll be here when it reopens."};render();return;}
+  if(freeAgent&&!freeAgentSignable()){modal={type:"info",title:"Vinduet er lukket",body:"Free agents kan registreres i en kort nåde efter vinduet — den er forbi. De er her når det åbner igen."};render();return;}
   const p=freeAgent?G.freeAgents[ix]:G.market[ix];
   const agent=agentOf(p.agentKey);   // pakke T3: the player's OWN agent, with his measurable style
   const rel=agentRelOf(agent.key);
@@ -3896,7 +3896,7 @@ function wageDemand(){return wageDemandFor(nego.years,nego.role);}
 function demandVisible(){return !!nego.renewal||nego.cround>=1;}
 function startRenewal(id){
   const p=byId(id);if(!p)return;
-  if(G.md<p.renewLockMD){modal={type:"info",title:"\"Not yet.\"",body:"Talks with "+p.name.split(" ")[1]+" collapsed recently. Both sides agreed to revisit later — in "+(p.renewLockMD-G.md)+" matchdays."};render();return;}
+  if(G.md<p.renewLockMD){modal={type:"info",title:"\"Ikke endnu.\"",body:"Forhandlingerne med "+p.name.split(" ")[1]+" brød sammen for nylig. Begge sider blev enige om at vende tilbage — om "+(p.renewLockMD-G.md)+" kampdage."};render();return;}
   {const agent=agentOf(p.agentKey);
   nego={p,agent,agentKey:agent.key,ix:-1,freeAgent:true,renewal:true,round:0,cround:0,years:2,role:p.role||"rot",finalUsed:false,
         maxRounds:3+(agent.extraRound||0),giveIn:agent.giveIn,
@@ -4075,7 +4075,7 @@ function negoFinish(){
     const p=n.p;const fee=n.freeAgent?0:n.agreedFee;
     const t=fee?dealTerms(fee,n.payPlan||1,n.clause||null):null;
     const due=t?t.down:0;                 // structures move the bill, not the price
-    if(G.balance<due){p.pendingBid=false;modal={type:"info",title:"Not enough funds",body:"The deal is agreed and you can't pay. Barry will dine out on this story for years."};nego=null;render();return;}
+    if(G.balance<due){p.pendingBid=false;modal={type:"info",title:"Ikke penge nok",body:"Handlen er aftalt, og du kan ikke betale. Barry kommer til at fortælle den historie i årevis."};nego=null;render();return;}
     G.balance-=due;
     if(t)recordDeal(p,p.from||"the selling club",t);
     p.wage=n.wageOffer;p.years=n.years;p.role=n.role;p.pendingBid=false;
@@ -4177,11 +4177,11 @@ function deliverScout(){
   msg("Reg (scout)","R","Scout report: "+p.name,"\""+p.name+" ("+p.pos+", "+p.age+"), "+(onList?"the one on the market list":"our own boy")+". Watched him again. I had him at "+wide.lo+"–"+wide.hi+"; now I'd say "+(now.exact?("a firm "+now.hi):(now.lo+"–"+now.hi))+". "+(now.exact?"That's as certain as I get.":"Send me again and I'll tighten it further.")+"\"",null);
 }
 function startStandBuild(key){ // direct cash build — the impatient way, no fund bonus
-  if(G.standBuild){modal={type:"info",title:"One project at a time",body:"The builders refuse to split the crew. Union rules, apparently."};render();return;}
+  if(G.standBuild){modal={type:"info",title:"Ét byggeri ad gangen",body:"Håndværkerne nægter at dele sjakket. Fagforeningsregler, åbenbart."};render();return;}
   const lvl=G.stands[key]+1;
-  if(lvl>2){modal={type:"info",title:"Fully built",body:STANDS[key].n+" is already at its final glory."};render();return;}
+  if(lvl>2){modal={type:"info",title:"Færdigbygget",body:STANDS[key].n+" står allerede i sin fulde pragt."};render();return;}
   const cost=STANDCOST[lvl];
-  if(G.balance<cost){modal={type:"info",title:"Not enough funds",body:"The builders want "+kfmt(cost)+" up front in cash. They've been burned by football clubs before. (Tip: the bank lends against the gate the stand itself will earn.)"};render();return;}
+  if(G.balance<cost){modal={type:"info",title:"Ikke penge nok",body:"Håndværkerne vil have "+kfmt(cost)+" kontant på forskud. De er blevet brændt af fodboldklubber før. (Tip: banken låner mod den gate tribunen selv vil tjene.)"};render();return;}
   G.balance-=cost;
   G.standBuild={key,remain:5,lvl};
   addNews("CLUB","Construction begins on "+STANDS[key].n+". The seagulls have been served notice.");
@@ -4205,32 +4205,32 @@ function finishStand(){
   G.standBuild=null;
 }
 const FAC_DETAIL={
- shop:{fx:[perHead(BAL.matchday.shop),"Merchandise income +"+pct(BAL.matchday.shopMerchBoost)],warn:null,md:2},
- pub:{fx:[perHead(BAL.matchday.pub),"Fan mood +"+BAL.mood.pubDrift+" every matchday, and +"+BAL.mood.pubOpens+" the day it opens"],warn:null,md:2},
+ shop:{fx:[perHead(BAL.matchday.shop),"Merchandise-indtægt +"+pct(BAL.matchday.shopMerchBoost)],warn:null,md:2},
+ pub:{fx:[perHead(BAL.matchday.pub),"Fanhumør +"+BAL.mood.pubDrift+" hver kampdag, og +"+BAL.mood.pubOpens+" den dag den åbner"],warn:null,md:2},
  /* Was "(derby, cup, playoffs)". There is no cup and no derby; after pakke 5 the
     big afternoons are run-ins, top-of-the-table clashes, six-pointers, the
     return leg against whoever thrashed you — and playoffs. Naming competitions
     that do not exist is the same lie as a clause the code never reads. */
- screen:{fx:["+"+pct(BAL.matchday.bigScreenGate)+" gate in BIG matches — run-ins, six-pointers, top clashes, playoffs"],
-   warn:"Does nothing on a wet Tuesday against mid-table. Roughly 3-5 games a season.",md:2},
+ screen:{fx:["+"+pct(BAL.matchday.bigScreenGate)+" gate i STORE kampe — guldkampe, seksere, topopgør, playoffs"],
+   warn:"Gør ingenting en våd tirsdag mod midterfeltet. Cirka 3-5 kampe pr. sæson.",md:2},
  /* Was "Injury risk per match: 7% → 5%". Those are the BASE rates: real risk is
     the base times a tiredness multiplier, so a knackered squad is well above
     either figure — and the clinic ALSO blunts that multiplier, which the old
     text never mentioned at all. Both stated now. */
- clinic:{fx:["Base injury risk per match: "+pct(BAL.fresh.injBase)+" → "+pct(BAL.fresh.injClinic),
-   "Tiredness multiplies that risk — the clinic cuts the multiplier to "+pct(BAL.fresh.clinicScale),
-   "Injury length: −"+BAL.fresh.clinicInjDays+" matchday"],warn:"Tired legs are still the biggest risk. The clinic softens it; depth removes it.",md:2},
+ clinic:{fx:["Basisrisiko for skade pr. kamp: "+pct(BAL.fresh.injBase)+" → "+pct(BAL.fresh.injClinic),
+   "Træthed ganger risikoen op — klinikken skærer multiplikatoren til "+pct(BAL.fresh.clinicScale),
+   "Skadeslængde: −"+BAL.fresh.clinicInjDays+" kampdag"],warn:"Trætte ben er stadig den største risiko. Klinikken dæmper den; dybde fjerner den.",md:2},
  /* Was "+1 extra per season", flat. The bonus sits inside the bracket that is
     scaled by games played, so a boy who never plays gets a third of it — and the
     training ground's second, unadvertised effect is on RECOVERY. */
- training:{fx:["Players under 24: +1 development a season, scaled by games played",
-   "Freshness decays slower: "+BAL.fresh.decay.toFixed(2)+" → "+(BAL.fresh.decay+BAL.fresh.trainingRecovery).toFixed(2)+" a matchday"],
-   warn:"Pays off over YEARS, not weeks. A boy who never plays gets a third of it.",md:3},
- basics:{fx:["Fan mood +"+BAL.mood.basicsOpens+" on opening",perHead(BAL.matchday.basics),
-   "Town demand +"+pct(BAL.demand.basics)+" — a few more through the gate every week"],warn:null,md:1},
- vip:{fx:[kfmt(BAL.matchday.vipFlat)+" flat, every home game",
-   "Requires the "+STANDS[FAC_REQ.vip.stand].n+" — the boxes hang off it"],
-   warn:"The Shed End will call it the prawn sandwich brigade. Fan mood "+BAL.mood.vipOpens+" on opening.",md:2}
+ training:{fx:["Spillere under 24: +1 udvikling pr. sæson, skaleret efter spillede kampe",
+   "Friskheden falder langsommere: "+BAL.fresh.decay.toFixed(2)+" → "+(BAL.fresh.decay+BAL.fresh.trainingRecovery).toFixed(2)+" pr. kampdag"],
+   warn:"Betaler sig over ÅR, ikke uger. En dreng der aldrig spiller får en tredjedel.",md:3},
+ basics:{fx:["Fanhumør +"+BAL.mood.basicsOpens+" ved åbning",perHead(BAL.matchday.basics),
+   "Efterspørgsel i byen +"+pct(BAL.demand.basics)+" — et par stykker mere gennem lågen hver uge"],warn:null,md:1},
+ vip:{fx:[kfmt(BAL.matchday.vipFlat)+" fast, hver hjemmekamp",
+   "Kræver "+STANDS[FAC_REQ.vip.stand].n+" — boksene hænger på den"],
+   warn:"The Shed End vil kalde det rejemadsbrigaden. Fanhumør "+BAL.mood.vipOpens+" ved åbning.",md:2}
 };
 /* Pakke 15a. The VIP boxes paid their flat fee whether or not a Main Stand
    existed, but stadiumSvg() has always drawn them only when G.stands.main>=1 —
@@ -4247,17 +4247,17 @@ function facBlockedBy(key){
 function buildFac(key){
   const f=FACS[key];
   const blocker=facBlockedBy(key);
-  if(blocker){modal={type:"info",title:"Nowhere to put them",
-    body:f.n+" hang off the "+blocker+". Build that first — the boxes have to look out over something."};render();return;}
-  if(G.fac[key]){modal={type:"info",title:"Already built",body:f.n+" is up and running."};render();return;}
-  if(G.facBuild){modal={type:"info",title:"One small job at a time",body:"The local firm is on "+FACS[G.facBuild.key].n+". They don't split crews either."};render();return;}
+  if(blocker){modal={type:"info",title:"Ingen steder at sætte dem",
+    body:f.n+" hænger på "+blocker+". Byg den først — boksene skal have noget at kigge ud over."};render();return;}
+  if(G.fac[key]){modal={type:"info",title:"Allerede bygget",body:f.n+" er oppe at køre."};render();return;}
+  if(G.facBuild){modal={type:"info",title:"Ét lille byggeri ad gangen",body:"Det lokale firma er i gang med "+FACS[G.facBuild.key].n+". De deler heller ikke sjak."};render();return;}
   modal={type:"facConfirm",key};render();
 }
 function facConfirm(){
   const key=modal.key;const f=FACS[key];
   const blocker=facBlockedBy(key);
-  if(blocker){modal={type:"info",title:"Nowhere to put them",body:f.n+" need the "+blocker+" first."};render();return;}
-  if(G.balance<f.cost){modal={type:"info",title:"Not enough funds",body:f.n+" costs "+kfmt(f.cost)+"."};render();return;}
+  if(blocker){modal={type:"info",title:"Ingen steder at sætte dem",body:f.n+" kræver "+blocker+" først."};render();return;}
+  if(G.balance<f.cost){modal={type:"info",title:"Ikke penge nok",body:f.n+" koster "+kfmt(f.cost)+"."};render();return;}
   G.balance-=f.cost;
   G.facBuild={key,remain:FAC_DETAIL[key].md};
   addNews("CLUB","Work begins on "+f.n+". Ready in "+FAC_DETAIL[key].md+" matchday"+(FAC_DETAIL[key].md>1?"s":"")+".");
@@ -4345,10 +4345,10 @@ function windowOpen(){return (G.md>=0&&G.md<6)||(G.md>=12&&G.md<15);}
    vinduet lukker — men ikke hele sæsonen. Uden for vindue+nåde er de utilgængelige. */
 function freeAgentSignable(){const g=BAL.market.freeAgentGrace||0;return (G.md>=0&&G.md<6+g)||(G.md>=12&&G.md<15+g);}
 function windowLabel(){
-  if(G.md<6)return {open:true,txt:"SUMMER WINDOW OPEN · "+(6-G.md)+" MD LEFT"};
-  if(G.md>=12&&G.md<15)return {open:true,txt:"JANUARY WINDOW OPEN · "+(15-G.md)+" MD LEFT"};
-  const next=G.md<12?"JANUARY (MD 13)":"NEXT SUMMER";
-  return {open:false,txt:"WINDOW CLOSED · REOPENS "+next+" · FREE AGENTS ONLY"};
+  if(G.md<6)return {open:true,txt:"SOMMERVINDUET ÅBENT · "+(6-G.md)+" KAMPDAGE IGEN"};
+  if(G.md>=12&&G.md<15)return {open:true,txt:"JANUARVINDUET ÅBENT · "+(15-G.md)+" KAMPDAGE IGEN"};
+  const next=G.md<12?"JANUAR (KAMPDAG 13)":"NÆSTE SOMMER";
+  return {open:false,txt:"VINDUET LUKKET · ÅBNER "+next+" · KUN FREE AGENTS"};
 }
 
 /* ================= RENDERING ================= */
@@ -4390,30 +4390,30 @@ function render(){
 /* M2.5: den tynde guld-linje — altid vejen hjem, aldrig i vejen */
 function ownerBar(){
   const o=G.owner||{name:"You"};
-  return `<div class="ownerbar" onclick="exitClub()"><span>‹ ${(o.name||"You").split(" ")[0].toUpperCase()}</span><span class="num">${kfmt(G.personalWealth||0)} · wk ${Math.min(G.md+1,G.rounds)} · S${G.season}</span></div>`;
+  return `<div class="ownerbar" onclick="exitClub()"><span>‹ ${(o.name||"Dig").split(" ")[0].toUpperCase()}</span><span class="num">${kfmt(G.personalWealth||0)} · uge ${Math.min(G.md+1,G.rounds)} · S${G.season}</span></div>`;
 }
 function header(){
   if(G.layer!=="club"){
     const o=G.owner||{name:"The Chairman",avatar:"🧑‍💼"};
     return `<div class="top gold"><div style="font-size:30px;line-height:1">${o.avatar||"🧑‍💼"}</div>
-      <div><h1>${o.name}</h1><div class="sub">${reputationRead().label} · Week ${Math.min(G.md+1,G.rounds)} · S${G.season}</div></div>
-      <div class="right"><small>Net worth</small><b class="num">${kfmt(netWorth())}</b></div>
+      <div><h1>${o.name}</h1><div class="sub">${reputationRead().label} · Uge ${Math.min(G.md+1,G.rounds)} · S${G.season}</div></div>
+      <div class="right"><small>Formue</small><b class="num">${kfmt(netWorth())}</b></div>
       <button class="modebtn" onclick="toggleMode()">${G.mode==="dark"?"☀":"◗"}</button></div>`;
   }
   return `<div class="top">${svgShield(G.badge,true,40)}
     <div><h1>${G.club}</h1><div class="sub">${G.divNames[G.div]} · ${ord(myPos())} · S${G.season}</div></div>
-    <div class="right"><small>Bank${typeof G.lastNet==="number"?` · <span style="color:${G.lastNet>=0?"var(--acc)":"#E07A6A"}">${G.lastNet>=0?"+":"−"}${kfmt(Math.abs(G.lastNet))}/MD</span>`:""}</small><b class="num">${kfmt(G.balance)}</b></div>
+    <div class="right"><small>Kassen${typeof G.lastNet==="number"?` · <span style="color:${G.lastNet>=0?"var(--acc)":"#E07A6A"}">${G.lastNet>=0?"+":"−"}${kfmt(Math.abs(G.lastNet))}/kamp</span>`:""}</small><b class="num">${kfmt(G.balance)}</b></div>
     <button class="modebtn" onclick="toggleMode()">${G.mode==="dark"?"☀":"◗"}</button></div>`;
 }
 function toggleMode(){G.mode=G.mode==="dark"?"light":"dark";applyTheme(G.hue,G.mode);render();}
 function navbar(){
   if(G.layer!=="club"){
     const bell=deskDoorbell().length;
-    const t=[["home","Office"],["empire","Empire"],["books","Books"]];
+    const t=[["home","Kontor"],["empire","Imperium"],["books","Bøger"]];
     return '<nav class="gold">'+t.map(([k,l])=>`<button class="${screen===k?'on':''}" onclick="go('${k}')">${l}${k==='home'&&bell?`<span class="badge num">${bell}</span>`:''}</button>`).join("")+'</nav>';
   }
   const u=unreadCount();
-  const t=[["club","Club"],["squad","Squad"],["market","Market"],["table","Table"],["inbox","Inbox"]];
+  const t=[["club","Klub"],["squad","Trup"],["market","Marked"],["table","Tabel"],["inbox","Indbakke"]];
   return '<nav>'+t.map(([k,l])=>`<button class="${screen===k?'on':''}" onclick="go('${k}')">${l}${k==='inbox'&&u?`<span class="badge num">${u}</span>`:''}</button>`).join("")+'</nav>';
 }
 function go(s){screen=s;if(s==="inbox")G.inbox.forEach(m=>m.unread=false);keepScroll=false;saveGame();render();}
@@ -4448,46 +4448,46 @@ function nextWeek(){
 function viewEmpire(){
   ensureWorld();
   // my club, my stakes, then the whole pyramid — every club has a price
-  let h=`<div class="card" style="border-color:var(--strokeAcc)"><div class="kick" style="margin-bottom:2px">Your club · you run it</div>
+  let h=`<div class="card" style="border-color:var(--strokeAcc)"><div class="kick" style="margin-bottom:2px">Din klub · du driver den</div>
     <div class="rowline"><span><b>${G.club}</b> <small>· ${G.divNames[G.div]} · ${ord(myPos())}</small></span><span class="amt num">${G.myShare}%</span></div>
-    <div class="rowline"><span>Club value <small>· your slice ${kfmt(Math.round(clubValuation()*G.myShare/100))}</small></span><span class="amt num">${kfmt(clubValuation())}</span></div>
-    <button class="glowbtn" onclick="enterClub()">Enter the club ▸</button></div>`;
+    <div class="rowline"><span>Klubværdi <small>· din andel ${kfmt(Math.round(clubValuation()*G.myShare/100))}</small></span><span class="amt num">${kfmt(clubValuation())}</span></div>
+    <button class="glowbtn" onclick="enterClub()">Gå ind i klubben ▸</button></div>`;
   const stakes=G.stakes||[];
-  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Your stakes ${G.stakeIncome?`<small>· paid ${kfmt(G.stakeIncome)} last season</small>`:""}</div>
+  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Dine andele ${G.stakeIncome?`<small>· ${kfmt(G.stakeIncome)} i udbytte sidste sæson</small>`:""}</div>
     ${stakes.map(st=>{const c=findWorldClub(st.wid);if(!c)return "";
       const val=Math.round(stakeValue(c)*st.pct/100);
-      return `<div class="rowline"><span>${c.name} <small>· ${G.divNames[c.div]} · press ${Math.round(c.press)} · paid ${kfmt(st.paid)}</small></span>
-        <span style="display:flex;gap:6px;align-items:center"><span class="amt num">${st.pct}% · ${kfmt(val)}</span><button class="sellb" onclick="sellStake(${st.wid})">Sell</button></span></div>`;
-    }).join("")||'<div class="newsline">No stakes yet. The pyramid below is for sale — every club has a price.</div>'}</div>`;
+      return `<div class="rowline"><span>${c.name} <small>· ${G.divNames[c.div]} · omtale ${Math.round(c.press)} · udbetalt ${kfmt(st.paid)}</small></span>
+        <span style="display:flex;gap:6px;align-items:center"><span class="amt num">${st.pct}% · ${kfmt(val)}</span><button class="sellb" onclick="sellStake(${st.wid})">Sælg</button></span></div>`;
+    }).join("")||'<div class="newsline">Ingen andele endnu. Pyramiden nedenfor er til salg — enhver klub har en pris.</div>'}</div>`;
   const d=(G.empDiv===undefined||G.empDiv===null)?(G.div===0?1:0):G.empDiv;
   h+=`<div class="modes" style="margin:10px 0">`+[0,1,2,3].map(x=>`<button class="${d===x?'on':''}" onclick="G.empDiv=${x};render()">${G.divNames[x].replace("League ","L").replace("Premier Division","Prem")}</button>`).join("")+`</div>`;
   const clubs=[...(G.worldRest||[]).filter(c=>c.div===d),...(d===G.div?G.teams:[])].sort((a,b)=>b.pts-a.pts||b.gd-a.gd);
-  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">${G.divNames[d]} · buy in</div>
+  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">${G.divNames[d]} · køb dig ind</div>
     ${clubs.map(c=>{const pct=myStakePct(c.wid);
       const step=BAL.stake.stepPct;
       const cost=Math.round(stakeValue(c)*step/100*BAL.stake.premium/1000)*1000;
-      return `<div class="rowline"><span>${c.name} <small>· press ${Math.round(c.press||50)} · value ${kfmt(stakeValue(c))}${pct?" · <b>yours "+pct+"%</b>":""}</small></span>
+      return `<div class="rowline"><span>${c.name} <small>· omtale ${Math.round(c.press||50)} · værdi ${kfmt(stakeValue(c))}${pct?" · <b>din "+pct+"%</b>":""}</small></span>
         <button class="abtn" style="padding:5px 9px;font-size:10px" onclick="buyStake(${c.wid},${step})">+${step}% · ${kfmt(cost)}</button></div>`;
     }).join("")}</div>
-  <div class="kick" style="font-size:9px;margin-top:6px;text-transform:none">Control (over ${BAL.owners.majorityAt}%) needs a ${kfmt(BAL.stake.gateWealth)} fortune, reputation ${BAL.stake.gateRep}, and never two clubs in one division. A controlled club is run day-to-day by a hired chairman — visiting it comes later.</div>`;
+  <div class="kick" style="font-size:9px;margin-top:6px;text-transform:none">Kontrol (over ${BAL.owners.majorityAt}%) kræver en formue på ${kfmt(BAL.stake.gateWealth)}, omdømme ${BAL.stake.gateRep} — og aldrig to klubber i samme division. En kontrolleret klub drives i det daglige af en ansat direktør — besøg kommer senere.</div>`;
   return h;
 }
 function viewBooks(){
   const hist=(G.netWorthHistory||[]).slice(-8);
-  return `<div class="card"><div class="kick" style="margin-bottom:2px">Your money</div>
-    <div class="rowline"><span>Personal fortune <small>· cash</small></span><span class="amt num" style="color:var(--acc)">${kfmt(G.personalWealth||0)}</span></div>
-    <div class="rowline"><span>Your slice of ${G.club} <small>· ${G.myShare}%</small></span><span class="amt num">${kfmt(Math.round(clubValuation()*G.myShare/100))}</span></div>
-    <div class="rowline"><span>Club stakes <small>· ${(G.stakes||[]).length} holdings</small></span><span class="amt num">${kfmt(stakesWorth())}</span></div>
-    <div class="rowline" style="border-top:1px solid rgba(255,255,255,.12)"><span><b>Net worth</b></span><span class="amt num" style="font-size:16px"><b>${kfmt(netWorth())}</b></span></div></div>
-  <div class="card"><div class="kick" style="margin-bottom:2px">Income & outgoings</div>
-    <div class="rowline"><span>Last dividend from ${G.club}</span><span class="amt num">${G.lastDividend&&G.lastDividend.mine?kfmt(G.lastDividend.mine):"—"}</span></div>
-    <div class="rowline"><span>Stake dividends last season</span><span class="amt num">${G.stakeIncome?kfmt(G.stakeIncome):"—"}</span></div></div>
-  <div class="card"><div class="kick" style="margin-bottom:2px">Net worth by season</div>
-    ${hist.map(x=>`<div class="rowline"><span>Season ${x.s}</span><span class="amt num">${kfmt(x.v)}</span></div>`).join("")||'<div class="newsline">Your first season is still being written.</div>'}</div>
-  <div class="card"><div class="kick" style="margin-bottom:2px">Career backup <small>· phones lose saves — codes don't</small></div>
-    <button class="abtn" onclick="toggleExport()">${G.showExport?"Hide the code":"Export career code"}</button>
+  return `<div class="card"><div class="kick" style="margin-bottom:2px">Dine penge</div>
+    <div class="rowline"><span>Personlig formue <small>· kontant</small></span><span class="amt num" style="color:var(--acc)">${kfmt(G.personalWealth||0)}</span></div>
+    <div class="rowline"><span>Din andel af ${G.club} <small>· ${G.myShare}%</small></span><span class="amt num">${kfmt(Math.round(clubValuation()*G.myShare/100))}</span></div>
+    <div class="rowline"><span>Andele i andre klubber <small>· ${(G.stakes||[]).length} poster</small></span><span class="amt num">${kfmt(stakesWorth())}</span></div>
+    <div class="rowline" style="border-top:1px solid rgba(255,255,255,.12)"><span><b>Formue i alt</b></span><span class="amt num" style="font-size:16px"><b>${kfmt(netWorth())}</b></span></div></div>
+  <div class="card"><div class="kick" style="margin-bottom:2px">Ind & ud</div>
+    <div class="rowline"><span>Seneste udbytte fra ${G.club}</span><span class="amt num">${G.lastDividend&&G.lastDividend.mine?kfmt(G.lastDividend.mine):"—"}</span></div>
+    <div class="rowline"><span>Udbytte af andele sidste sæson</span><span class="amt num">${G.stakeIncome?kfmt(G.stakeIncome):"—"}</span></div></div>
+  <div class="card"><div class="kick" style="margin-bottom:2px">Formuen sæson for sæson</div>
+    ${hist.map(x=>`<div class="rowline"><span>Sæson ${x.s}</span><span class="amt num">${kfmt(x.v)}</span></div>`).join("")||'<div class="newsline">Din første sæson skrives stadig.</div>'}</div>
+  <div class="card"><div class="kick" style="margin-bottom:2px">Backup af karrieren <small>· telefoner mister gemmer — koder gør ikke</small></div>
+    <button class="abtn" onclick="toggleExport()">${G.showExport?"Skjul koden":"Eksportér karriere-kode"}</button>
     ${G.showExport?`<textarea readonly onclick="this.select()" style="width:100%;min-height:70px;margin-top:8px;background:rgba(0,0,0,.25);color:inherit;border:1px solid rgba(150,175,205,.25);border-radius:9px;padding:8px;font-size:10px">${exportCareerText().replace(/&/g,"&amp;").replace(/</g,"&lt;")}</textarea>
-    <div class="kick" style="font-size:9px;margin-top:5px;text-transform:none">Tap the box to select it, copy, and keep it somewhere safe. Paste it on the title screen to restore.</div>`:""}</div>`;
+    <div class="kick" style="font-size:9px;margin-top:5px;text-transform:none">Tryk på boksen for at markere, kopiér, og gem den et sikkert sted. Sæt den ind på titelskærmen for at gendanne.</div>`:""}</div>`;
 }
 function viewOwner(){
   const o=G.owner||{name:"The Chairman",avatar:"🧑‍💼",background:"selfmade"};
@@ -4502,45 +4502,45 @@ function viewOwner(){
     <div style="display:flex;align-items:center;gap:12px">
       <div style="font-size:44px;line-height:1">${o.avatar}</div>
       <div><div class="cname" style="font-size:20px">${o.name}</div>
-      <div class="csub">${bg?bg.n:"Owner"} · ${G.myShare}% of ${G.club}</div></div></div>
-    <div class="kick" style="margin-top:12px">Your empire</div>
+      <div class="csub">${bg?bg.n:"Ejer"} · ${G.myShare}% af ${G.club}</div></div></div>
+    <div class="kick" style="margin-top:12px">Dit imperium</div>
     <div style="font-size:30px" class="num"><b>${kfmt(nw)}</b> ${trend!==null?`<span style="font-size:13px;color:${trend>=0?'var(--acc)':'#E05A4A'}">${trend>=0?"▲ +":"▼ "}${trend}%</span>`:""}</div>
-    <div class="kick" style="font-size:9px">Personal fortune ${kfmt(G.personalWealth||0)} · your stake ${kfmt(equity)}</div>
+    <div class="kick" style="font-size:9px">Personlig formue ${kfmt(G.personalWealth||0)} · dine andele ${kfmt(equity)}</div>
   </div></div>`;
   h+=`<div class="duo">
-    <div><div class="kick">Reputation</div><div class="pname" style="font-size:17px">${rep.label}</div>
+    <div><div class="kick">Omdømme</div><div class="pname" style="font-size:17px">${rep.label}</div>
       <div class="bar" style="margin-top:6px"><i style="width:${rep.value}%"></i></div></div>
-    <div><div class="kick">The people</div>
-      <div class="kick" style="font-size:9px;margin-top:6px">Board <b>${Math.round(trustLevel())}%</b> · Fans <b>${Math.round(G.fanMood)}</b></div>
-      ${bestAgent?`<div class="kick" style="font-size:9px;margin-top:3px">Closest agent: <b>${bestAgent}</b></div>`:'<div class="kick" style="font-size:9px;margin-top:3px">No agents warmed to you yet</div>'}</div></div>`;
+    <div><div class="kick">Menneskene</div>
+      <div class="kick" style="font-size:9px;margin-top:6px">Bestyrelsen <b>${Math.round(trustLevel())}%</b> · Fans <b>${Math.round(G.fanMood)}</b></div>
+      ${bestAgent?`<div class="kick" style="font-size:9px;margin-top:3px">Tætteste agent: <b>${bestAgent}</b></div>`:'<div class="kick" style="font-size:9px;margin-top:3px">Ingen agenter har varmet op til dig endnu</div>'}</div></div>`;
   // M2.5: bordet — stående beslutninger + dørklokken for hastende klubpost.
   // Bordet er en dørklokke, ikke en svarknap: trykket hopper dig IND i klubben.
   const dec=[];
-  if(!isMajority())dec.push("You are a minority owner — buy back above "+BAL.owners.majorityAt+"%.");
-  if(G.owners.length&&G.ownerBoughtSeason!==G.season)dec.push("You could buy out a co-owner this season.");
-  if(G.fireSale)dec.push("Administration: a fire sale is running.");
+  if(!isMajority())dec.push("Du er mindretalsejer — køb dig tilbage over "+BAL.owners.majorityAt+"%.");
+  if(G.owners.length&&G.ownerBoughtSeason!==G.season)dec.push("Du kan købe en medejer ud i denne sæson.");
+  if(G.fireSale)dec.push("Administration: et brandudsalg kører.");
   const bell=deskDoorbell();
   // R3 (variant B+): udbyttet er et frivilligt kort — én gang pr. sæson, og fra
   // dividendRemindFrom markeres det, så man ikke glemmer at betale sig selv.
   const divi=isMajority()&&G.dividendTaken===false&&G.balance>0;
   const late=divi&&G.md>=BAL.owners.dividendRemindFrom;
   const deskN=dec.length+bell.length+(divi?1:0);
-  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">On your desk${deskN?" · <b>"+deskN+"</b>":""}</div>
-    ${divi?`<div class="newsline" style="cursor:pointer${late?";color:var(--comm)":""}" onclick="openDividend()">💰 Declare a dividend — ${kfmt(Math.max(0,G.balance))} in the till${late?" · <b>last chance this season</b>":""}</div>`:""}
+  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">På dit bord${deskN?" · <b>"+deskN+"</b>":""}</div>
+    ${divi?`<div class="newsline" style="cursor:pointer${late?";color:var(--comm)":""}" onclick="openDividend()">💰 Erklær udbytte — ${kfmt(Math.max(0,G.balance))} i kassen${late?" · <b>sidste chance i denne sæson</b>":""}</div>`:""}
     ${dec.map(d=>`<div class="newsline">${d}</div>`).join("")}
-    ${bell.map(b=>`<div class="newsline" style="cursor:pointer${b.urgent?";color:var(--comm)":""}" onclick="enterClub('inbox')">✉ ${G.club}: ${b.title}${b.urgent?" · <b>expires soon</b>":""} — go in ▸</div>`).join("")}
-    ${deskN?"":'<div class="newsline">A clean desk. Enjoy it while it lasts.</div>'}</div>`;
+    ${bell.map(b=>`<div class="newsline" style="cursor:pointer${b.urgent?";color:var(--comm)":""}" onclick="enterClub('inbox')">✉ ${G.club}: ${b.title}${b.urgent?" · <b>udløber snart</b>":""} — gå ind ▸</div>`).join("")}
+    ${deskN?"":'<div class="newsline">Et tomt bord. Nyd det, mens det varer.</div>'}</div>`;
   if(G.phase==="season"&&G.md<G.rounds){
     const dl=(G.md===5&&!G.deadlineDone.summer)||(G.md===14&&!G.deadlineDone.winter);
-    h+=`<div class="card"><div class="kick">The week</div>
-      <div class="rowline" style="border:none"><span style="font-size:12px">Week ${G.md+1} of ${G.rounds} — the pyramid plays. Your gaffer runs the side unless you go in.</span></div>
-      <button class="glowbtn" onclick="nextWeek()">${dl?"⚡ Deadline Day":"▶&nbsp; Next week"}</button></div>`;
+    h+=`<div class="card"><div class="kick">Ugen</div>
+      <div class="rowline" style="border:none"><span style="font-size:12px">Uge ${G.md+1} af ${G.rounds} — hele pyramiden spiller. Gafferen kører holdet, medmindre du går ind.</span></div>
+      <button class="glowbtn" onclick="nextWeek()">${dl?"⚡ Deadline Day":"▶&nbsp; Næste uge"}</button></div>`;
   }else{
-    h+=`<div class="card"><div class="kick">The week</div>
-      <div class="rowline" style="border:none"><span style="font-size:12px">${G.phase==="playoff_semi"||G.phase==="playoff_final"?"A playoff night — too big to watch from home.":"The season is settling."}</span></div>
-      <button class="glowbtn" onclick="nextWeek()">▶&nbsp; Go to the club</button></div>`;
+    h+=`<div class="card"><div class="kick">Ugen</div>
+      <div class="rowline" style="border:none"><span style="font-size:12px">${G.phase==="playoff_semi"||G.phase==="playoff_final"?"En playoff-aften — for stor til at se hjemmefra.":"Sæsonen gør sig færdig."}</span></div>
+      <button class="glowbtn" onclick="nextWeek()">▶&nbsp; Tag ned i klubben</button></div>`;
   }
-  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Word around the game</div>${G.news.slice(0,4).map(n=>`<div class="newsline"><span class="tag">${n.tag}</span>${n.txt}</div>`).join("")||'<div class="newsline">Quiet.</div>'}</div>`;
+  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Rygterne går</div>${G.news.slice(0,4).map(n=>`<div class="newsline"><span class="tag">${n.tag}</span>${n.txt}</div>`).join("")||'<div class="newsline">Stille.</div>'}</div>`;
   return h;
 }
 function teamOverview(){
@@ -4554,63 +4554,63 @@ function teamOverview(){
     // afternoon, surcharge and all — the number the player is about to see.
     const bigNow=!!bigMatchReason(home?mine[1]:mine[0]);
     h+=`<div class="hero"><div class="inner">
-      <div class="kick" style="display:flex;justify-content:space-between"><span>Matchday <b>${G.md+1}</b>/${G.rounds}</span><span>${home?"Home":"Away"}</span></div>
+      <div class="kick" style="display:flex;justify-content:space-between"><span>Kampdag <b>${G.md+1}</b>/${G.rounds}</span><span>${home?"Hjemme":"Ude"}</span></div>
       <div class="matchup">
-        <div class="club">${svgShield(G.badge,true,50)}<div class="cname">${home?G.club:opp}</div><div class="csub">${home?"Home":""}</div></div>
+        <div class="club">${svgShield(G.badge,true,50)}<div class="cname">${home?G.club:opp}</div><div class="csub">${home?"Hjemme":""}</div></div>
         <div class="vs">VS</div>
-        <div class="club">${svgShield(initials(home?opp:G.club),!home,50)}<div class="cname">${home?opp:G.club}</div><div class="csub">${home?"Away":"Home"}</div></div>
+        <div class="club">${svgShield(initials(home?opp:G.club),!home,50)}<div class="cname">${home?opp:G.club}</div><div class="csub">${home?"Ude":"Hjemme"}</div></div>
       </div>
-      <div class="venue">${home?`<span>Expected gate ~${attendance(bigNow).toLocaleString("en-GB")}</span>${bigNow?"·<b style=\"color:var(--comm)\">BIG</b>":""}·<b>Under the lights</b>`:`<span>Away day</span>·<b>The minibus leaves at nine</b>`}</div>
-      <button class="glowbtn" onclick="playMatchday()">${dl?"⚡ Deadline Day":"▶&nbsp; Play Matchday"}</button>
+      <div class="venue">${home?`<span>Forventet gate ~${attendance(bigNow).toLocaleString("en-GB")}</span>${bigNow?"·<b style=\"color:var(--comm)\">STOR</b>":""}·<b>Under lysmasterne</b>`:`<span>Udebanetur</span>·<b>Minibussen kører klokken ni</b>`}</div>
+      <button class="glowbtn" onclick="playMatchday()">${dl?"⚡ Deadline Day":"▶&nbsp; Spil kampdag"}</button>
     </div></div>`;
   }else if(G.phase==="playoff_semi"){
     h+=`<div class="hero"><div class="inner">
-      <div class="biglabel">Playoff semi-final</div>
+      <div class="biglabel">Playoff-semifinale</div>
       <div class="matchup"><div class="club">${svgShield(G.badge,true,50)}<div class="cname">${G.club}</div></div><div class="vs">VS</div>
       <div class="club">${svgShield(initials(G.playoff.oppSemi.n),false,50)}<div class="cname">${G.playoff.oppSemi.n}</div></div></div>
-      <div class="venue"><span>One game</span>·<b>Everything on it</b></div>
-      <button class="glowbtn" onclick="playPlayoff()">▶&nbsp; Play Semi-Final</button></div></div>`;
+      <div class="venue"><span>Én kamp</span>·<b>Alt på spil</b></div>
+      <button class="glowbtn" onclick="playPlayoff()">▶&nbsp; Spil semifinalen</button></div></div>`;
   }else if(G.phase==="playoff_final"){
     h+=`<div class="hero"><div class="inner">
       <div class="biglabel">★ Playoff final · Wembley Fields ★</div>
       <div class="matchup"><div class="club">${svgShield(G.badge,true,50)}<div class="cname">${G.club}</div></div><div class="vs">VS</div>
       <div class="club">${svgShield(initials(G.playoff.finalOpp.n),false,50)}<div class="cname">${G.playoff.finalOpp.n}</div></div></div>
-      <div class="venue"><span>90 minutes from</span>·<b>${G.divNames[G.div-1]}</b></div>
-      <button class="glowbtn" onclick="playPlayoff()">▶&nbsp; Play The Final</button></div></div>`;
+      <div class="venue"><span>90 minutter fra</span>·<b>${G.divNames[G.div-1]}</b></div>
+      <button class="glowbtn" onclick="playPlayoff()">▶&nbsp; Spil finalen</button></div></div>`;
   }
   // star man + form
   const star=[...G.squad].sort((a,b)=>ovr(b)+b.form-ovr(a)-a.form)[0];
   const conf=clamp(Math.round(100*(G.objectivePos+4-myPos())/(G.objectivePos+3)),5,100);
   h+=`<div class="duo">
-    <div class="star" data-num="${ovr(star)}"><div class="kick" style="color:var(--comm)">Star man</div>
+    <div class="star" data-num="${ovr(star)}"><div class="kick" style="color:var(--comm)">Stjernen</div>
       <div class="pname">${star.name.split(" ")[1]}</div>
-      <div class="prole">${star.pos} · ${ovr(star)} ovr${star.form>2?" · on fire":""}</div></div>
-    <div><div class="kick">Form & board</div>
+      <div class="prole">${star.pos} · ${ovr(star)} ovr${star.form>2?" · brandvarm":""}</div></div>
+    <div><div class="kick">Form & bestyrelse</div>
       <div class="formdots">${formDots()}</div>
-      <div class="kick" style="font-size:9px;margin-top:9px">Objective: top ${G.objectivePos} · <b>${conf}%</b></div>
+      <div class="kick" style="font-size:9px;margin-top:9px">Målsætning: top ${G.objectivePos} · <b>${conf}%</b></div>
       <div class="bar"><i style="width:${conf}%"></i></div></div></div>`;
   // inbox preview
   const top=G.inbox.filter(m=>!m.done).slice(0,2);
   if(top.length){
-    h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Inbox · <b>${unreadCount()||"–"} waiting</b></div>
+    h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Indbakke · <b>${unreadCount()||"–"} venter</b></div>
       ${top.map(m=>`<div class="irow" onclick="go('inbox')" style="cursor:pointer"><div class="iav ${m.av==='R'||m.av==='GM'?'g':''}">${m.av}</div>
         <div class="t">${m.title}<small>${m.from}</small></div>${m.unread?'<div class="unread"></div>':''}</div>`).join("")}</div>`;
   }
   // last result
   if(G.lastResult){
     const r=G.lastResult;
-    h+=`<div class="card"><div class="kick">Last time out ${r.label?("· "+r.label):""}</div>
+    h+=`<div class="card"><div class="kick">Sidste kamp ${r.label?("· "+r.label):""}</div>
       <div class="rowline"><span>${r.home?G.club:r.opp} <b class="num">${r.home?r.gf:r.ga}–${r.home?r.ga:r.gf}</b> ${r.home?r.opp:G.club}</span>
-      <small>${r.home?("Gate "+kfmt(r.gate)):"Away"}</small></div>
+      <small>${r.home?("Gate "+kfmt(r.gate)):"Ude"}</small></div>
       ${r.analysis?`<div class="newsline" style="border:0;padding-top:2px">${r.analysis}</div>`:""}</div>`;
   }
-  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Club news</div>${G.news.slice(0,5).map(n=>`<div class="newsline"><span class="tag">${n.tag}</span>${n.txt}</div>`).join("")||'<div class="newsline">Quiet. Suspiciously quiet.</div>'}</div>`;
+  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Klubnyt</div>${G.news.slice(0,5).map(n=>`<div class="newsline"><span class="tag">${n.tag}</span>${n.txt}</div>`).join("")||'<div class="newsline">Stille. Mistænkeligt stille.</div>'}</div>`;
   return h;
 }
 function formDots(){
   // derive last 5 from history of results — keep simple ring buffer
   G.formHist=G.formHist||[];
-  return G.formHist.slice(-5).map(x=>`<span class="fd ${x}">${x.toUpperCase()}</span>`).join("")||'<span class="kick">First match awaits</span>';
+  return G.formHist.slice(-5).map(x=>`<span class="fd ${x}">${x.toUpperCase()}</span>`).join("")||'<span class="kick">Første kamp venter</span>';
 }
 /* Every kind handleAction() understands MUST be drawable here. Half of them
    weren't, which made the whole formal-bid track a dead end you could not even
@@ -4626,39 +4626,39 @@ function ibtn(id,choice,label,cls,blockedWhy){
     ? `<button class="abtn ${cls}" data-act="actMsg:${choice}" disabled style="opacity:.4" title="${blockedWhy}">${label}</button>`
     : `<button class="abtn ${cls}" data-act="actMsg:${choice}" onclick="actMsg(${id},'${choice}')">${label}</button>`;
 }
-function shortWhy(amount){return G.balance<amount?"Only "+kfmt(Math.max(0,G.balance))+" in the account":null;}
+function shortWhy(amount){return G.balance<amount?"Kun "+kfmt(Math.max(0,G.balance))+" i kassen":null;}
 function inboxActions(m){
   const a=m.action,id=m.id;
   switch(a.kind){
-    case "sellOffer":return ibtn(id,"accept","Accept "+kfmt(a.bid),"")+
-      (a.demanded?"":ibtn(id,"demand","Demand more","comm"))+ibtn(id,"reject","Reject","ghost");
-    case "sponsorChoice":return ibtn(id,"A","Take A (safe)","")+ibtn(id,"B","Take B (bold)","comm");
-    case "bidAccepted":return ibtn(id,"ok","Open talks · "+kfmt(a.fee),"",shortWhy(a.fee))+
-      ibtn(id,"die","Let it lapse","ghost");
-    case "bidCounter":return ibtn(id,"accept","Accept "+kfmt(a.ask),"",shortWhy(a.ask))+
-      ibtn(id,"die","Let it die","ghost");
+    case "sellOffer":return ibtn(id,"accept","Tag imod "+kfmt(a.bid),"")+
+      (a.demanded?"":ibtn(id,"demand","Kræv mere","comm"))+ibtn(id,"reject","Afvis","ghost");
+    case "sponsorChoice":return ibtn(id,"A","Tag A (sikker)","")+ibtn(id,"B","Tag B (dristig)","comm");
+    case "bidAccepted":return ibtn(id,"ok","Åbn forhandling · "+kfmt(a.fee),"",shortWhy(a.fee))+
+      ibtn(id,"die","Lad det løbe ud","ghost");
+    case "bidCounter":return ibtn(id,"accept","Tag imod "+kfmt(a.ask),"",shortWhy(a.ask))+
+      ibtn(id,"die","Lad det dø","ghost");
     case "bidWar":return ibtn(id,"raise","Match "+kfmt(a.raise),"",shortWhy(a.raise))+
-      ibtn(id,"walk","Walk away","ghost");
-    case "callback":return ibtn(id,"ok","Hear him out","");
-    case "transferReq":return ibtn(id,"list","List him","comm")+ibtn(id,"no","Refuse","ghost");
+      ibtn(id,"walk","Træk dig","ghost");
+    case "callback":return ibtn(id,"ok","Hør ham","");
+    case "transferReq":return ibtn(id,"list","Sæt ham til salg","comm")+ibtn(id,"no","Afvis","ghost");
   }
   return "";
 }
 function viewInbox(){
-  if(!G.inbox.length)return '<div class="card"><div class="newsline">Empty. Even Barry is quiet. Enjoy it while it lasts.</div></div>';
+  if(!G.inbox.length)return '<div class="card"><div class="newsline">Tom. Selv Barry er stille. Nyd det, mens det varer.</div></div>';
   return '<div class="card">'+G.inbox.map(m=>{
     let act="";
     if(m.action&&!m.done){
       const btns=inboxActions(m);
       if(btns){
         const left=m.action.expires?m.action.expires-G.md:null;
-        const clock=left===null?"":`<div class="kick" style="margin-top:2px">${left<=0?"They want an answer today.":left===1?"Answer by the next matchday.":"Answer within "+left+" matchdays."}</div>`;
+        const clock=left===null?"":`<div class="kick" style="margin-top:2px">${left<=0?"De vil have svar i dag.":left===1?"Svar inden næste kampdag.":"Svar inden for "+left+" kampdage."}</div>`;
         act=`<div class="actions">${btns}</div>${clock}`;
       }
     }
     return `<div class="irow"><div class="iav ${m.av==='R'||m.av==='GM'||m.av==='SF'?'g':''}">${m.av}</div>
       <div class="t">${m.title}<small>${m.from} — ${m.body}</small>${act}</div>${m.unread?'<div class="unread"></div>':''}
-      <button class="sellb" style="padding:3px 9px;flex-shrink:0" onclick="delMsg(${m.id})" title="Delete">✕</button></div>`;
+      <button class="sellb" style="padding:3px 9px;flex-shrink:0" onclick="delMsg(${m.id})" title="Slet">✕</button></div>`;
   }).join("")+'</div>';
 }
 function actMsg(id,choice){const m=G.inbox.find(x=>x.id===id);if(m)handleAction(m,choice);}
@@ -4666,11 +4666,11 @@ function delMsg(id){
   releaseMsg(G.inbox.find(x=>x.id===id));   // binning a bid must not strand the player
   G.inbox=G.inbox.filter(x=>x.id!==id);render();
 }
-const SQUAD_GROUPS=[["GK","Goalkeepers"],["DF","Defence"],["MF","Midfield"],["FW","Attack"]];
+const SQUAD_GROUPS=[["GK","Målmænd"],["DF","Forsvar"],["MF","Midtbane"],["FW","Angreb"]];
 function viewSquad(){
   const wages=G.squad.reduce((s,p)=>s+p.wage,0);
   const wo=windowOpen();
-  let h=`<div class="card"><div class="kick" style="margin-bottom:4px">Squad · ${G.squad.length} players · wages <b>${kfmt(wages)}/w</b> af ${kfmt(G.wageCap)} cap</div>
+  let h=`<div class="card"><div class="kick" style="margin-bottom:4px">Trup · ${G.squad.length} spillere · løn <b>${kfmt(wages)}/u</b> af ${kfmt(G.wageCap)} loft</div>
     <div class="bar${wages>G.wageCap*0.9?" amber":""}"><i style="width:${clamp(Math.round(100*wages/G.wageCap),2,100)}%"></i></div>`;
   for(const [pos,label] of SQUAD_GROUPS){
     const list=G.squad.map((p,ix)=>({p,ix})).filter(x=>x.p.pos===pos).sort((a,b)=>ovr(b.p)-ovr(a.p));
@@ -4678,28 +4678,28 @@ function viewSquad(){
     const avg=Math.round(list.reduce((s,x)=>s+ovr(x.p),0)/list.length);
     const out=list.filter(x=>x.p.inj||x.p.susp).length;
     h+=`<div class="sqhead"><span class="kick">${label}</span><span class="ln"></span>
-      <span class="kick">${list.length}${out?" · "+out+" out":""} · avg <b>${avg}</b></span></div>`;
+      <span class="kick">${list.length}${out?" · "+out+" ude":""} · snit <b>${avg}</b></span></div>`;
     h+=list.map((x,i)=>squadRow(x.p,i===list.length-1)).join("");
   }
   h+=`<div class="kick" style="margin-top:12px;font-size:9.5px;text-transform:none;letter-spacing:.2px">
-    Tap a player for contract, chat and sale.${wo?"":" The window is shut — selling reopens when it does."}</div></div>`;
+    Tryk på en spiller for kontrakt, samtale og salg.${wo?"":" Vinduet er lukket — salg åbner igen med det."}</div></div>`;
   return h;
 }
 function squadRow(p,last){
   const chips=[];
   if(p.id===G.captain)chips.push('<span class="mini a">©</span>');
-  if(p.inj)chips.push(`<span class="mini r">Inj ${p.inj}md</span>`);
-  if(p.susp)chips.push('<span class="mini r">Susp</span>');
+  if(p.inj)chips.push(`<span class="mini r">Skadet ${p.inj}</span>`);
+  if(p.susp)chips.push('<span class="mini r">Karantæne</span>');
   // a chairman hears "he looks flat", not "load 4.87" — states, never numbers
   if(!p.inj&&!p.susp){
     const b=freshBand(p);
-    if(b==="used")chips.push('<span class="mini m">Used</span>');
-    else if(b==="flat")chips.push('<span class="mini r">Flat</span>');
-    else chips.push('<span class="mini a">Fresh</span>');
+    if(b==="used")chips.push('<span class="mini m">Brugt</span>');
+    else if(b==="flat")chips.push('<span class="mini r">Flad</span>');
+    else chips.push('<span class="mini a">Frisk</span>');
   }
-  if(p.listed)chips.push('<span class="mini c">Listed</span>');
-  if(p.gem)chips.push('<span class="mini c">Gem</span>');
-  chips.push(`<span class="mini ${p.years<=1?"c":"m"}">${p.years}yr</span>`);
+  if(p.listed)chips.push('<span class="mini c">Til salg</span>');
+  if(p.gem)chips.push('<span class="mini c">Fund</span>');
+  chips.push(`<span class="mini ${p.years<=1?"c":"m"}">${p.years}år</span>`);
   return `<div class="srow${last?" last":""}" role="button" tabindex="0" aria-label="${p.name}, ${p.pos}, ${ovr(p)} overall" onclick="openPlayer(${p.id})">
     <span class="posb">${p.pos}</span>
     <span class="who"><span class="n">${p.name} <small>${p.age}</small></span>
@@ -4712,8 +4712,8 @@ function openPlayer(id){
 }
 function openSellSheet(id){
   // the gate lives here, not in the markup — every caller gets the same rule
-  if(!windowOpen()){modal={type:"info",title:"The window is shut",body:"No club can register him now. Selling reopens when the window does."};render();return;}
-  if(G.squad.length<=13){modal={type:"info",title:"\"Not a chance.\"",body:"The gaffer blocks the door: thirteen men is already a squad held together with tape and optimism."};render();return;}
+  if(!windowOpen()){modal={type:"info",title:"Vinduet er lukket",body:"Ingen klub kan registrere ham nu. Salg åbner igen med vinduet."};render();return;}
+  if(G.squad.length<=13){modal={type:"info",title:"\"Ikke tale om.\"",body:"Gafferen blokerer døren: tretten mand er allerede en trup holdt sammen af tape og optimisme."};render();return;}
   if(!byId(id))return;
   modal={type:"sellChoice",pid:id};render();
 }
@@ -4742,7 +4742,7 @@ function executeSale(p,club,bid){
   if(playerRefusesSale(p)){
     G.fanMood=clamp(G.fanMood+3,5,100);
     addNews("FANS",p.name.split(" ")[1]+" REFUSED the move to "+club+". \"I'm going nowhere,\" he told the Gazette. The Shed End has already made the banner.");
-    modal={type:"info",title:"\"I'm going nowhere.\"",body:p.name+" turned the move down flat. The fans adore him a little more. The deal is dead."};
+    modal={type:"info",title:"\"Jeg skal ingen steder.\"",body:p.name+" afviste skiftet blankt. Fansene elsker ham en anelse mere. Handlen er død."};
     p.listed=false;render();return false;
   }
   const promiseBroken=p.promiseMD!==null;
@@ -4788,50 +4788,50 @@ function viewMarket(){
   const w=windowLabel();
   let h=`<div class="winbanner ${w.open?"":"closed"}"><span>${w.txt}</span></div>`;
   if(w.open){
-    h+=`<div class="card"><div class="kick" style="margin-bottom:4px">Transfer market</div>
+    h+=`<div class="card"><div class="kick" style="margin-bottom:4px">Transfermarkedet</div>
       ${G.market.map((p,ix)=>marketRow(p,ix,false)).join("")}</div>`;
   }
-  h+=`<div class="card"><div class="kick" style="margin-bottom:4px">Free agents · no fee, bigger wages</div>
-    ${G.freeAgents.map((p,ix)=>marketRow(p,ix,true)).join("")||'<div class="newsline">None right now. They are all on beaches.</div>'}</div>`;
-  h+=`<div class="card"><div class="rowline"><div style="max-width:220px;font-size:12px">Send Reg on a scouting mission — report in 2 matchdays.</div>
-    <button class="abtn comm" onclick="startScout()" ${G.scoutUsed?"disabled style='opacity:.4'":""}>▶ Scout <span style="font-size:8px">AD</span></button></div>
-    ${w.open?`<div class="rowline" style="border:none"><div style="max-width:220px;font-size:12px">Not seeing the right names? Pull a fresh list.</div>
-    <button class="abtn" onclick="startMarketRefresh()">▶ Fresh names <span style="font-size:8px">AD</span></button></div>`:""}</div>`;
+  h+=`<div class="card"><div class="kick" style="margin-bottom:4px">Free agents · intet gebyr, større løn</div>
+    ${G.freeAgents.map((p,ix)=>marketRow(p,ix,true)).join("")||'<div class="newsline">Ingen lige nu. De ligger alle på strande.</div>'}</div>`;
+  h+=`<div class="card"><div class="rowline"><div style="max-width:220px;font-size:12px">Send Reg på spejdertur — rapport om 2 kampdage.</div>
+    <button class="abtn comm" onclick="startScout()" ${G.scoutUsed?"disabled style='opacity:.4'":""}>▶ Spejd <span style="font-size:8px">AD</span></button></div>
+    ${w.open?`<div class="rowline" style="border:none"><div style="max-width:220px;font-size:12px">Ser du ikke de rigtige navne? Træk en frisk liste.</div>
+    <button class="abtn" onclick="startMarketRefresh()">▶ Friske navne <span style="font-size:8px">AD</span></button></div>`:""}</div>`;
   return h;
 }
 function marketRow(p,ix,fa){
   let btns;
-  if(fa)btns=freeAgentSignable()?`<button class="sellb" style="color:var(--acc);border-color:var(--strokeAcc)" onclick="startBuyNego(${ix},true)">Sign</button>`:`<span class="sc" style="opacity:.5">window shut</span>`;
-  else if(p.pendingBid)btns=`<span class="sc" style="color:var(--comm)">BID PENDING</span>`;
-  else btns=`<button class="sellb" style="color:var(--comm);border-color:rgba(243,179,60,.4)" onclick="startBuyNego(${ix},false,{quick:true})" title="Live talks now — costs a premium">Quick</button>
-    <button class="sellb" style="color:var(--acc);border-color:var(--strokeAcc)" onclick="openFormalBid(${ix})" title="Formal bid — answer next matchday, rivals may bid">Offer</button>`;
+  if(fa)btns=freeAgentSignable()?`<button class="sellb" style="color:var(--acc);border-color:var(--strokeAcc)" onclick="startBuyNego(${ix},true)">Skriv kontrakt</button>`:`<span class="sc" style="opacity:.5">vinduet lukket</span>`;
+  else if(p.pendingBid)btns=`<span class="sc" style="color:var(--comm)">BUD AFGIVET</span>`;
+  else btns=`<button class="sellb" style="color:var(--comm);border-color:rgba(243,179,60,.4)" onclick="startBuyNego(${ix},false,{quick:true})" title="Forhandling nu — koster en overpris">Straks</button>
+    <button class="sellb" style="color:var(--acc);border-color:var(--strokeAcc)" onclick="openFormalBid(${ix})" title="Formelt bud — svar næste kampdag, rivaler kan byde">Byd</button>`;
   return `<div class="prow2"><div class="l1"><span class="posb">${p.pos}</span>
-    <span class="nm">${p.name} <small>· ${p.age}${p.from?" · "+p.from:""}</small>${p.gem?' <span class="trait">GEM</span>':''}</span>${btns}</div>
+    <span class="nm">${p.name} <small>· ${p.age}${p.from?" · "+p.from:""}</small>${p.gem?' <span class="trait">FUND</span>':''}</span>${btns}</div>
     <div class="statchips"><span class="sc">ATT <b>${p.att}</b></span><span class="sc">DEF <b>${p.def}</b></span><span class="sc">PHY <b>${p.phy}</b></span>
-    <span class="sc">${fa?("wants ~"+kfmt(p.wage)+"/w"):("~"+kfmt(Math.round(p.value*1.15)))}</span>${potBand(p)?'<span class="sc" style="color:var(--comm)">'+potBandText(p)+'</span>':''}</div></div>`;
+    <span class="sc">${fa?("vil have ~"+kfmt(p.wage)+"/u"):("~"+kfmt(Math.round(p.value*1.15)))}</span>${potBand(p)?'<span class="sc" style="color:var(--comm)">'+potBandText(p)+'</span>':''}</div></div>`;
 }
 function viewClub(){
   const b=G.standBuild;
   // N8/O2: klubsiden i faner — Team (holdet) + Ground/Money/Board
   const tab=G.clubTab||"team";
-  const bar=`<div class="modes" style="margin-bottom:10px">`+[["team","Team"],["ground","Ground"],["money","Money"],["board","Board"]].map(x=>`<button class="${tab===x[0]?'on':''}" onclick="G.clubTab='${x[0]}';render()">${x[1]}</button>`).join("")+`</div>`;
+  const bar=`<div class="modes" style="margin-bottom:10px">`+[["team","Holdet"],["ground","Stadion"],["money","Penge"],["board","Bestyrelse"]].map(x=>`<button class="${tab===x[0]?'on':''}" onclick="G.clubTab='${x[0]}';render()">${x[1]}</button>`).join("")+`</div>`;
   return bar+(tab==="team"?teamOverview():"")+(tab==="ground"?`${stadiumSvg()}
-  ${b?`<div class="card"><div class="rowline"><span>${STANDS[b.key].n} · level ${b.lvl}</span><span class="cn num" style="color:var(--comm)">${b.remain} MD LEFT</span></div>
+  ${b?`<div class="card"><div class="rowline"><span>${STANDS[b.key].n} · niveau ${b.lvl}</span><span class="cn num" style="color:var(--comm)">${b.remain} KAMPDAGE IGEN</span></div>
     <div class="bar amber"><i style="width:${Math.round(100*(5-b.remain)/5)}%"></i></div>
-    <div class="boost"><button onclick="buildBoost()">▶ WATCH AD · −1 MD</button><button class="iap" onclick="grantReward('build')">FINISH NOW · £0.99 <span style="font-size:8px">(IAP)</span></button></div></div>`:""}
-  <div class="card"><div class="kick" style="margin-bottom:4px">The four stands <span style="font-size:9px">· cash up front — or let the bank lend against the gate</span></div>
+    <div class="boost"><button onclick="buildBoost()">▶ SE REKLAME · −1 KAMPDAG</button><button class="iap" onclick="grantReward('build')">FÆRDIG NU · £0.99 <span style="font-size:8px">(IAP)</span></button></div></div>`:""}
+  <div class="card"><div class="kick" style="margin-bottom:4px">De fire tribuner <span style="font-size:9px">· kontant på forskud — eller lad banken låne mod gaten</span></div>
     ${Object.entries(STANDS).map(([k,s])=>{
       const lvl=G.stands[k];
-      return `<div class="rowline"><span>${s.n} <small>· lvl ${lvl} · ${s.role}</small></span>
-        ${lvl>=2?'<span class="sc">MAX</span>':(b?'<span class="sc" style="opacity:.5">…</span>':`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="startStandBuild('${k}')">${lvl===0?"Build":"Upgrade"} · ${kfmt(STANDCOST[lvl+1])}</button>`)}</div>`;
+      return `<div class="rowline"><span>${s.n} <small>· niv ${lvl} · ${s.role}</small></span>
+        ${lvl>=2?'<span class="sc">MAX</span>':(b?'<span class="sc" style="opacity:.5">…</span>':`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="startStandBuild('${k}')">${lvl===0?"Byg":"Udbyg"} · ${kfmt(STANDCOST[lvl+1])}</button>`)}</div>`;
     }).join("")}</div>
-  <div class="card"><div class="kick" style="margin-bottom:4px">Facilities</div>
+  <div class="card"><div class="kick" style="margin-bottom:4px">Faciliteter</div>
     ${Object.entries(FACS).map(([k,f])=>`<div class="rowline"><span>${f.n} <small>· ${f.txt}</small></span>
-      ${G.fac[k]?'<span class="sc" style="color:var(--acc)">✓</span>':(G.facBuild&&G.facBuild.key===k?`<span class="cn num" style="color:var(--comm);font-size:11px">${G.facBuild.remain} MD</span>`:`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="buildFac('${k}')">Details…</button>`)}</div>`).join("")}</div>`:"")
-  +(tab==="money"?`<div class="card"><div class="kick" style="margin-bottom:4px">Matchday tickets · season tickets: <b>${G.seasonTix.sold.toLocaleString("en-GB")}</b> holders</div>
-    <div class="rowline"><span>Ticket price</span>
+      ${G.fac[k]?'<span class="sc" style="color:var(--acc)">✓</span>':(G.facBuild&&G.facBuild.key===k?`<span class="cn num" style="color:var(--comm);font-size:11px">${G.facBuild.remain} KD</span>`:`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="buildFac('${k}')">Se mere…</button>`)}</div>`).join("")}</div>`:"")
+  +(tab==="money"?`<div class="card"><div class="kick" style="margin-bottom:4px">Billetter · sæsonkort: <b>${G.seasonTix.sold.toLocaleString("en-GB")}</b> holdere</div>
+    <div class="rowline"><span>Billetpris</span>
     <span class="stepper" style="margin:0"><button onclick="G.ticket=Math.max(5,G.ticket-1);render()">‹</button><span class="val" style="font-size:20px;min-width:60px">£${G.ticket}</span><button onclick="G.ticket=Math.min(30,G.ticket+1);render()">›</button></span></div>
-    <div class="rowline"><span>Big-match surcharge <small>· six-pointers, run-ins, relegation scraps, playoffs · every £1 over £${BAL.ticket.sweetSpot} costs about ${pct(BAL.ticket.elasticity)} of the crowd</small></span>
+    <div class="rowline"><span>Storkamps-tillæg <small>· seksere, guldkampe, bundbrag, playoffs · hver £1 over £${BAL.ticket.sweetSpot} koster omkring ${pct(BAL.ticket.elasticity)} af publikum</small></span>
     <span class="stepper" style="margin:0"><button onclick="G.bigExtra=Math.max(0,G.bigExtra-1);render()">‹</button><span class="val" style="font-size:20px;min-width:50px">+£${G.bigExtra}</span><button onclick="G.bigExtra=Math.min(8,G.bigExtra+1);render()">›</button></span></div>
     ${(()=>{
       const at=attendance(),paying=Math.max(0,at-G.seasonTix.sold);
@@ -4847,50 +4847,50 @@ function viewClub(){
       const atBig=attendance(true),payBig=Math.max(0,atBig-G.seasonTix.sold);
       const keepX=G.bigExtra;G.bigExtra=0;const atFree=attendance(true);G.bigExtra=keepX;
       const cost=Math.max(0,atFree-atBig);
-      return `<div class="kick" style="font-size:9px;margin-top:6px">Expected crowd: ~${at.toLocaleString("en-GB")} of ${G.capacity.toLocaleString("en-GB")} · ${paying.toLocaleString("en-GB")} paying at the gate ≈ <b>${kfmt(now)}</b> per home game${up<=now?` · <span style="color:var(--comm)">a dearer ticket would earn less</span>`:""}</div>
-      <div class="kick" style="font-size:9px;margin-top:3px">Big afternoon at +£${G.bigExtra}: ~${atBig.toLocaleString("en-GB")} in ≈ <b>${kfmt(payBig*gatePrice(true))}</b> at the gate${G.bigExtra>0?` · the surcharge keeps ~<b>${cost.toLocaleString("en-GB")}</b> of them at home`:""}</div>`;
+      return `<div class="kick" style="font-size:9px;margin-top:6px">Forventet fremmøde: ~${at.toLocaleString("en-GB")} af ${G.capacity.toLocaleString("en-GB")} · ${paying.toLocaleString("en-GB")} betaler ved lågen ≈ <b>${kfmt(now)}</b> pr. hjemmekamp${up<=now?` · <span style="color:var(--comm)">en dyrere billet ville tjene mindre</span>`:""}</div>
+      <div class="kick" style="font-size:9px;margin-top:3px">Stor eftermiddag ved +£${G.bigExtra}: ~${atBig.toLocaleString("en-GB")} inde ≈ <b>${kfmt(payBig*gatePrice(true))}</b> ved lågen${G.bigExtra>0?` · tillægget holder ~<b>${cost.toLocaleString("en-GB")}</b> af dem hjemme`:""}</div>`;
     })()}</div>
   ${(()=>{
     const V=valuationParts(),dir=valDirection();
     const arrow=dir>0.02?'<span style="color:var(--acc)">▲</span>':dir<-0.02?'<span style="color:var(--comm)">▼</span>':'<span style="opacity:.5">–</span>';
     const prev=(G.valHistory||[]).slice(-1)[0];
     const line=(label,v,neg)=>`<div class="rowline"><span>${label}</span><span class="amt num" style="${(neg?-v:v)<0?"color:var(--comm)":""}">${neg?"−":""}${kfmt(Math.abs(v))}</span></div>`;
-    return `<div class="card"><div class="kick" style="margin-bottom:4px">Club value</div>
+    return `<div class="card"><div class="kick" style="margin-bottom:4px">Klubværdi</div>
       <div class="rowline" style="border-bottom:none"><span style="font-size:20px" class="num"><b>${kfmt(V.total)}</b></span>
-        <span class="amt">${arrow} ${prev?(dir>0?"+":"")+Math.round(dir*100)+"% since S"+prev.s:"first season"}</span></div>
-      ${line("Assets · squad, ground, freehold",V.assets)}
-      ${line("Earnings · form of the books, sponsor, TV",V.earnings)}
-      ${line("Brand · the town, the division, the honours",V.brand)}
-      ${line("Debt · loans, overdraft, scars",V.debt,true)}
-      <div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Winning, building and profit lift the value; relegation, debt and losses sink it.</div></div>`;
+        <span class="amt">${arrow} ${prev?(dir>0?"+":"")+Math.round(dir*100)+"% siden S"+prev.s:"første sæson"}</span></div>
+      ${line("Aktiver · trup, stadion, grunden",V.assets)}
+      ${line("Indtjening · bøgernes form, sponsor, TV",V.earnings)}
+      ${line("Brand · byen, divisionen, meritterne",V.brand)}
+      ${line("Gæld · lån, overtræk, ar",V.debt,true)}
+      <div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Sejre, byggeri og overskud løfter værdien; nedrykning, gæld og underskud sænker den.</div></div>`;
   })()}
-  <div class="card"><div class="kick" style="margin-bottom:4px">Ownership · you hold <b>${G.myShare}%</b> · boardroom trust <b>${Math.round(trustLevel())}%</b></div>
-    <div class="rowline"><span>Club cash</span><span class="amt num">${kfmt(G.balance)}</span></div>
-    <div class="rowline"><span><b>Your personal wealth</b> <small>· from dividends</small></span><span class="amt num" style="color:var(--acc)">${kfmt(G.personalWealth||0)}</span></div>
-    ${G.lastDividend&&G.lastDividend.total>0?`<div class="rowline"><span>Last dividend${G.lastDividend.forced?" <small>· board's call</small>":""}</span><span class="amt num">${kfmt(G.lastDividend.total)} <small>· ${kfmt(G.lastDividend.mine)} yours</small></span></div>`:""}
-    ${!isMajority()?'<div class="why" style="border-left-color:rgba(243,179,60,.5);background:rgba(243,179,60,.08);font-size:11px"><b>Minority owner.</b> The board sets the dividend. Buy back above '+BAL.owners.majorityAt+'% to take control.</div>':""}
+  <div class="card"><div class="kick" style="margin-bottom:4px">Ejerskab · du har <b>${G.myShare}%</b> · bestyrelsens tillid <b>${Math.round(trustLevel())}%</b></div>
+    <div class="rowline"><span>Klubbens kasse</span><span class="amt num">${kfmt(G.balance)}</span></div>
+    <div class="rowline"><span><b>Din personlige formue</b> <small>· fra udbytter</small></span><span class="amt num" style="color:var(--acc)">${kfmt(G.personalWealth||0)}</span></div>
+    ${G.lastDividend&&G.lastDividend.total>0?`<div class="rowline"><span>Seneste udbytte${G.lastDividend.forced?" <small>· bestyrelsens valg</small>":""}</span><span class="amt num">${kfmt(G.lastDividend.total)} <small>· ${kfmt(G.lastDividend.mine)} til dig</small></span></div>`:""}
+    ${!isMajority()?'<div class="why" style="border-left-color:rgba(243,179,60,.5);background:rgba(243,179,60,.08);font-size:11px"><b>Mindretalsejer.</b> Bestyrelsen bestemmer udbyttet. Køb dig tilbage over '+BAL.owners.majorityAt+'% for at tage kontrollen.</div>':""}
     ${G.owners.map((o,i)=>{
       const fair=Math.round(clubValuation()*o.share/100/1000)*1000;
       const prem=ownerPremium(o);
-      const gate=G.ownerBoughtSeason===G.season?"One a season"
-        :(o.lockedUntil&&G.season<o.lockedUntil)?"Shut until S"+o.lockedUntil:null;
-      return `<div class="rowline"><span>${o.n} <small>· ${o.role} · ${o.share}% · worth ~${kfmt(fair)} · wants ~${kfmt(Math.round(fair*prem/1000)*1000)}</small></span>
+      const gate=G.ownerBoughtSeason===G.season?"Én pr. sæson"
+        :(o.lockedUntil&&G.season<o.lockedUntil)?"Lukket til S"+o.lockedUntil:null;
+      return `<div class="rowline"><span>${o.n} <small>· ${o.role} · ${o.share}% · værd ~${kfmt(fair)} · vil have ~${kfmt(Math.round(fair*prem/1000)*1000)}</small></span>
         ${gate?`<span class="sc" style="opacity:.65;flex-shrink:0">${gate}</span>`
-          :`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="buyOutOwner(${i})">Buy out…</button>`}</div>`;
-    }).join("")||'<div class="newsline">Sole owner. The kingdom is yours — cap-free and excuse-free.</div>'}
-    ${G.owners.length?`<div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Buy out one owner per season. Trust lowers the price; a losing club is cheapest.</div>`:""}</div>`:"")
-  +(tab==="board"?`<div class="card"><div class="kick" style="margin-bottom:4px">Partners & staff</div>
-    ${G.sponsor?`<div class="rowline"><span>${G.sponsor.n} <small>· main · ${G.sponsor.seasonsLeft} season${G.sponsor.seasonsLeft===1?"":"s"} left${G.sponsor.demand?" · "+G.sponsor.demand:""}</small></span><span class="amt num">${kfmt(G.sponsor.per)}/W</span></div>
-    <div class="rowline"><span>Sponsor bonus <small>· hear out their 'big idea'</small></span><button class="abtn comm" onclick="sponsorBoost()" ${G.sponsorBoost?"disabled style='opacity:.4'":""}>▶ +${kfmt(BAL.sponsor.boost)} <span style="font-size:8px">AD</span></button></div>`
-    :`<div class="rowline"><span>No main sponsor <small>· the shirt is naked — offers arrive in your inbox</small></span><span class="amt num" style="color:var(--muted)">£0/W</span></div>`}
+          :`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="buyOutOwner(${i})">Køb ud…</button>`}</div>`;
+    }).join("")||'<div class="newsline">Eneejer. Kongeriget er dit — uden loft og uden undskyldninger.</div>'}
+    ${G.owners.length?`<div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Køb én medejer ud pr. sæson. Tillid sænker prisen; en tabende klub er billigst.</div>`:""}</div>`:"")
+  +(tab==="board"?`<div class="card"><div class="kick" style="margin-bottom:4px">Partnere & stab</div>
+    ${G.sponsor?`<div class="rowline"><span>${G.sponsor.n} <small>· hovedsponsor · ${G.sponsor.seasonsLeft} sæson${G.sponsor.seasonsLeft===1?"":"er"} igen${G.sponsor.demand?" · "+G.sponsor.demand:""}</small></span><span class="amt num">${kfmt(G.sponsor.per)}/U</span></div>
+    <div class="rowline"><span>Sponsorbonus <small>· hør deres 'store idé'</small></span><button class="abtn comm" onclick="sponsorBoost()" ${G.sponsorBoost?"disabled style='opacity:.4'":""}>▶ +${kfmt(BAL.sponsor.boost)} <span style="font-size:8px">AD</span></button></div>`
+    :`<div class="rowline"><span>Ingen hovedsponsor <small>· trøjen er nøgen — tilbud lander i indbakken</small></span><span class="amt num" style="color:var(--muted)">£0/W</span></div>`}
     <div class="rowline"><span>${G.coach.n} <small>· gaffer · ${G.coach.style}</small></span></div>
     <div class="statchips" style="margin-top:2px"><span class="sc">TAC <b>${G.coach.tac}</b></span><span class="sc">MAN <b>${G.coach.man}</b></span><span class="sc">DEV <b>${G.coach.dev}</b></span><span class="sc">OVR <b>${coachOvr(G.coach)}</b></span></div>
-    ${(G.loans||[]).length?`<div class="rowline"><span>Bank loans <small>· ${G.loans.length} open, ${loansOwed()>0?kfmt(loansOwed())+" still owed":""}</small></span><span class="amt num" style="color:#E07A6A">−${kfmt((G.loans||[]).reduce((a,l)=>a+l.perMD,0))}/MD</span></div>`:""}
-    ${G.fireSale?`<div class="rowline" style="border-left:3px solid #E07A6A;padding-left:8px"><span style="color:#E07A6A"><b>Administration · fire sale</b> <small>· sell or release ${kfmt(Math.max(0,G.fireSale.target-G.fireSale.done))}/week more within ${G.fireSale.left} matchday${G.fireSale.left===1?"":"s"}, or they choose</small></span><span class="amt num" style="color:#E07A6A">${kfmt(G.fireSale.done)}/${kfmt(G.fireSale.target)}</span></div>`:""}
-    <div class="rowline"><span>Borrow <small>· the bank will lend up to ${kfmt(loanHeadroom())} at ${pct(loanRate(Math.max(BAL.bank.minLoan,loanHeadroom())))}</small></span>${loanHeadroom()>=BAL.bank.minLoan?`<button class="abtn comm" style="padding:6px 10px;font-size:10.5px" onclick="openBank()">Talk to the bank</button>`:`<span class="num" style="color:var(--muted);font-size:11px">not while you owe this much</span>`}</div>
-    ${(G.commitments||[]).map(c=>`<div class="rowline"><span>${c.kind==="fee"?"Instalment":c.kind==="promo"?"Promotion clause":"Goal clause"} <small>· ${c.name.split(" ")[1]} → ${c.club} · ${c.seasonsLeft} season${c.seasonsLeft===1?"":"s"} left</small></span>
-      <span class="amt num" style="color:#E07A6A">−${kfmt(c.amt)}${c.kind==="fee"?"/yr":c.kind==="goals"?"/goal":""}</span></div>`).join("")}</div>
-  <div class="tifo"><div class="q">${fanQuote()}</div><div class="who">The Shed End · mood ${Math.round(G.fanMood)}/100</div>
+    ${(G.loans||[]).length?`<div class="rowline"><span>Banklån <small>· ${G.loans.length} åbne, ${loansOwed()>0?kfmt(loansOwed())+" skyldes stadig":""}</small></span><span class="amt num" style="color:#E07A6A">−${kfmt((G.loans||[]).reduce((a,l)=>a+l.perMD,0))}/kamp</span></div>`:""}
+    ${G.fireSale?`<div class="rowline" style="border-left:3px solid #E07A6A;padding-left:8px"><span style="color:#E07A6A"><b>Administration · brandudsalg</b> <small>· sælg eller frigiv ${kfmt(Math.max(0,G.fireSale.target-G.fireSale.done))}/uge mere inden for ${G.fireSale.left} kampdag${G.fireSale.left===1?"":"e"}, ellers vælger de</small></span><span class="amt num" style="color:#E07A6A">${kfmt(G.fireSale.done)}/${kfmt(G.fireSale.target)}</span></div>`:""}
+    <div class="rowline"><span>Lån <small>· banken låner op til ${kfmt(loanHeadroom())} til ${pct(loanRate(Math.max(BAL.bank.minLoan,loanHeadroom())))}</small></span>${loanHeadroom()>=BAL.bank.minLoan?`<button class="abtn comm" style="padding:6px 10px;font-size:10.5px" onclick="openBank()">Tal med banken</button>`:`<span class="num" style="color:var(--muted);font-size:11px">ikke mens du skylder så meget</span>`}</div>
+    ${(G.commitments||[]).map(c=>`<div class="rowline"><span>${c.kind==="fee"?"Rate":c.kind==="promo"?"Oprykningsklausul":"Målklausul"} <small>· ${c.name.split(" ")[1]} → ${c.club} · ${c.seasonsLeft} sæson${c.seasonsLeft===1?"":"er"} igen</small></span>
+      <span class="amt num" style="color:#E07A6A">−${kfmt(c.amt)}${c.kind==="fee"?"/år":c.kind==="goals"?"/mål":""}</span></div>`).join("")}</div>
+  <div class="tifo"><div class="q">${fanQuote()}</div><div class="who">The Shed End · humør ${Math.round(G.fanMood)}/100</div>
     <div class="bar" style="margin-top:9px"><i style="width:${G.fanMood}%"></i></div></div>`:"");
 }
 function fanQuote(){
@@ -5075,14 +5075,14 @@ function viewTable(){
   const bar=`<div class="modes" style="margin-bottom:10px">`+[0,1,2,3].map(x=>`<button class="${d===x?'on':''}" onclick="G.tableDiv=${x};render()">${G.divNames[x].replace("League ","L").replace("Premier Division","Prem")}</button>`).join("")+`</div>`;
   const rows=d===G.div?table()
     :G.worldRest.filter(c=>c.div===d).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||a.name.localeCompare(b.name)).map((c,i)=>({i:-1,n:c.name,pts:c.pts,gd:c.gd,pl:c.pl}));
-  return bar+`<div class="card"><div class="kick" style="margin-bottom:6px">${G.divNames[d]}${d===G.div?"":" · elsewhere in the pyramid"}</div>
-    <table><tr><th>#</th><th>Club</th><th class="r">Pl</th><th class="r">GD</th><th class="r">Pts</th></tr>
+  return bar+`<div class="card"><div class="kick" style="margin-bottom:6px">${G.divNames[d]}${d===G.div?"":" · andetsteds i pyramiden"}</div>
+    <table><tr><th>#</th><th>Klub</th><th class="r">K</th><th class="r">MF</th><th class="r">P</th></tr>
     ${rows.map((r,ix)=>{
       const zone=ix<2?'style="background:var(--acc)"':ix<6?'style="background:var(--comm)"':'style="background:transparent"';
       return `<tr class="${r.i===0?'me':''}"><td class="num">${ix+1}</td><td><span class="zonebar" ${zone}></span>${r.n}</td><td class="r num">${r.pl}</td><td class="r num">${r.gd}</td><td class="r num"><b>${r.pts}</b></td></tr>`;
     }).join("")}</table>
-    <div class="kick" style="margin-top:9px;font-size:9px"><span style="color:var(--acc)">▮</span> Direct promotion &nbsp; <span style="color:var(--comm)">▮</span> Playoffs (3–6)</div></div>
-    ${G.history.length?`<div class="card"><div class="kick" style="margin-bottom:4px">Club history</div>${G.history.map(hh=>`<div class="rowline"><span>Season ${hh.season} <small>· ${hh.div}</small></span><span>${ord(hh.pos)}${hh.promoted?" · PROMOTED ↑":""}</span></div>`).join("")}</div>`:""}`;
+    <div class="kick" style="margin-top:9px;font-size:9px"><span style="color:var(--acc)">▮</span> Direkte oprykning &nbsp; <span style="color:var(--comm)">▮</span> Playoffs (3–6)</div></div>
+    ${G.history.length?`<div class="card"><div class="kick" style="margin-bottom:4px">Klubbens historie</div>${G.history.map(hh=>`<div class="rowline"><span>Sæson ${hh.season} <small>· ${hh.div}</small></span><span>${ord(hh.pos)}${hh.promoted?" · OPRYKKET ↑":""}</span></div>`).join("")}</div>`:""}`;
 }
 
 /* ---------- modals ---------- */
@@ -5090,7 +5090,7 @@ function renderModal(){
   if(modal.type==="prematch"){
     const M=modal.match;
     return `<div class="overlay"><div class="sheet">
-      ${M.label?`<div class="biglabel">${M.label}</div>`:`<div class="kick">Matchday ${G.md+1} · ${M.home?"Home":"Away"}</div>`}
+      ${M.label?`<div class="biglabel">${M.label}</div>`:`<div class="kick">Kampdag ${G.md+1} · ${M.home?"Hjemme":"Ude"}</div>`}
       <h2>${M.home?G.club:M.opp} <span style="opacity:.4">v</span> ${M.home?M.opp:G.club}</h2>
       <p><b>${M.weather.n}</b> — ${M.weather.txt}.</p>
       ${(()=>{ // a thin squad plays short without ever saying so
@@ -5105,10 +5105,10 @@ function renderModal(){
                 ${cover<=0?"I've no one to put in. Same eleven again, and they know it."
                   :"I can change "+cover+", and then I'm out of bodies."} Get me a squad and I'll get you a season.</div>`
             : "";
-          return moan+(out.length?`<div class="why"><b>Unavailable:</b> ${out.map(p=>p.name.split(" ")[1]+(p.inj?" (injured)":" (suspended)")).join(", ")}. The gaffer has eleven, just about.</div>`:"");
+          return moan+(out.length?`<div class="why"><b>Ude:</b> ${out.map(p=>p.name.split(" ")[1]+(p.inj?" (skadet)":" (karantæne)")).join(", ")}. Gafferen har elleve, lige akkurat.</div>`:"");
         }
         return `<div class="why" style="border-left-color:rgba(224,90,74,.6);background:rgba(224,90,74,.09)">
-          <b>You cannot field a full eleven.</b> Only ${xi.length} fit players in the best shape available${out.length?" — "+out.map(p=>p.name.split(" ")[1]).join(", ")+" are out":""}. The team plays short today, and it will show.</div>`;
+          <b>Du kan ikke stille elleve mand.</b> Kun ${xi.length} kampklare i bedst mulige form${out.length?" — "+out.map(p=>p.name.split(" ")[1]).join(", ")+" er ude":""}. Holdet spiller i undertal i dag, og det vil kunne ses.</div>`;
       })()}
       ${(()=>{ // the protest ladder is loudest — or quietest — at home
         if(!M.home||protestLevel()<1)return "";
@@ -5119,24 +5119,24 @@ function renderModal(){
         return `<div class="why" style="border-left-color:rgba(224,90,74,.6);background:rgba(224,90,74,.09)">${txt}</div>`;
       })()}
       <div class="dlg"><div class="iav g">GM</div><div class="bubble">${gafferRead(M)}</div></div>
-      <div class="kick" style="margin-top:14px">The gaffer awaits your word</div>
+      <div class="kick" style="margin-top:14px">Gafferen venter på dit ord</div>
       ${Object.entries(ORDERS).map(([k,o])=>{
         const odds=gafferAcceptOdds(k);
         const pct_=Math.round(odds*100);
-        return `<button class="abtn ${k==='win'?'comm':''}" onclick="giveOrder('${k}',false)" style="text-align:left"><b>${o.n}</b> — ${o.txt}${k==="free"?"":`<div class="kick" style="font-size:9px;margin-top:3px;opacity:.75">he goes along with this ${pct_}% of the time</div>`}</button>`;
+        return `<button class="abtn ${k==='win'?'comm':''}" onclick="giveOrder('${k}',false)" style="text-align:left"><b>${o.n}</b> — ${o.txt}${k==="free"?"":`<div class="kick" style="font-size:9px;margin-top:3px;opacity:.75">han retter sig efter det ${pct_}% af gangene</div>`}</button>`;
       }).join("")}
-      <div class="why" style="font-size:11px">You tell him what the afternoon is for; he picks the shape. Chasing a win burns legs and books cards.${G.gafferPatience<35?` <b>He's not in the mood to be told.</b>`:""}</div>
+      <div class="why" style="font-size:11px">Du siger hvad eftermiddagen skal bruges til; han vælger opstillingen. At jagte sejren brænder ben og koster kort.${G.gafferPatience<35?` <b>Han er ikke i humør til at få besked.</b>`:""}</div>
       <div style="display:flex;gap:8px">
-        <button class="abtn ghost" style="flex:1" onclick="giveOrder('win',true)">Insist on the win <small style="opacity:.7">— costs you with him</small></button>
+        <button class="abtn ghost" style="flex:1" onclick="giveOrder('win',true)">Insistér på sejren <small style="opacity:.7">— koster hos ham</small></button>
       </div>
-      ${M.isPlayoff?"":`<button class="abtn ghost" onclick="prematchBack()">‹ Tilbage <small style="opacity:.7">— nothing has kicked off yet</small></button>`}
+      ${M.isPlayoff?"":`<button class="abtn ghost" onclick="prematchBack()">‹ Tilbage <small style="opacity:.7">— intet er fløjtet i gang endnu</small></button>`}
     </div></div>`;
   }
   if(modal.type==="ticker"){
     const M=modal.match;
     return `<div class="overlay"><div class="sheet tickwrap" id="tick">
       ${M.label?`<div class="biglabel">${M.label}</div>`:""}
-      <div class="kick" style="text-align:center">${M.weather.n} · ${APPROACHES[M.approach].n}${M.order&&M.order!=="free"?(M.obeyed?" · as asked":" · his call"):""}</div>
+      <div class="kick" style="text-align:center">${M.weather.n} · ${APPROACHES[M.approach].n}${M.order&&M.order!=="free"?(M.obeyed?" · som ønsket":" · hans valg"):""}</div>
       ${M.said?`<div class="dlg" style="margin:6px 12px 0"><div class="iav g">GM</div><div class="bubble" style="font-size:11.5px">${M.said}</div></div>`:""}
       <div class="tclock"><b class="num" id="tmin">0'</b></div>
       <div class="tscore">
@@ -5147,26 +5147,26 @@ function renderModal(){
       <div id="tht" style="display:none;margin-top:12px"></div>
       <div class="tev" id="tev"></div>
       <div id="tsummary" style="display:none"></div>
-      <button class="abtn ghost" id="tskip" onclick="skipTicker()">Skip ▸</button>
-      <button class="glowbtn" id="tdone" style="display:none" onclick="closeTicker()">Continue</button>
+      <button class="abtn ghost" id="tskip" onclick="skipTicker()">Spol ▸</button>
+      <button class="glowbtn" id="tdone" style="display:none" onclick="closeTicker()">Videre</button>
     </div></div>`;
   }
   if(modal.type==="nego"){
     const n=nego;
     const mr=n.maxRounds||3;
-    const head=n.renewal?`Renewal talks · ${n.p.years<=1?"FINAL YEAR — his leverage":"contract running"} · round ${Math.min(n.cround+1,mr)}/${mr}`
-      :n.stage==="fee"?`Fee negotiation · ${n.agent.n} · round ${Math.min(n.round+1,mr)}/${mr}`:`Contract talks · ${n.agent.n} · round ${Math.min(n.cround+1,mr)}/${mr}`;
+    const head=n.renewal?`Forlængelse · ${n.p.years<=1?"SIDSTE ÅR — hans kort":"kontrakt løber"} · runde ${Math.min(n.cround+1,mr)}/${mr}`
+      :n.stage==="fee"?`Prisforhandling · ${n.agent.n} · runde ${Math.min(n.round+1,mr)}/${mr}`:`Kontraktforhandling · ${n.agent.n} · runde ${Math.min(n.cround+1,mr)}/${mr}`;
     const regTake=n.stage==="fee"?(n.feeMin<n.p.value*1.02?"“Smells like a bargain, chairman.”":n.feeMin>n.p.value*1.12?"“They're at the high end. Just so you know.”":"“Fair price, give or take.”"):null;
     let body="";
     if(n.doneDeal){
       body=`<div class="card" style="margin-top:12px">
-        ${n.freeAgent?"":`<div class="rowline"><span>Transfer fee</span><span class="amt num">${kfmt(n.agreedFee)}</span></div>`}
-        <div class="rowline"><span>Contract</span><span class="amt num">${n.years} year${n.years>1?"s":""}</span></div>
-        <div class="rowline"><span>Wages</span><span class="amt num">${kfmt(n.wageOffer)}/w</span></div>
-        <div class="rowline"><span>Promised role</span><span class="amt">${ROLES[n.role].n}</span></div></div>
-        <button class="glowbtn" onclick="negoFinish()">Sign him ✍</button>`;
+        ${n.freeAgent?"":`<div class="rowline"><span>Transfersum</span><span class="amt num">${kfmt(n.agreedFee)}</span></div>`}
+        <div class="rowline"><span>Kontrakt</span><span class="amt num">${n.years} år</span></div>
+        <div class="rowline"><span>Løn</span><span class="amt num">${kfmt(n.wageOffer)}/u</span></div>
+        <div class="rowline"><span>Lovet rolle</span><span class="amt">${ROLES[n.role].n}</span></div></div>
+        <button class="glowbtn" onclick="negoFinish()">Skriv under ✍</button>`;
     }else if(n.dead){
-      body=`<button class="abtn ghost" onclick="negoFinish()">Walk away</button>`;
+      body=`<button class="abtn ghost" onclick="negoFinish()">Gå din vej</button>`;
     }else if(n.stage==="fee"){
       body=`<div class="stepper">
           <button onclick="nego.fee=Math.max(1000,nego.fee-10000);render()" title="−${kfmt(10000)}">‹‹</button>
@@ -5175,32 +5175,32 @@ function renderModal(){
           <button onclick="nego.fee+=1000;render()" title="+${kfmt(1000)}">›</button>
           <button onclick="nego.fee+=10000;render()" title="+${kfmt(10000)}">››</button></div>
         <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £1,000 · ‹‹ ›› = £10,000</div>
-        <button class="glowbtn" onclick="negoSubmit()">Offer ${kfmt(n.fee)}</button>
-        ${!n.finalUsed?`<button class="abtn comm" onclick="negoSubmit(true)">⚡ FINAL OFFER · ${kfmt(n.fee)} — instant yes/no</button>`:""}
-        <button class="abtn ghost" onclick="negoAbort()">Not today</button>`;
+        <button class="glowbtn" onclick="negoSubmit()">Byd ${kfmt(n.fee)}</button>
+        ${!n.finalUsed?`<button class="abtn comm" onclick="negoSubmit(true)">⚡ SIDSTE BUD · ${kfmt(n.fee)} — ja/nej med det samme</button>`:""}
+        <button class="abtn ghost" onclick="negoAbort()">Ikke i dag</button>`;
     }else{
       const seen=demandVisible();
       const sub=v=>seen?`<br><span style="font-size:10px;opacity:.75" class="num">${kfmt(v)}</span>`:"";
-      body=`<div class="kick" style="margin-top:14px">Contract length${seen?` <span style="font-size:9px;text-transform:none">· longer deals come cheaper per week</span>`:""}</div>
-        <div class="modes" style="margin-top:8px">${[1,2,3,4].map(y=>`<button class="${n.years===y?'on':''}" onclick="nego.years=${y};render()">${y} yr${sub(wageDemandFor(y,n.role))}</button>`).join("")}</div>
-        <div class="kick" style="margin-top:12px">Promised playing time${seen?` <span style="font-size:9px;text-transform:none">· status is worth money to him</span>`:""}</div>
+      body=`<div class="kick" style="margin-top:14px">Kontraktlængde${seen?` <span style="font-size:9px;text-transform:none">· længere aftaler er billigere pr. uge</span>`:""}</div>
+        <div class="modes" style="margin-top:8px">${[1,2,3,4].map(y=>`<button class="${n.years===y?'on':''}" onclick="nego.years=${y};render()">${y} år${sub(wageDemandFor(y,n.role))}</button>`).join("")}</div>
+        <div class="kick" style="margin-top:12px">Lovet spilletid${seen?` <span style="font-size:9px;text-transform:none">· status er penge værd for ham</span>`:""}</div>
         <div class="modes" style="margin-top:8px">${Object.entries(ROLES).map(([k,r])=>`<button class="${n.role===k?'on':''}" onclick="nego.role='${k}';render()">${r.n}${sub(wageDemandFor(n.years,k))}</button>`).join("")}</div>
-        <div class="why" style="font-size:11px"><b>${ROLES[n.role].n}:</b> ${n.role==="key"?`cheapest on the wage, and a standing promise — start him in ${pct(BAL.role.keyShare)} of the season or his agent, his confidence and the boardroom all notice.`:n.role==="pro"?`dearest on the wage, and only for the young: a boy under ${BAL.role.proAgeMax} who plays ${pct(BAL.role.proShare)} of the season develops a year faster.`:`promises nothing and demands nothing. The price of not being tied to anything.`}</div>
-        <div class="kick" style="margin-top:12px">Weekly wage</div>
+        <div class="why" style="font-size:11px"><b>${ROLES[n.role].n}:</b> ${n.role==="key"?`billigst på lønnen, og et stående løfte — start ham i ${pct(BAL.role.keyShare)} af sæsonen, ellers lægger hans agent, hans selvtillid og bestyrelsen alle mærke til det.`:n.role==="pro"?`dyrest på lønnen, og kun for de unge: en dreng under ${BAL.role.proAgeMax} der spiller ${pct(BAL.role.proShare)} af sæsonen udvikler sig et år hurtigere.`:`lover ingenting og kræver ingenting. Prisen for ikke at være bundet af noget.`}</div>
+        <div class="kick" style="margin-top:12px">Ugeløn</div>
         <div class="stepper">
           <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-500);render()" title="−${kfmt(500)}">‹‹</button>
           <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-50);render()" title="−${kfmt(50)}">‹</button>
-          <span class="val num" style="font-size:24px">${kfmt(n.wageOffer)}/w</span>
+          <span class="val num" style="font-size:24px">${kfmt(n.wageOffer)}/u</span>
           <button onclick="nego.wageOffer+=50;render()" title="+${kfmt(50)}">›</button>
           <button onclick="nego.wageOffer+=500;render()" title="+${kfmt(500)}">››</button></div>
         <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £50 · ‹‹ ›› = £500</div>
         ${(()=>{
-          if(!seen)return `<div class="why"><b>He hasn't named his number.</b> Contract length and the role you promise both move it — make an offer and his agent will tell you how far off you are.</div>`;
+          if(!seen)return `<div class="why"><b>Han har ikke nævnt sit tal.</b> Kontraktlængde og den rolle du lover flytter det begge — læg et bud, så siger hans agent hvor langt du er fra.</div>`;
           const d=wageDemand();
           const short=d-n.wageOffer;
-          return `<div class="why"><b>On ${n.years} year${n.years>1?"s":""} as ${ROLES[n.role].n.toLowerCase()}</b> he expects <b class="num">~${kfmt(d)}/w</b>.
-            ${short<=Math.round(d*0.03)?`Your <b class="num">${kfmt(n.wageOffer)}</b> should do it.`
-              :`Your <b class="num">${kfmt(n.wageOffer)}</b> is about <b class="num">${kfmt(short)}</b> short — or change the terms above.`}</div>`;
+          return `<div class="why"><b>På ${n.years} år som ${ROLES[n.role].n.toLowerCase()}</b> forventer han <b class="num">~${kfmt(d)}/u</b>.
+            ${short<=Math.round(d*0.03)?`Dine <b class="num">${kfmt(n.wageOffer)}</b> burde gøre det.`
+              :`Dine <b class="num">${kfmt(n.wageOffer)}</b> er cirka <b class="num">${kfmt(short)}</b> for lidt — eller skru på vilkårene ovenfor.`}</div>`;
         })()}
         ${(()=>{
           // the price is agreed; how you PAY it is the second negotiation
@@ -5209,26 +5209,26 @@ function renderModal(){
           const plan=n.payPlan||1,cl=n.clause||null,t=dealTerms(fee,plan,cl);
           const planBtn=(v,label)=>`<button class="${plan===v?'on':''}" onclick="nego.payPlan=${v};render()">${label}</button>`;
           const clBtn=(v,label)=>`<button class="${cl===v?'on':''}" onclick="nego.clause=${v===null?"null":"'"+v+"'"};render()">${label}</button>`;
-          return `<div class="kick" style="margin-top:14px">How you pay <span style="font-size:9px;text-transform:none">· agreed price ${kfmt(fee)}</span></div>
-            <div class="modes" style="margin-top:8px">${planBtn(1,"Cash")}${planBtn(2,"2 yr")}${planBtn(3,"3 yr")}${planBtn(4,"4 yr")}</div>
-            <div class="kick" style="margin-top:12px">Sweeteners <span style="font-size:9px;text-transform:none">· move the risk into the future</span></div>
-            <div class="modes" style="margin-top:8px">${clBtn(null,"None")}${clBtn("promo","On promotion")}${clBtn("goals","Per goal")}</div>
-            <div class="why"><b>Today: ${kfmt(t.down)}.</b>
-              ${t.plan>1?" Then "+kfmt(t.perSeason)+" at each of the next "+(t.plan-1)+" season ends — they want "+Math.round(t.sur*100)+"% for waiting.":""}
-              ${t.clause==="promo"?" They take "+Math.round(BAL.deal.promoDiscount*100)+"% off now, and "+kfmt(t.promo)+" if you go up within "+BAL.deal.promoSeasons+" seasons.":""}
-              ${t.clause==="goals"?" They take "+Math.round(BAL.deal.goalsDiscount*100)+"% off now, and "+kfmt(t.perGoal)+" for every league goal he scores over "+BAL.deal.goalsSeasons+" seasons.":""}
-              ${t.plan>1||t.clause?" You are buying above your means and binding a chairman who isn't in the room yet — namely you.":" Nothing owed after tonight."}</div>`;
+          return `<div class="kick" style="margin-top:14px">Sådan betaler du <span style="font-size:9px;text-transform:none">· aftalt pris ${kfmt(fee)}</span></div>
+            <div class="modes" style="margin-top:8px">${planBtn(1,"Kontant")}${planBtn(2,"2 år")}${planBtn(3,"3 år")}${planBtn(4,"4 år")}</div>
+            <div class="kick" style="margin-top:12px">Sødemidler <span style="font-size:9px;text-transform:none">· skub risikoen ud i fremtiden</span></div>
+            <div class="modes" style="margin-top:8px">${clBtn(null,"Ingen")}${clBtn("promo","Ved oprykning")}${clBtn("goals","Pr. mål")}</div>
+            <div class="why"><b>I dag: ${kfmt(t.down)}.</b>
+              ${t.plan>1?" Derefter "+kfmt(t.perSeason)+" ved hvert af de næste "+(t.plan-1)+" sæsonskift — de vil have "+Math.round(t.sur*100)+"% for at vente.":""}
+              ${t.clause==="promo"?" De giver "+Math.round(BAL.deal.promoDiscount*100)+"% rabat nu, og "+kfmt(t.promo)+" hvis I rykker op inden for "+BAL.deal.promoSeasons+" sæsoner.":""}
+              ${t.clause==="goals"?" De giver "+Math.round(BAL.deal.goalsDiscount*100)+"% rabat nu, og "+kfmt(t.perGoal)+" for hvert ligamål han scorer over "+BAL.deal.goalsSeasons+" sæsoner.":""}
+              ${t.plan>1||t.clause?" Du køber over evne og binder en formand der ikke er i lokalet endnu — nemlig dig.":" Intet skyldes efter i aften."}</div>`;
         })()}
-        <div class="kick" style="text-align:center;margin-top:8px;font-size:9px">Wage budget: ${kfmt(G.squad.reduce((s,p)=>s+p.wage,0))} used of ${kfmt(G.wageCap)}/w cap</div>
-        <button class="glowbtn" onclick="negoSubmit()">Offer terms</button>
-        ${!n.finalUsed?`<button class="abtn comm" onclick="negoSubmit(true)">⚡ FINAL OFFER — instant yes/no</button>`:""}
-        <button class="abtn ghost" onclick="negoAbort()">Not today</button>`;
+        <div class="kick" style="text-align:center;margin-top:8px;font-size:9px">Lønbudget: ${kfmt(G.squad.reduce((s,p)=>s+p.wage,0))} brugt af ${kfmt(G.wageCap)}/u loft</div>
+        <button class="glowbtn" onclick="negoSubmit()">Tilbyd vilkår</button>
+        ${!n.finalUsed?`<button class="abtn comm" onclick="negoSubmit(true)">⚡ SIDSTE BUD — ja/nej med det samme</button>`:""}
+        <button class="abtn ghost" onclick="negoAbort()">Ikke i dag</button>`;
     }
     return `<div class="overlay"><div class="sheet">
       <div class="kick">${head}</div>
       <h2>${n.p.name}</h2>
-      <p>${n.p.pos} · ATT ${n.p.att} · DEF ${n.p.def} · PHY ${n.p.phy} · age ${n.p.age}${n.p.from?" · from <b>"+n.p.from+"</b>":""}${n.p.gem?" · <b>Reg's gem</b>":""}${n.stage==="contract"&&n.agreedFee?` · fee agreed <b>${kfmt(n.agreedFee)}</b>`:""}</p>
-      ${regTake?`<p style="margin-top:4px"><span class="kick">Reg's take:</span> <b style="font-size:12.5px">${regTake}</b></p>`:""}
+      <p>${n.p.pos} · ATT ${n.p.att} · DEF ${n.p.def} · PHY ${n.p.phy} · ${n.p.age} år${n.p.from?" · fra <b>"+n.p.from+"</b>":""}${n.p.gem?" · <b>Regs fund</b>":""}${n.stage==="contract"&&n.agreedFee?` · pris aftalt <b>${kfmt(n.agreedFee)}</b>`:""}</p>
+      ${regTake?`<p style="margin-top:4px"><span class="kick">Regs vurdering:</span> <b style="font-size:12.5px">${regTake}</b></p>`:""}
       <div class="dlg"><div class="iav">${n.agent.av}</div><div class="bubble">${n.line}</div></div>
       ${body}
     </div></div>`;
@@ -5236,10 +5236,10 @@ function renderModal(){
   if(modal.type==="formalBid"){
     const p=modal.p;
     return `<div class="overlay"><div class="sheet">
-      <div class="kick">Formal bid · answer after next matchday</div>
+      <div class="kick">Formelt bud · svar efter næste kampdag</div>
       <h2>${p.name}</h2>
-      <p>${p.pos} · ATT ${p.att} · DEF ${p.def} · PHY ${p.phy} · age ${p.age} · est. ~${kfmt(Math.round(p.value*1.15))}</p>
-      <p>Cheaper than quick talks — but the fax is public. Rival clubs can counter-bid, and you might lose him.</p>
+      <p>${p.pos} · ATT ${p.att} · DEF ${p.def} · PHY ${p.phy} · ${p.age} år · vurderet ~${kfmt(Math.round(p.value*1.15))}</p>
+      <p>Billigere end straks-forhandling — men faxen er offentlig. Rivaler kan byde over, og du kan miste ham.</p>
       <div class="stepper">
         <button onclick="modal.amount=Math.max(1000,modal.amount-10000);render()" title="−${kfmt(10000)}">‹‹</button>
         <button onclick="modal.amount=Math.max(1000,modal.amount-1000);render()" title="−${kfmt(1000)}">‹</button>
@@ -5247,8 +5247,8 @@ function renderModal(){
         <button onclick="modal.amount+=1000;render()" title="+${kfmt(1000)}">›</button>
         <button onclick="modal.amount+=10000;render()" title="+${kfmt(10000)}">››</button></div>
       <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £1,000 · ‹‹ ›› = £10,000</div>
-      <button class="glowbtn" onclick="sendFormalBid()">Fax the bid ▸</button>
-      <button class="abtn ghost" onclick="modal=null;render()">Not today</button>
+      <button class="glowbtn" onclick="sendFormalBid()">Fax buddet ▸</button>
+      <button class="abtn ghost" onclick="modal=null;render()">Ikke i dag</button>
     </div></div>`;
   }
   if(modal.type==="deadline"){
@@ -5257,19 +5257,19 @@ function renderModal(){
     const card=(e,i)=>{
       if(e.kind==="heist"){
         const p=e.player,band=potBand(p);
-        return `<div class="card"><div class="rowline" style="border:none;padding-bottom:2px"><span class="kick" style="color:var(--comm)">${e.time} · one-day steal</span><span class="kick">${clubName(e.fromIdx)} · short of cash</span></div>
+        return `<div class="card"><div class="rowline" style="border:none;padding-bottom:2px"><span class="kick" style="color:var(--comm)">${e.time} · éndags-kup</span><span class="kick">${clubName(e.fromIdx)} · mangler penge</span></div>
           <div class="rowline"><span>${p.name} <small>· ${p.pos} · ${ovr(p)} ovr${band?" · "+potBandText(p):""}</small></span><span class="amt num">${kfmt(e.price)}</span></div>
-          ${e.done?`<div class="why">${e.outcome||"Passed -- you let this one go by."}</div>`:`<button class="abtn comm" onclick="dlHeistSign(${i})">Sign him · ${kfmt(e.price)}</button>`}</div>`;
+          ${e.done?`<div class="why">${e.outcome||"Forbi — du lod den her gå."}</div>`:`<button class="abtn comm" onclick="dlHeistSign(${i})">Hent ham · ${kfmt(e.price)}</button>`}</div>`;
       }
       if(e.kind==="panic"){
-        return `<div class="card"><div class="rowline" style="border:none;padding-bottom:2px"><span class="kick" style="color:var(--comm)">${e.time} · panic bid</span><span class="kick">${clubName(e.fromIdx)} are desperate</span></div>
+        return `<div class="card"><div class="rowline" style="border:none;padding-bottom:2px"><span class="kick" style="color:var(--comm)">${e.time} · panikbud</span><span class="kick">${clubName(e.fromIdx)} er desperate</span></div>
           <div class="rowline"><span>${e.name} <small>· ${e.pos} · ${e.ov} ovr</small></span><span class="amt num">${kfmt(e.bid)}</span></div>
-          ${e.done?`<div class="why">${e.outcome||"Passed -- you let this one go by."}</div>`:`<div class="boost"><button onclick="dlPanicAccept(${i})">Accept · ${kfmt(e.bid)}</button><button onclick="dlPanicReject(${i})">Hold firm</button>${e.pushed?"":`<button class="iap" onclick="dlPanicPush(${i})">Push for more</button>`}</div>${e.pushed?`<div class="kick" style="text-transform:none">${e.outcome||""}</div>`:""}`}</div>`;
+          ${e.done?`<div class="why">${e.outcome||"Forbi — du lod den her gå."}</div>`:`<div class="boost"><button onclick="dlPanicAccept(${i})">Tag imod · ${kfmt(e.bid)}</button><button onclick="dlPanicReject(${i})">Stå fast</button>${e.pushed?"":`<button class="iap" onclick="dlPanicPush(${i})">Pres for mere</button>`}</div>${e.pushed?`<div class="kick" style="text-transform:none">${e.outcome||""}</div>`:""}`}</div>`;
       }
       // poach
-      return `<div class="card"><div class="rowline" style="border:none;padding-bottom:2px"><span class="kick" style="color:var(--comm)">${e.time} · rival circling</span><span class="kick">${clubName(e.fromIdx)} want him</span></div>
+      return `<div class="card"><div class="rowline" style="border:none;padding-bottom:2px"><span class="kick" style="color:var(--comm)">${e.time} · rival kredser</span><span class="kick">${clubName(e.fromIdx)} vil have ham</span></div>
         <div class="rowline"><span>${e.name} <small>· ${e.pos} · ${e.ov} ovr</small></span><span class="amt num">${kfmt(e.offer)}</span></div>
-        ${e.done?`<div class="why">${e.outcome||"Passed -- you let this one go by."}</div>`:`<div class="boost"><button onclick="dlPoachHold(${i})">Hold him · ${kfmt(e.hold)}</button><button onclick="dlPoachLet(${i})">Let him go · ${kfmt(e.offer)}</button></div>`}</div>`;
+        ${e.done?`<div class="why">${e.outcome||"Forbi — du lod den her gå."}</div>`:`<div class="boost"><button onclick="dlPoachHold(${i})">Hold på ham · ${kfmt(e.hold)}</button><button onclick="dlPoachLet(${i})">Lad ham gå · ${kfmt(e.offer)}</button></div>`}</div>`;
     };
     // N6: a fullscreen rolling feed — only what has "arrived" so far, newest on top,
     // the clock ticking as each call lands. The rest come in when you let time pass.
@@ -5282,20 +5282,20 @@ function renderModal(){
     return `<div class="overlay"><div class="sheet" style="max-height:92vh">
       <div class="biglabel">⚡ DEADLINE DAY ⚡</div>
       <div class="tclock" style="margin:2px auto 6px"><b class="num">${clock}</b></div>
-      <div class="kick" style="text-align:center;margin-bottom:6px">${shown} of ${m.events.length} in · ${openCount?openCount+" live":"all settled"}</div>
+      <div class="kick" style="text-align:center;margin-bottom:6px">${shown} af ${m.events.length} inde · ${openCount?openCount+" åbne":"alt afgjort"}</div>
       ${feed}
       ${moreToCome
-        ?`<button class="glowbtn" onclick="dlAdvance()">Let the clock run ▸ <small style="opacity:.7">next call incoming</small></button>
-          <button class="abtn ghost" onclick="dlClose()">Slam the window shut &amp; play ▸</button>`
-        :`<button class="glowbtn" onclick="dlClose()">Window shut — play matchday ▸</button>`}
+        ?`<button class="glowbtn" onclick="dlAdvance()">Lad uret løbe ▸ <small style="opacity:.7">næste opkald på vej</small></button>
+          <button class="abtn ghost" onclick="dlClose()">Smæk vinduet i &amp; spil ▸</button>`
+        :`<button class="glowbtn" onclick="dlClose()">Vinduet er lukket — spil kampdag ▸</button>`}
     </div></div>`;
   }
   if(modal.type==="bank"){
     return `<div class="overlay"><div class="sheet">
-      <div class="kick" style="color:#E07A6A">The bank is calling</div>
-      <h2>−${kfmt(Math.abs(G.balance)).slice(1)} in the red</h2>
-      <p>"We adore football, chairman. We adore repayments more." ${modal.canSell&&modal.canLoan?"Two ways out — pick one now:":"One way out:"}</p>
-      ${modal.canSell?`<button class="glowbtn" onclick="resolveBank(true)">Force-sell ${modal.best.name.split(" ")[1]} · ${kfmt(Math.round(modal.best.value*0.85))}</button>`:`<p><b>The squad is too thin to sell from.</b> The gaffer guards the door.</p>`}
+      <div class="kick" style="color:#E07A6A">Banken ringer</div>
+      <h2>−${kfmt(Math.abs(G.balance)).slice(1)} i minus</h2>
+      <p>"We adore football, chairman. We adore repayments more." ${modal.canSell&&modal.canLoan?"To veje ud — vælg én nu:":"Én vej ud:"}</p>
+      ${modal.canSell?`<button class="glowbtn" onclick="resolveBank(true)">Tvangssælg ${modal.best.name.split(" ")[1]} · ${kfmt(Math.round(modal.best.value*0.85))}</button>`:`<p><b>Truppen er for tynd at sælge fra.</b> Gafferen vogter døren.</p>`}
       ${modal.canLoan?(()=>{
         /* Knappen viste EN fast pakke -- +£50k, £5.5k/MD x 10 -- men
            resolveBank(false) tager reelt max(minLoan,min(room,loanCash)) til den
@@ -5304,8 +5304,8 @@ function renderModal(){
            tal af de samme kald som selve laanet, saa knappen taler sandt. */
         const amt=Math.max(BAL.bank.minLoan,Math.min(loanHeadroom(),BAL.bank.loanCash));
         const t=loanTerms(amt,BAL.bank.loanTerm);
-        return `<button class="abtn comm" onclick="resolveBank(false)">Emergency loan · +${kfmt(amt)} now, ${kfmt(t.perMD)}/MD × ${t.term} at ${pct(t.rate)}</button>`;
-      })():`<p><b>The loan line is spent.</b> One loan at a time, chairman.</p>`}
+        return `<button class="abtn comm" onclick="resolveBank(false)">Nødlån · +${kfmt(amt)} nu, ${kfmt(t.perMD)}/kamp × ${t.term} til ${pct(t.rate)}</button>`;
+      })():`<p><b>Lånelinjen er brugt.</b> Ét lån ad gangen, formand.</p>`}
     </div></div>`;
   }
   /* Trin 4: den eneste beslutning der findes naar der ikke er flere. Tallene
@@ -5318,43 +5318,43 @@ function renderModal(){
     const m=modal,t=loanTerms(m.amount,m.term);
     const owed=loansOwed();
     return `<div class="overlay"><div class="sheet">
-      <div class="kick">The bank · ${G.divNames[G.div]}</div>
-      <h2>Borrowing</h2>
+      <div class="kick">Banken · ${G.divNames[G.div]}</div>
+      <h2>Lån</h2>
       <p>"We have looked at the books, chairman.${(G.admins||0)?" All of them, including the interesting years.":""} Here is what the money costs you."</p>
-      <div class="kick" style="margin-top:10px">How much</div>
+      <div class="kick" style="margin-top:10px">Hvor meget</div>
       <div class="stepper">
         <button onclick="modal.amount=Math.max(${BAL.bank.minLoan},modal.amount-${BAL.bank.loanStep});render()">‹</button>
         <span class="val num" style="font-size:24px">${kfmt(m.amount)}</span>
         <button onclick="modal.amount=Math.min(modal.room,modal.amount+${BAL.bank.loanStep});render()">›</button></div>
-      <div class="kick" style="margin-top:8px">Over how many matchdays</div>
+      <div class="kick" style="margin-top:8px">Over hvor mange kampdage</div>
       <div class="stepper">
         <button onclick="modal.term=Math.max(${BAL.bank.minTermMD},modal.term-1);render()">‹</button>
         <span class="val num" style="font-size:24px">${t.term}</span>
         <button onclick="modal.term=Math.min(${BAL.bank.maxTermMD},modal.term+1);render()">›</button></div>
       <div class="card" style="margin-top:10px">
-        <div class="rowline"><span>Rate <small>· their read on the club</small></span><span class="amt num">${pct(t.rate)}</span></div>
-        <div class="rowline"><span>Every matchday</span><span class="amt num" style="color:#E07A6A">−${kfmt(t.perMD)}</span></div>
-        <div class="rowline"><span>Paid back in total</span><span class="amt num">${kfmt(t.total)}</span></div>
-        ${owed?`<div class="rowline"><span>Already owed</span><span class="num">${kfmt(owed)}</span></div>`:""}
-        <div class="rowline"><span>They will go to</span><span class="num">${kfmt(m.room)}</span></div></div>
-      <div class="why"><b>What this means:</b> the payment leaves the account every matchday, home or away, whether or not anybody came. A stand pays for itself out of the gate it creates — if the gate arrives. The rate is what they think of your division, your balance, what you already owe, and every administration on the record.</div>
-      <button class="glowbtn" onclick="loanConfirm()">Sign for ${kfmt(m.amount)}</button>
-      <button class="abtn ghost" onclick="modal=null;render()">Not today</button>
+        <div class="rowline"><span>Rente <small>· deres vurdering af klubben</small></span><span class="amt num">${pct(t.rate)}</span></div>
+        <div class="rowline"><span>Hver kampdag</span><span class="amt num" style="color:#E07A6A">−${kfmt(t.perMD)}</span></div>
+        <div class="rowline"><span>Tilbagebetalt i alt</span><span class="amt num">${kfmt(t.total)}</span></div>
+        ${owed?`<div class="rowline"><span>Skyldes allerede</span><span class="num">${kfmt(owed)}</span></div>`:""}
+        <div class="rowline"><span>De går op til</span><span class="num">${kfmt(m.room)}</span></div></div>
+      <div class="why"><b>Hvad det betyder:</b> afdraget forlader kontoen hver kampdag, hjemme som ude, uanset om nogen kom. En tribune betaler sig selv af den gate den skaber — hvis gaten kommer. Renten er hvad de mener om din division, din kasse, hvad du allerede skylder, og hver administration på papiret.</div>
+      <button class="glowbtn" onclick="loanConfirm()">Skriv under på ${kfmt(m.amount)}</button>
+      <button class="abtn ghost" onclick="modal=null;render()">Ikke i dag</button>
     </div></div>`;
   }
   if(modal.type==="rescue"){
     const after=G.myShare-modal.share;
     return `<div class="overlay"><div class="sheet">
-      <div class="kick" style="color:#E07A6A">Nothing left to sell, no loan to take</div>
-      <h2>${modal.who} is offering</h2>
+      <div class="kick" style="color:#E07A6A">Intet at sælge, intet lån at tage</div>
+      <h2>${modal.who} byder ind</h2>
       <p>"${modal.role==="butcher"?"I have had a good year. Sausages, chairman. Sausages have been very good to me.":modal.role==="solicitor"?"I have consulted myself, and I am prepared to be reasonable.":"I have money and a pie empire. You have a football club and a problem."} ${kfmt(modal.cash)} into the account tonight. For ${modal.share}% of the club."</p>
       <div class="card">
-        <div class="rowline"><span>Into the account</span><span class="amt num" style="color:var(--acc)">+${kfmt(modal.cash)}</span></div>
-        <div class="rowline"><span>Your stake</span><span class="amt num">${G.myShare}% → <b style="color:${modal.fatal?"#E07A6A":(G.myShare>BAL.owners.majorityAt&&after<=BAL.owners.majorityAt)?"var(--comm)":"inherit"}">${after}%</b></span></div>
-        <div class="rowline"><span>You lose the club at</span><span class="num">${BAL.ladder.controlAt}%</span></div></div>
-      ${modal.fatal?`<div class="why" style="border-left-color:rgba(224,90,74,.6);background:rgba(224,90,74,.08)"><b>This one ends it.</b> Below ${BAL.ladder.controlAt}% you own nothing. The club is no longer yours.</div>`:(G.myShare>BAL.owners.majorityAt&&after<=BAL.owners.majorityAt)?`<div class="why" style="border-left-color:rgba(243,179,60,.6);background:rgba(243,179,60,.09)"><b>You drop to a minority.</b> You keep your seat and play on — but the board takes control of the dividend and can strip the club. Buy back above ${BAL.owners.majorityAt}% to take it back.</div>`:`<div class="why">The club survives the winter either way. The question is who owns it in the spring.</div>`}
-      <button class="glowbtn" onclick="rescueAccept()">Take the money · −${modal.share}%</button>
-      <button class="abtn ghost" onclick="rescueDecline()">Refuse · let the administrators in</button>
+        <div class="rowline"><span>Ind på kontoen</span><span class="amt num" style="color:var(--acc)">+${kfmt(modal.cash)}</span></div>
+        <div class="rowline"><span>Din andel</span><span class="amt num">${G.myShare}% → <b style="color:${modal.fatal?"#E07A6A":(G.myShare>BAL.owners.majorityAt&&after<=BAL.owners.majorityAt)?"var(--comm)":"inherit"}">${after}%</b></span></div>
+        <div class="rowline"><span>Du mister klubben ved</span><span class="num">${BAL.ladder.controlAt}%</span></div></div>
+      ${modal.fatal?`<div class="why" style="border-left-color:rgba(224,90,74,.6);background:rgba(224,90,74,.08)"><b>Den her afslutter det.</b> Under ${BAL.ladder.controlAt}% ejer du ingenting. Klubben er ikke længere din.</div>`:(G.myShare>BAL.owners.majorityAt&&after<=BAL.owners.majorityAt)?`<div class="why" style="border-left-color:rgba(243,179,60,.6);background:rgba(243,179,60,.09)"><b>Du falder til mindretal.</b> Du beholder sædet og spiller videre — men bestyrelsen tager udbyttet og kan klæde klubben af. Køb dig tilbage over ${BAL.owners.majorityAt}% for at tage det igen.</div>`:`<div class="why">Klubben overlever vinteren uanset. Spørgsmålet er hvem der ejer den til foråret.</div>`}
+      <button class="glowbtn" onclick="rescueAccept()">Tag pengene · −${modal.share}%</button>
+      <button class="abtn ghost" onclick="rescueDecline()">Afvis · luk administratorerne ind</button>
     </div></div>`;
   }
   /* Trin 5. Ikke en fejlskaerm -- en opgoerelse. Det er den, der goer at man
@@ -5362,28 +5362,28 @@ function renderModal(){
   if(modal.type==="eraOver"){
     const e=eraSummary();
     return `<div class="overlay"><div class="sheet">
-      <div class="kick">${G.club} · the end of it</div>
-      <h2>Your era</h2>
-      <p>${modal.who?`${modal.who} holds the majority now. `:""}You arrived with a solicitor's letter and an empty trophy cabinet. You leave with ${e.seasons} season${e.seasons===1?"":"s"} on the record and ${e.share}% of a football club.</p>
+      <div class="kick">${G.club} · slutningen på det</div>
+      <h2>Din æra</h2>
+      <p>${modal.who?`${modal.who} har flertallet nu. `:""}Du ankom med et advokatbrev og et tomt trofæskab. Du går med ${e.seasons} sæson${e.seasons===1?"":"er"} i bøgerne og ${e.share}% af en fodboldklub.</p>
       <div class="card">
-        <div class="rowline"><span>Seasons in charge</span><span class="amt num">${e.seasons}</span></div>
-        <div class="rowline"><span>Promotions</span><span class="amt num">${e.promotions}</span></div>
-        <div class="rowline"><span>Relegations</span><span class="amt num">${e.relegations}</span></div>
-        <div class="rowline"><span>Championships</span><span class="amt num">${e.titles}</span></div>
-        <div class="rowline"><span>Administrations</span><span class="amt num">${e.admins}</span></div>
-        ${e.best?`<div class="rowline"><span>Best finish</span><span class="amt">${ord(e.best.pos)} · ${e.best.div}</span></div>`:""}
-        <div class="rowline"><span>Peak club value</span><span class="amt num">${kfmt(e.peak)}</span></div>
-        <div class="rowline" style="border-top:1px solid rgba(255,255,255,.12)"><span><b>Your personal fortune</b></span><span class="amt num" style="color:var(--acc)">${kfmt(e.wealth)}</span></div>
-        <div class="rowline"><span>Where it ended</span><span class="amt">${e.div}</span></div></div>
-      <div class="why">You did not lose the club by losing matches. You sold it, a slice at a time, to keep it alive — and walked away with ${kfmt(e.wealth)} of your own. That is a different kind of story.</div>
-      <button class="glowbtn" onclick="newCareer()">Start again ▸</button>
+        <div class="rowline"><span>Sæsoner ved roret</span><span class="amt num">${e.seasons}</span></div>
+        <div class="rowline"><span>Oprykninger</span><span class="amt num">${e.promotions}</span></div>
+        <div class="rowline"><span>Nedrykninger</span><span class="amt num">${e.relegations}</span></div>
+        <div class="rowline"><span>Mesterskaber</span><span class="amt num">${e.titles}</span></div>
+        <div class="rowline"><span>Administrationer</span><span class="amt num">${e.admins}</span></div>
+        ${e.best?`<div class="rowline"><span>Bedste placering</span><span class="amt">${ord(e.best.pos)} · ${e.best.div}</span></div>`:""}
+        <div class="rowline"><span>Klubværdi på toppen</span><span class="amt num">${kfmt(e.peak)}</span></div>
+        <div class="rowline" style="border-top:1px solid rgba(255,255,255,.12)"><span><b>Din personlige formue</b></span><span class="amt num" style="color:var(--acc)">${kfmt(e.wealth)}</span></div>
+        <div class="rowline"><span>Hvor det endte</span><span class="amt">${e.div}</span></div></div>
+      <div class="why">Du mistede ikke klubben ved at tabe kampe. Du solgte den, en skive ad gangen, for at holde den i live — og gik derfra med ${kfmt(e.wealth)} af dine egne. Det er en anden slags historie.</div>
+      <button class="glowbtn" onclick="newCareer()">Begynd forfra ▸</button>
     </div></div>`;
   }
   if(modal.type==="interstitial"){
     return `<div class="overlay"><div class="sheet">
       <div class="kick">Monetisation placeholder</div>
       <div class="adbox"><b>INTERSTITIAL AD</b>Fuldskærmsannonce ville vises her<br>(hver 4. kampdag — føles pacingen fair?)</div>
-      <button class="glowbtn" onclick="modal=null;render()">Continue</button></div></div>`;
+      <button class="glowbtn" onclick="modal=null;render()">Videre</button></div></div>`;
   }
   if(modal.type==="rewarded"){
     const k=modal.reward;
@@ -5392,76 +5392,76 @@ function renderModal(){
       <div class="kick">Monetisation placeholder</div>
       <div class="adbox"><b>REWARDED VIDEO</b>30 sek. frivillig video ville afspilles her</div>
       <p>${txt}</p>
-      <button class="glowbtn" onclick="grantReward('${k}')">Simulate ad → claim</button>
-      <button class="abtn ghost" onclick="modal=null;render()">No thanks</button></div></div>`;
+      <button class="glowbtn" onclick="grantReward('${k}')">Simulér reklame → hent belønning</button>
+      <button class="abtn ghost" onclick="modal=null;render()">Nej tak</button></div></div>`;
   }
   if(modal.type==="seasonDone"){
     const promos=G.history.filter(h=>h.promoted).length;
     return `<div class="overlay"><div class="sheet">
-      <div class="biglabel">${modal.crown?"★ CHAMPIONS OF ENGLAND ★":"End of season "+(G.season-1)}</div>
-      <h2>${modal.crown?"You did it":modal.promoted?"PROMOTED!":"Season over"}</h2>
-      ${modal.crown?`<p>Great-uncle Aldous left you a club with an empty trophy cabinet and a haunted boardroom. It is not empty now.</p>
+      <div class="biglabel">${modal.crown?"★ ENGLANDS MESTRE ★":"Sæson "+(G.season-1)+" er slut"}</div>
+      <h2>${modal.crown?"I gjorde det":modal.promoted?"OPRYKNING!":"Sæsonen er slut"}</h2>
+      ${modal.crown?`<p>Grandonkel Aldous efterlod dig en klub med et tomt trofæskab og et hjemsøgt bestyrelseslokale. Det er ikke tomt nu.</p>
         <div class="card">
-          <div class="rowline"><span>League titles</span><span class="amt num">${G.titles}</span></div>
-          <div class="rowline"><span>Seasons in charge</span><span class="amt num">${G.history.length}</span></div>
-          <div class="rowline"><span>Promotions won</span><span class="amt num">${promos}</span></div>
-          <div class="rowline"><span>${G.club} Ground</span><span class="amt num">${G.capacity.toLocaleString("en-GB")} seats</span></div>
-          <div class="rowline"><span>Your stake</span><span class="amt num">${G.myShare}%</span></div>
-          <div class="rowline"><span>Club value</span><span class="amt num">${kfmt(clubValuation())}</span></div></div>
-        <p>The town has a team in the top flight and a chairman who built the stand they are standing in. Carry on as long as you like — the record book is still open.</p>`
-      :`<p>${modal.txt} Prize money: <b>${kfmt(modal.prize)}</b>.</p>`}
-      ${modal.promoted?`<p>Welcome to <b>${G.divNames[G.div]}</b>. The pitches have fewer molehills. The opponents, more teeth.</p>`:""}
+          <div class="rowline"><span>Mesterskaber</span><span class="amt num">${G.titles}</span></div>
+          <div class="rowline"><span>Sæsoner ved roret</span><span class="amt num">${G.history.length}</span></div>
+          <div class="rowline"><span>Oprykninger</span><span class="amt num">${promos}</span></div>
+          <div class="rowline"><span>${G.club} Ground</span><span class="amt num">${G.capacity.toLocaleString("en-GB")} pladser</span></div>
+          <div class="rowline"><span>Din andel</span><span class="amt num">${G.myShare}%</span></div>
+          <div class="rowline"><span>Klubværdi</span><span class="amt num">${kfmt(clubValuation())}</span></div></div>
+        <p>Byen har et hold i den bedste række og en formand der byggede den tribune de står på. Fortsæt så længe du vil — rekordbogen er stadig åben.</p>`
+      :`<p>${modal.txt} Præmiepenge: <b>${kfmt(modal.prize)}</b>.</p>`}
+      ${modal.promoted?`<p>Velkommen til <b>${G.divNames[G.div]}</b>. Banerne har færre muldvarpeskud. Modstanderne flere tænder.</p>`:""}
       <div class="kick" style="margin-top:12px">Monetisation placeholder</div>
-      <p style="font-size:12px"><b>TYCOON PRO · 49 kr.</b> — no ads · 3 save slots · full career history. <span style="opacity:.7">(Vises netop her, efter en stor sæsonafslutning.)</span></p>
-      <button class="glowbtn" onclick="modal=null;openBudgetMeeting()">Start season ${G.season} — to the boardroom ▸</button></div></div>`;
+      <p style="font-size:12px"><b>TYCOON PRO · 49 kr.</b> — ingen reklamer · 3 gemmepladser · fuld karrierehistorik. <span style="opacity:.7">(Vises netop her, efter en stor sæsonafslutning.)</span></p>
+      <button class="glowbtn" onclick="modal=null;openBudgetMeeting()">Start sæson ${G.season} — ind i bestyrelseslokalet ▸</button></div></div>`;
   }
   if(modal.type==="ownerLife"){
     const m=modal;
     const clubName=ix=>G.teams[ix]?G.teams[ix].name:"a rival";
-    const head={vanity:"The good life",charity:"A cause comes calling",rival:"A rival owner",scandal:"The press has a story"}[m.kind];
+    const head={vanity:"Det gode liv",charity:"En sag banker på",rival:"En rivaliserende ejer",scandal:"Pressen har en historie"}[m.kind];
     let body="",btns="";
     if(m.kind==="vanity"){
-      body=`Word reaches you that <b>${m.item}</b> is quietly for sale — <b>${kfmt(m.cost)}</b> of your own money. The kind of thing owners are photographed with.`;
-      btns=m.done?"":`<div class="boost"><button onclick="ownerLifeAct('buy')">Buy it · ${kfmt(m.cost)}</button><button onclick="ownerLifeAct('pass')">Pass</button></div>`;
+      body=`Rygtet siger at <b>${m.item}</b> er stille og roligt til salg — <b>${kfmt(m.cost)}</b> af dine egne penge. Den slags, ejere bliver fotograferet med.`;
+      btns=m.done?"":`<div class="boost"><button onclick="ownerLifeAct('buy')">Køb den · ${kfmt(m.cost)}</button><button onclick="ownerLifeAct('pass')">Lad den gå</button></div>`;
     }else if(m.kind==="charity"){
-      body=`<b>${m.cause[0].toUpperCase()+m.cause.slice(1)}</b> needs a benefactor. <b>${kfmt(m.cost)}</b> from your fortune would do it — and the town would know your name.`;
-      btns=m.done?"":`<div class="boost"><button onclick="ownerLifeAct('give')">Donate · ${kfmt(m.cost)}</button><button onclick="ownerLifeAct('decline')">Not now</button></div>`;
+      body=`<b>${m.cause[0].toUpperCase()+m.cause.slice(1)}</b> mangler en velgører. <b>${kfmt(m.cost)}</b> af din formue ville gøre det — og byen ville kende dit navn.`;
+      btns=m.done?"":`<div class="boost"><button onclick="ownerLifeAct('give')">Donér · ${kfmt(m.cost)}</button><button onclick="ownerLifeAct('decline')">Ikke nu</button></div>`;
     }else if(m.kind==="rival"){
-      body=`The owner of <b>${clubName(m.rivalIdx)}</b> calls you "a tourist with a chequebook" in the back pages. The room is watching how you take it.`;
-      btns=m.done?"":`<div class="boost"><button onclick="ownerLifeAct('clap')">Clap back <small>· a gamble</small></button><button onclick="ownerLifeAct('drink')">Buy him a drink · ${kfmt(m.drink)}</button><button onclick="ownerLifeAct('ignore')">Ignore it</button></div>`;
+      body=`Ejeren af <b>${clubName(m.rivalIdx)}</b> kalder dig "en turist med et checkhæfte" på bagsiderne. Lokalet ser på, hvordan du tager det.`;
+      btns=m.done?"":`<div class="boost"><button onclick="ownerLifeAct('clap')">Svar igen <small>· et sats</small></button><button onclick="ownerLifeAct('drink')">Giv ham en drink · ${kfmt(m.drink)}</button><button onclick="ownerLifeAct('ignore')">Ignorér det</button></div>`;
     }else{
-      body=`A tabloid has photographs and a headline ready. <b>${kfmt(m.pr)}</b> to your PR people would bury most of it; do nothing and it runs all week.`;
-      btns=m.done?"":`<div class="boost"><button onclick="ownerLifeAct('spin')">Spin it · ${kfmt(m.pr)}</button><button onclick="ownerLifeAct('ignore')">Let it run</button></div>`;
+      body=`En tabloid har fotografier og en overskrift klar. <b>${kfmt(m.pr)}</b> til dine PR-folk ville begrave det meste; gør du ingenting, kører den hele ugen.`;
+      btns=m.done?"":`<div class="boost"><button onclick="ownerLifeAct('spin')">Spin det · ${kfmt(m.pr)}</button><button onclick="ownerLifeAct('ignore')">Lad den køre</button></div>`;
     }
     return `<div class="overlay"><div class="sheet">
-      <div class="biglabel">${m.avatarLine||"Your life"}</div>
+      <div class="biglabel">${m.avatarLine||"Dit liv"}</div>
       <h2>${head}</h2>
-      <div class="card"><div class="rowline" style="border:none"><span>Your fortune</span><span class="amt num" style="color:var(--acc)">${kfmt(G.personalWealth||0)}</span></div>
-      <div class="rowline" style="border:none;padding-top:0"><span>Reputation</span><span class="amt">${reputationRead().label}</span></div></div>
+      <div class="card"><div class="rowline" style="border:none"><span>Din formue</span><span class="amt num" style="color:var(--acc)">${kfmt(G.personalWealth||0)}</span></div>
+      <div class="rowline" style="border:none;padding-top:0"><span>Omdømme</span><span class="amt">${reputationRead().label}</span></div></div>
       <p>${body}</p>
-      ${m.done?`<div class="why">${m.outcome}</div><button class="glowbtn" onclick="ownerLifeClose()">Onward ▸</button>`:btns}
+      ${m.done?`<div class="why">${m.outcome}</div><button class="glowbtn" onclick="ownerLifeClose()">Videre ▸</button>`:btns}
     </div></div>`;
   }
   if(modal.type==="dividend"){
     const m=modal,mine=Math.round((m.amount||0)*G.myShare/100),others=(m.amount||0)-mine;
     return `<div class="overlay"><div class="sheet">
-      <div class="biglabel">Season's end · the books</div>
-      <h2>${m.majority?"The dividend — your call":"The board takes its cut"}</h2>
+      <div class="biglabel">Sæsonens afslutning · bøgerne</div>
+      <h2>${m.majority?"Udbyttet — dit valg":"Bestyrelsen tager sit"}</h2>
       <div class="card">
-        <div class="rowline"><span>Club cash</span><span class="amt num">${kfmt(m.cash)}</span></div>
-        <div class="rowline"><span>Club value</span><span class="amt num">${kfmt(clubValuation())}</span></div>
-        <div class="rowline"><span>Your stake</span><span class="amt num">${G.myShare}%</span></div>
-        <div class="rowline"><span>Your wealth so far</span><span class="amt num">${kfmt(G.personalWealth||0)}</span></div></div>
+        <div class="rowline"><span>Klubbens kasse</span><span class="amt num">${kfmt(m.cash)}</span></div>
+        <div class="rowline"><span>Klubværdi</span><span class="amt num">${kfmt(clubValuation())}</span></div>
+        <div class="rowline"><span>Din andel</span><span class="amt num">${G.myShare}%</span></div>
+        <div class="rowline"><span>Din formue indtil nu</span><span class="amt num">${kfmt(G.personalWealth||0)}</span></div></div>
       ${m.majority
-        ?`<div class="kick" style="margin-top:10px">How much leaves the club?</div>
+        ?`<div class="kick" style="margin-top:10px">Hvor meget forlader klubben?</div>
           <div class="modes" style="margin-top:8px">
-            <button class="${m.amount===0?'on':''}" onclick="dividendSet(0)">Nothing</button>
-            <button onclick="dividendSet(0.35)">Modest</button>
-            <button onclick="dividendSet(0.7)">Big</button>
+            <button class="${m.amount===0?'on':''}" onclick="dividendSet(0)">Intet</button>
+            <button onclick="dividendSet(0.35)">Beskedent</button>
+            <button onclick="dividendSet(0.7)">Stort</button>
             <button onclick="dividendSet(1)">Max</button></div>
-          <div class="why"><b>${kfmt(m.amount||0)} out.</b> ${kfmt(mine)} to you (${G.myShare}%), ${kfmt(others)} to the co-owners. Money out is money the squad and the ground never see.</div>`
-        :`<div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.08)"><b>You are a minority owner.</b> The board voted a <b>${kfmt(m.forced)}</b> dividend. Your ${G.myShare}% — <b>${kfmt(mine)}</b> — is yours; the rest lines their pockets. Buy back above ${BAL.owners.majorityAt}% and the call is yours again.</div>`}
-      <button class="glowbtn" onclick="dividendConfirm()">${m.majority?(m.amount>0?"Pay it ▸":"Take nothing ▸"):"Noted ▸"}</button>
+          <div class="why"><b>${kfmt(m.amount||0)} ud.</b> ${kfmt(mine)} til dig (${G.myShare}%), ${kfmt(others)} til medejerne. Penge ud er penge truppen og stadion aldrig ser.</div>`
+        :`<div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.08)"><b>Du er mindretalsejer.</b> Bestyrelsen stemte et udbytte på <b>${kfmt(m.forced)}</b> igennem. Dine ${G.myShare}% — <b>${kfmt(mine)}</b> — er dine; resten går i deres lommer. Køb dig tilbage over ${BAL.owners.majorityAt}%, så er valget dit igen.</div>`}
+      <button class="glowbtn" onclick="dividendConfirm()">${m.majority?(m.amount>0?"Betal det ▸":"Tag ingenting ▸"):"Noteret ▸"}</button>
     </div></div>`;
   }
   if(modal.type==="budget"){
@@ -5475,30 +5475,31 @@ function renderModal(){
       const cheaper=seasonTixEstimate(Math.max(20,m.tixPrice-10));
       const dearer=seasonTixEstimate(m.tixPrice+10);
       const pastPeak=est.sold>0&&dearer.cash<=est.cash&&cheaper.cash>est.cash;
-      body=`<div class="kick" style="margin-top:10px">Season ticket price · one payment for the whole season</div>
+      body=`<div class="kick" style="margin-top:10px">Sæsonkortpris · én betaling for hele sæsonen</div>
         <div class="stepper">
           <button onclick="modal.tixPrice=Math.max(20,modal.tixPrice-10);render()" title="−${gbp(10)}">‹</button>
           <span class="val num" style="font-size:26px">£${m.tixPrice}</span>
           <button onclick="modal.tixPrice=Math.min(400,modal.tixPrice+10);render()" title="+${gbp(10)}">›</button></div>
-        <div class="kick" style="text-align:center;font-size:9px;margin-top:4px">A season at the turnstile costs ${kfmt(G.ticket*homeGames())} · ${homeGames()} home games</div>
+        <div class="kick" style="text-align:center;font-size:9px;margin-top:4px">En sæson ved lågen koster ${kfmt(G.ticket*homeGames())} · ${homeGames()} hjemmekampe</div>
         <div class="card" style="margin-top:10px">
-          <div class="rowline"><span>Holders sold <small>· estimate</small></span><span class="amt num">${est.sold.toLocaleString("en-GB")} <small style="color:var(--muted)">of ${Math.min(G.capacity,Math.round(townDemand())).toLocaleString("en-GB")} reachable</small></span></div>
-          <div class="rowline"><span>Cash in the bank <b>now</b></span><span class="amt num">+${kfmt(est.cash)}</span></div>
-          <div class="rowline"><span>Turnstile money given up <small>· per home game</small></span><span class="num" style="color:#E07A6A">−${kfmt(given)}</span></div></div>
-        ${est.sold===0?`<div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.08)"><b>Nobody is buying at that price.</b> Not one soul in this town. You will take every penny at the turnstile instead — if they turn up at all.</div>`
-          :pastPeak?`<div class="why" style="border-left-color:rgba(243,179,60,.6);background:rgba(243,179,60,.08)"><b>You are past the top of the curve.</b> Another tenner loses more holders than it gains in cash — you would take <b>${kfmt(dearer.cash)}</b> instead of ${kfmt(est.cash)}, and hand back the crowd as well.</div>`
+          <div class="rowline"><span>Solgte kort <small>· skøn</small></span><span class="amt num">${est.sold.toLocaleString("en-GB")} <small style="color:var(--muted)">af ${Math.min(G.capacity,Math.round(townDemand())).toLocaleString("en-GB")} inden for rækkevidde</small></span></div>
+          <div class="rowline"><span>Penge i kassen <b>nu</b></span><span class="amt num">+${kfmt(est.cash)}</span></div>
+          <div class="rowline"><span>Lågepenge du giver afkald på <small>· pr. hjemmekamp</small></span><span class="num" style="color:#E07A6A">−${kfmt(given)}</span></div></div>
+        ${est.sold===0?`<div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.08)"><b>Ingen køber til den pris.</b> Ikke én sjæl i denne by. Du tager i stedet hver en krone ved lågen — hvis de overhovedet dukker op.</div>`
+          :pastPeak?`<div class="why" style="border-left-color:rgba(243,179,60,.6);background:rgba(243,179,60,.08)"><b>Du er forbi kurvens top.</b> En tier mere mister flere kortholdere end den henter i kassen — du ville få <b>${kfmt(dearer.cash)}</b> i stedet for ${kfmt(est.cash)}, og aflevere publikum oveni.</div>`
           :""}
-        <div class="why"><b>What this means:</b> a holder pays once, then walks in free all season. Cheap seats mean money today and a guaranteed crowd for the atmosphere — but every holder is a turnstile that has stopped paying, and price it too high and they simply stop buying.</div>`;
+        <div class="why"><b>Hvad det betyder:</b> en kortholder betaler én gang og går gratis ind hele sæsonen. Billige kort er penge i dag og et garanteret publikum til atmosfæren — men hver kortholder er en tællelåge der er holdt op med at betale, og sætter du prisen for højt, holder de bare op med at købe.</div>`;
     }
     if(st===1){
       const j=m.jersey;
-      const why={classic:"Safe. The fans nod, merch sells steadily, nobody writes a letter to the Gazette.",
-                 modern:"A gamble worth taking: usually shifts more shirts than the classic, sometimes fewer.",
-                 wild:"A proper coin-flip. Iconic and merch goes through the roof — or a war crime that nobody buys."}[j];
-      body=`<div class="kick" style="margin-top:10px">This season's kit · sets merch income all season</div>
+      const why={classic:"Sikker. Fansene nikker, merchen sælger støt, ingen skriver læserbreve til Gazetten.",
+                 modern:"Et sats der er værd at tage: flytter som regel flere trøjer end klassikeren, nogle gange færre.",
+                 wild:"En ægte plat-eller-krone. Ikonisk og merchen ryger gennem taget — eller en krigsforbrydelse ingen køber."}[j];
+      const jname={classic:"Klassisk",modern:"Moderne",wild:"Vild"};
+      body=`<div class="kick" style="margin-top:10px">Sæsonens trøje · sætter merch-indtægten hele sæsonen</div>
         <div class="modes" style="margin-top:8px;flex-direction:column">
-          ${["classic","modern","wild"].map(x=>`<button class="${j===x?'on':''}" onclick="modal.jersey='${x}';render()">${x[0].toUpperCase()+x.slice(1)}</button>`).join("")}</div>
-        <div class="why"><b>What this means:</b> ${why||"Pick one — the kit multiplies every shirt sold on a matchday, for better or worse, until next summer."}</div>`;
+          ${["classic","modern","wild"].map(x=>`<button class="${j===x?'on':''}" onclick="modal.jersey='${x}';render()">${jname[x]}</button>`).join("")}</div>
+        <div class="why"><b>Hvad det betyder:</b> ${why||"Vælg én — trøjen ganger hver solgt trøje på en kampdag op, på godt og ondt, til næste sommer."}</div>`;
     }
     if(st===2){
       /* Pakke 19. Forventningsmoedet. Runde 1 er blind -- deres eget tal er
@@ -5506,98 +5507,97 @@ function renderModal(){
       const rows=G.teams.length+1;
       const settled=m.objAgreed!==null;
       const bold=settled&&m.objTheirs!==null?m.objTheirs-m.objAgreed:0;
-      body=`<div class="kick" style="margin-top:10px">Where do we finish? · ${G.divNames[G.div]}, ${rows} clubs</div>
+      body=`<div class="kick" style="margin-top:10px">Hvor ender vi? · ${G.divNames[G.div]}, ${rows} klubber</div>
         <div class="stepper">
-          <button onclick="if(modal.objAgreed===null){modal.objProposed=Math.max(1,modal.objProposed-1);render()}" ${settled?"disabled style='opacity:.4'":""} title="more ambitious">‹</button>
+          <button onclick="if(modal.objAgreed===null){modal.objProposed=Math.max(1,modal.objProposed-1);render()}" ${settled?"disabled style='opacity:.4'":""} title="mere ambitiøst">‹</button>
           <span class="val num" style="font-size:26px">top ${settled?m.objAgreed:m.objProposed}</span>
-          <button onclick="if(modal.objAgreed===null){modal.objProposed=Math.min(G.teams.length+1,modal.objProposed+1);render()}" ${settled?"disabled style='opacity:.4'":""} title="safer">›</button></div>
+          <button onclick="if(modal.objAgreed===null){modal.objProposed=Math.min(G.teams.length+1,modal.objProposed+1);render()}" ${settled?"disabled style='opacity:.4'":""} title="mere sikkert">›</button></div>
         ${m.objSaid?`<div class="card" style="margin-top:10px"><div class="newsline">${m.objSaid}</div></div>`:""}
-        ${!settled&&m.objTheirs===null?`<button class="glowbtn" style="margin-top:10px" onclick="objectivePropose()">Put it to them ▸</button>
-          <div class="why"><b>What this means:</b> they have a figure of their own, and they are not showing it yet. Promise more than they expect and the boardroom pays you for it — in trust, and in the bonus if you deliver. Promise less and it is easy money, right up until they decide you do not believe in the club either.</div>`:""}
+        ${!settled&&m.objTheirs===null?`<button class="glowbtn" style="margin-top:10px" onclick="objectivePropose()">Læg det på bordet ▸</button>
+          <div class="why"><b>Hvad det betyder:</b> de har deres eget tal, og de viser det ikke endnu. Lov mere end de forventer, og bestyrelsen betaler dig for det — i tillid, og i bonussen hvis du leverer. Lov mindre, og det er lette penge — lige indtil de beslutter at du heller ikke tror på klubben.</div>`:""}
         ${!settled&&m.objTheirs!==null?`<div style="display:flex;gap:8px;margin-top:10px">
-            <button class="glowbtn" style="flex:1;margin-top:0" onclick="objectiveSettle(true)">Take their top ${m.objTheirs}</button>
-            <button class="abtn ghost" style="flex:1" onclick="objectiveSettle(false)">Hold at top ${m.objProposed}</button></div>
-          <div class="why"><b>What this means:</b> take theirs and the season is harder and worth more. Hold yours and it is the season you asked for — but their shares get dearer, because a chairman who expects little of the club is not one they hand it to cheaply.</div>`:""}
+            <button class="glowbtn" style="flex:1;margin-top:0" onclick="objectiveSettle(true)">Tag deres top ${m.objTheirs}</button>
+            <button class="abtn ghost" style="flex:1" onclick="objectiveSettle(false)">Bliv på top ${m.objProposed}</button></div>
+          <div class="why"><b>Hvad det betyder:</b> tag deres, og sæsonen er hårdere og mere værd. Bliv på dit, og det er den sæson du bad om — men deres andele bliver dyrere, for en formand der forventer lidt af klubben, får den ikke billigt.</div>`:""}
         ${settled?`<div class="card" style="margin-top:10px">
-            <div class="rowline"><span>Agreed objective</span><span class="amt num">top ${m.objAgreed}</span></div>
-            <div class="rowline"><span>They had written</span><span class="amt num">top ${m.objTheirs}</span></div>
-            <div class="rowline"><span>Board's verdict at season's end</span><span class="num" style="color:${bold>0?"var(--acc)":bold<0?"#E07A6A":"inherit"}">${bold>0?"+"+(bold*BAL.owners.objectiveStake).toFixed(1)+" trust either way · bonus +"+pct(bold*BAL.owners.objectivePrize):bold<0?"their shares cost +"+pct(-bold*BAL.owners.objectiveTimid):"as usual"}</span></div></div>`:""}`;
+            <div class="rowline"><span>Aftalt målsætning</span><span class="amt num">top ${m.objAgreed}</span></div>
+            <div class="rowline"><span>De havde skrevet</span><span class="amt num">top ${m.objTheirs}</span></div>
+            <div class="rowline"><span>Bestyrelsens dom ved sæsonens slutning</span><span class="num" style="color:${bold>0?"var(--acc)":bold<0?"#E07A6A":"inherit"}">${bold>0?"+"+(bold*BAL.owners.objectiveStake).toFixed(1)+" tillid uanset · bonus +"+pct(bold*BAL.owners.objectivePrize):bold<0?"deres andele koster +"+pct(-bold*BAL.owners.objectiveTimid):"som normalt"}</span></div></div>`:""}`;
     }
     if(st===3){
       const est=seasonTixEstimate(m.tixPrice);
       const after=G.balance+est.cash;
       const wages=G.squad.reduce((s,p)=>s+p.wage,0);
       body=`<div class="card" style="margin-top:10px">
-          <div class="rowline"><span>Season tickets</span><span class="amt num">£${m.tixPrice} · ${est.sold.toLocaleString("en-GB")} holders</span></div>
-          <div class="rowline"><span>Kit</span><span class="amt">${m.jersey?m.jersey[0].toUpperCase()+m.jersey.slice(1):"Classic (default)"}</span></div>
-          <div class="rowline"><span><b>Working capital after tonight</b></span><span class="amt num" style="color:${after<0?"#E07A6A":"var(--acc)"}">${kfmt(after)}</span></div>
-          <div class="rowline"><span>Wage bill <small>· of ${kfmt(G.wageCap)} cap</small></span><span class="num">${kfmt(wages)}/w</span></div>
-          ${commitmentsOwed()?`<div class="rowline"><span>Signed away <small>· instalments &amp; clauses still to pay</small></span><span class="amt num" style="color:#E07A6A">−${kfmt(commitmentsOwed())}</span></div>`:""}</div>
-        ${G.myShare<100?(m.capMsg?`<p style="margin-top:10px"><b>${m.capMsg}</b></p>`:`<button class="abtn comm" onclick="askCapRaise()" ${G.capRaiseUsed?"disabled style='opacity:.4'":""}>Ask the co-owners to raise the wage cap <small>(once per season)</small></button>`):""}
-        <div class="why"><b>What this means:</b> this is your whole season's room for manoeuvre. Wages leave the bank <b>every matchday</b>, home or away — ${kfmt(wages*G.rounds)} across the ${G.rounds} of them. Objective: top ${G.objectivePos}.</div>`;
+          <div class="rowline"><span>Sæsonkort</span><span class="amt num">£${m.tixPrice} · ${est.sold.toLocaleString("en-GB")} holdere</span></div>
+          <div class="rowline"><span>Trøjen</span><span class="amt">${m.jersey?({classic:"Klassisk",modern:"Moderne",wild:"Vild"})[m.jersey]:"Klassisk (standard)"}</span></div>
+          <div class="rowline"><span><b>Råderum efter i aften</b></span><span class="amt num" style="color:${after<0?"#E07A6A":"var(--acc)"}">${kfmt(after)}</span></div>
+          <div class="rowline"><span>Lønsum <small>· af ${kfmt(G.wageCap)} loft</small></span><span class="num">${kfmt(wages)}/u</span></div>
+          ${commitmentsOwed()?`<div class="rowline"><span>Skrevet væk <small>· rater &amp; klausuler der stadig skal betales</small></span><span class="amt num" style="color:#E07A6A">−${kfmt(commitmentsOwed())}</span></div>`:""}</div>
+        ${G.myShare<100?(m.capMsg?`<p style="margin-top:10px"><b>${m.capMsg}</b></p>`:`<button class="abtn comm" onclick="askCapRaise()" ${G.capRaiseUsed?"disabled style='opacity:.4'":""}>Bed medejerne hæve lønloftet <small>(én gang pr. sæson)</small></button>`):""}
+        <div class="why"><b>Hvad det betyder:</b> det her er hele sæsonens råderum. Lønnen forlader kassen <b>hver kampdag</b>, hjemme som ude — ${kfmt(wages*G.rounds)} over alle ${G.rounds}. Målsætning: top ${G.objectivePos}.</div>`;
     }
     return `<div class="overlay"><div class="sheet">
-      <div class="biglabel">The Budget Meeting</div>
+      <div class="biglabel">Budgetmødet</div>
       <div class="bsteps">${dots}</div>
       <h2>${BUDGET_STEPS[st]}</h2>
-      <p style="font-size:12.5px">${st===0?`Trencher pours terrible coffee. Whitmore reads the frame aloud: wage cap <b>${kfmt(G.wageCap)}/w</b> · objective <b>top ${G.objectivePos}</b>. Then all eyes turn to you — one question at a time.`
-        :st===1?`Whitmore slides three kit mock-ups across the table. Trencher already has an opinion. Trencher always has an opinion.`
-        :st===2?`Marjorie leans in. "The ground, chairman. Nothing gets better here until the ground does."`
-        :st===3?`Trencher puts his cup down. "Right. The bit that matters. Where are we finishing?"`
-        :`Whitmore caps his pen. "Then that is the season, agreed and minuted."`}</p>
+      <p style="font-size:12.5px">${st===0?`Trencher skænker forfærdelig kaffe. Whitmore læser rammen højt: lønloft <b>${kfmt(G.wageCap)}/u</b> · målsætning <b>top ${G.objectivePos}</b>. Så vender alle øjne sig mod dig — ét spørgsmål ad gangen.`
+        :st===1?`Whitmore skubber tre trøjeudkast hen over bordet. Trencher har allerede en mening. Trencher har altid en mening.`
+        :st===2?`Trencher sætter koppen fra sig. "Godt. Det der betyder noget. Hvor ender vi?"`
+        :`Whitmore sætter hætten på pennen. "Så er det sæsonen, aftalt og ført til referat."`}</p>
       ${body}
       <div style="display:flex;gap:8px;margin-top:6px">
-        ${st>0?`<button class="abtn ghost" style="flex:0 0 34%" onclick="budgetBack()">‹ Back</button>`:""}
-        ${st<LAST?`<button class="glowbtn" style="flex:1;margin-top:0" onclick="budgetNext()">Next ▸</button>`
-          :`<button class="glowbtn" style="flex:1;margin-top:0" onclick="budgetConfirm()">Adjourn the meeting ▸</button>`}
+        ${st>0?`<button class="abtn ghost" style="flex:0 0 34%" onclick="budgetBack()">‹ Tilbage</button>`:""}
+        ${st<LAST?`<button class="glowbtn" style="flex:1;margin-top:0" onclick="budgetNext()">Næste ▸</button>`
+          :`<button class="glowbtn" style="flex:1;margin-top:0" onclick="budgetConfirm()">Hæv mødet ▸</button>`}
       </div>
     </div></div>`;
   }
   if(modal.type==="midway"){
     return `<div class="overlay"><div class="sheet">
-      <div class="biglabel">January · The Midway Meeting</div>
-      <h2>Half-time, chairman</h2>
+      <div class="biglabel">Januar · Midtvejsmødet</div>
+      <h2>Halvleg, formand</h2>
       <div class="dlg"><div class="iav">CO</div><div class="bubble">${modal.verdict}</div></div>
-      ${G.myShare<100&&!G.capRaiseUsed?`<button class="abtn comm" onclick="askCapRaise()">Request wage-cap raise</button>`:""}
+      ${G.myShare<100&&!G.capRaiseUsed?`<button class="abtn comm" onclick="askCapRaise()">Bed om højere lønloft</button>`:""}
       ${modal.capMsg?`<p style="margin-top:10px"><b>${modal.capMsg}</b></p>`:""}
-      <button class="glowbtn" onclick="midwayConfirm()">Back to work ▸</button>
+      <button class="glowbtn" onclick="midwayConfirm()">Tilbage til arbejdet ▸</button>
     </div></div>`;
   }
   if(modal.type==="sellChoice"){
     const p=byId(modal.pid);
-    if(!p)return `<div class="overlay"><div class="sheet"><h2>He's gone</h2><p>That player has left the club.</p><button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
+    if(!p)return `<div class="overlay"><div class="sheet"><h2>Han er væk</h2><p>Den spiller har forladt klubben.</p><button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
     return `<div class="overlay"><div class="sheet">
-      <div class="kick">Selling ${p.name.split(" ")[1]} — how?</div>
+      <div class="kick">Salg af ${p.name.split(" ")[1]} — hvordan?</div>
       <h2>${p.name}</h2>
-      <p>${p.pos} · ${ovr(p)} ovr · age ${p.age} · valued ~${kfmt(p.value)} · contract ${p.years}yr${p.traits.includes("localhero")?" · <b style='color:var(--comm)'>LOCAL HERO — he may refuse to leave, and the fans may never forgive</b>":""}</p>
-      <button class="abtn comm" onclick="quickRing(${modal.pid})" style="text-align:left"><b>Quick ring-around</b> — Reg finds bids NOW, but haste smells: ~10% lower offers</button>
-      <button class="abtn" onclick="listPlayer(${modal.pid})" style="text-align:left"><b>Put him on the list</b> — offers arrive by inbox over coming matchdays. Better prices, no guarantees — and he'll know (confidence −4)</button>
-      <button class="abtn ghost" onclick="modal=null;render()">Never mind</button>
+      <p>${p.pos} · ${ovr(p)} ovr · ${p.age} år · vurderet ~${kfmt(p.value)} · kontrakt ${p.years} år${p.traits.includes("localhero")?" · <b style='color:var(--comm)'>LOKAL HELT — han kan nægte at rejse, og fansene tilgiver måske aldrig</b>":""}</p>
+      <button class="abtn comm" onclick="quickRing(${modal.pid})" style="text-align:left"><b>Hurtig rundringning</b> — Reg finder bud NU, men hastværk lugter: ~10% lavere bud</button>
+      <button class="abtn" onclick="listPlayer(${modal.pid})" style="text-align:left"><b>Sæt ham på listen</b> — bud lander i indbakken over de kommende kampdage. Bedre priser, ingen garantier — og han opdager det (selvtillid −4)</button>
+      <button class="abtn ghost" onclick="modal=null;render()">Glem det</button>
     </div></div>`;
   }
   if(modal.type==="sell"){
     const p=byId(modal.pid);
-    if(!p)return `<div class="overlay"><div class="sheet"><h2>He's gone</h2><p>That player has left the club.</p><button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
+    if(!p)return `<div class="overlay"><div class="sheet"><h2>Han er væk</h2><p>Den spiller har forladt klubben.</p><button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
     return `<div class="overlay"><div class="sheet">
-      <div class="kick">The market for ${p.name.split(" ")[1]}</div>
+      <div class="kick">Markedet for ${p.name.split(" ")[1]}</div>
       <h2>${p.name}</h2>
-      <p>${p.pos} · ${ovr(p)} ovr · age ${p.age} · valued ~${kfmt(p.value)}${p.traits.includes("localhero")?" · <b style='color:var(--comm)'>LOCAL HERO — the Shed End will not forgive easily</b>":""}</p>
+      <p>${p.pos} · ${ovr(p)} ovr · ${p.age} år · vurderet ~${kfmt(p.value)}${p.traits.includes("localhero")?" · <b style='color:var(--comm)'>LOKAL HELT — The Shed End tilgiver ikke let</b>":""}</p>
       <div class="dlg"><div class="iav g">R</div><div class="bubble">${modal.line}</div></div>
       ${modal.buyers.filter(b=>!b.gone).map((b,bi)=>`<div class="card"><div class="rowline"><span>${b.club}</span><span class="amt num">${kfmt(b.bid)}</span></div>
-        <div class="actions"><button class="abtn" onclick="sellAccept(${modal.buyers.indexOf(b)})">Accept</button>
-        ${!b.pushed?`<button class="abtn comm" onclick="sellPush(${modal.buyers.indexOf(b)})">Push for more</button>`:""}</div></div>`).join("")}
-      <button class="abtn ghost" onclick="modal=null;render()">Keep him</button>
+        <div class="actions"><button class="abtn" onclick="sellAccept(${modal.buyers.indexOf(b)})">Tag imod</button>
+        ${!b.pushed?`<button class="abtn comm" onclick="sellPush(${modal.buyers.indexOf(b)})">Pres for mere</button>`:""}</div></div>`).join("")}
+      <button class="abtn ghost" onclick="modal=null;render()">Behold ham</button>
     </div></div>`;
   }
   if(modal.type==="ownerNego"){
     const o=G.owners[modal.i];
     return `<div class="overlay"><div class="sheet">
-      <div class="kick">Buyout talks · round ${Math.min(modal.round+1,3)}/3</div>
+      <div class="kick">Udkøbsforhandling · runde ${Math.min(modal.round+1,3)}/3</div>
       <h2>${o.n}</h2>
-      <p>${o.role} · holds <b>${o.share}%</b> · fair value ~${kfmt(modal.fair)} — but it's his life's work, and life's work carries a premium well above the ledger.</p>
+      <p>${o.role} · har <b>${o.share}%</b> · fair værdi ~${kfmt(modal.fair)} — men det er hans livsværk, og livsværk bærer en overpris et godt stykke over bogføringen.</p>
       <div class="dlg"><div class="iav">CO</div><div class="bubble">${modal.line}</div></div>
       <div class="why">${modal.why}</div>
-      <div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.07)">Three rounds. Walk away empty-handed — or insult him — and he won't take a meeting until <b>season ${G.season+BAL.owners.lockSeasons}</b>.</div>
+      <div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.07)">Tre runder. Gå tomhændet — eller fornærm ham — og han tager ikke et møde før <b>sæson ${G.season+BAL.owners.lockSeasons}</b>.</div>
       <div class="stepper">
         <button onclick="modal.offer=Math.max(5000,modal.offer-25000);render()" title="−${kfmt(25000)}">‹‹</button>
         <button onclick="modal.offer=Math.max(5000,modal.offer-5000);render()" title="−${kfmt(5000)}">‹</button>
@@ -5605,46 +5605,46 @@ function renderModal(){
         <button onclick="modal.offer+=5000;render()" title="+${kfmt(5000)}">›</button>
         <button onclick="modal.offer+=25000;render()" title="+${kfmt(25000)}">››</button></div>
       <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £5,000 · ‹‹ ›› = £25,000</div>
-      <button class="glowbtn" onclick="ownerNegoSubmit()">Offer ${kfmt(modal.offer)}</button>
-      <button class="abtn ghost" onclick="modal=null;render()">Another day</button>
+      <button class="glowbtn" onclick="ownerNegoSubmit()">Byd ${kfmt(modal.offer)}</button>
+      <button class="abtn ghost" onclick="modal=null;render()">En anden dag</button>
     </div></div>`;
   }
   if(modal.type==="facConfirm"){
     const f=FACS[modal.key];const d=FAC_DETAIL[modal.key];
     return `<div class="overlay"><div class="sheet">
-      <div class="kick">Before you sign, chairman</div>
+      <div class="kick">Før du skriver under, formand</div>
       <h2>${f.n}</h2>
       <div class="card">${d.fx.map(x=>`<div class="rowline"><span>✓ ${x}</span></div>`).join("")}
-        <div class="rowline"><span>Cost</span><span class="amt num">${kfmt(f.cost)}</span></div>
-        <div class="rowline"><span>Build time</span><span class="num">${d.md} matchday${d.md>1?"s":""}</span></div></div>
-      ${d.warn?`<p><b>The foreman adds:</b> "${d.warn}"</p>`:""}
-      <button class="glowbtn" onclick="facConfirm()">Build it · ${kfmt(f.cost)}</button>
-      <button class="abtn ghost" onclick="modal=null;render()">Think it over</button>
+        <div class="rowline"><span>Pris</span><span class="amt num">${kfmt(f.cost)}</span></div>
+        <div class="rowline"><span>Byggetid</span><span class="num">${d.md} kampdag${d.md>1?"e":""}</span></div></div>
+      ${d.warn?`<p><b>Formanden på pladsen tilføjer:</b> "${d.warn}"</p>`:""}
+      <button class="glowbtn" onclick="facConfirm()">Byg det · ${kfmt(f.cost)}</button>
+      <button class="abtn ghost" onclick="modal=null;render()">Tænk over det</button>
     </div></div>`;
   }
   if(modal.type==="sponsorOffer"){
     const d=G.sponsorDue;
     if(!d)return "";
     const card=(o,i)=>`<div class="card">
-      <div class="rowline"><span><b>${o.n}</b> <small>· ${o.seasonsLeft} season${o.seasonsLeft===1?"":"s"}</small></span><span class="amt num">${kfmt(o.per)}/MD</span></div>
+      <div class="rowline"><span><b>${o.n}</b> <small>· ${o.seasonsLeft} sæson${o.seasonsLeft===1?"":"er"}</small></span><span class="amt num">${kfmt(o.per)}/kamp</span></div>
       <div class="rowline"><span style="font-weight:500;color:var(--muted);font-size:11.5px">${o.character||"They want their name on the shirt."}</span></div>
-      <div class="rowline"><span>${o.demand?`<b style="color:var(--comm)">Strings:</b> ${o.demand}`:"<b>No strings.</b> No small print, no surprises."}</span></div>
-      <div class="rowline" style="border-bottom:none"><span>Worth over the whole deal</span><span class="amt num">~${kfmt(o.per*G.rounds*o.seasonsLeft)}</span></div>
-      <button class="abtn${i?" comm":""}" onclick="sponsorPick(${i})">Shake on it · ${kfmt(o.per)}/MD</button></div>`;
+      <div class="rowline"><span>${o.demand?`<b style="color:var(--comm)">Betingelser:</b> ${o.demand}`:"<b>Ingen betingelser.</b> Intet med småt, ingen overraskelser."}</span></div>
+      <div class="rowline" style="border-bottom:none"><span>Værdi over hele aftalen</span><span class="amt num">~${kfmt(o.per*G.rounds*o.seasonsLeft)}</span></div>
+      <button class="abtn${i?" comm":""}" onclick="sponsorPick(${i})">Giv hånd · ${kfmt(o.per)}/kamp</button></div>`;
     return `<div class="overlay"><div class="sheet">
-      <div class="kick">Commercial department${d.renewal?" · the deal is up":""}</div>
-      <h2>${d.renewal?"Two offers on the table":"Your first sponsor"}</h2>
+      <div class="kick">Kommerciel afdeling${d.renewal?" · aftalen udløber":""}</div>
+      <h2>${d.renewal?"To tilbud på bordet":"Din første sponsor"}</h2>
       <p>${d.renewal
-        ?"The old deal expires tonight. Two envelopes came in — one safe and long, one rich and conditional."
-        :"The shirt is naked, chairman, and the commercial department has finally found two people willing to change that."}</p>
+        ?"Den gamle aftale udløber i aften. To kuverter kom ind — én sikker og lang, én rig og betinget."
+        :"Trøjen er nøgen, formand, og den kommercielle afdeling har endelig fundet to der vil ændre på det."}</p>
       ${card(d.offers[0],0)}${card(d.offers[1],1)}
-      <button class="abtn ghost" onclick="sponsorLater()">Decide later — leave it in my inbox</button>
+      <button class="abtn ghost" onclick="sponsorLater()">Beslut senere — læg det i indbakken</button>
     </div></div>`;
   }
   if(modal.type==="player"){
     const ix=modal.pid,p=byId(ix);
-    if(!p)return `<div class="overlay"><div class="sheet"><h2>He's gone</h2>
-      <p>That player has left the club. The noticeboard is out of date again.</p>
+    if(!p)return `<div class="overlay"><div class="sheet"><h2>Han er væk</h2>
+      <p>Den spiller har forladt klubben. Opslagstavlen er bagud igen.</p>
       <button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
     const isCap=p.id===G.captain;
     const wo=windowOpen();
@@ -5653,53 +5653,53 @@ function renderModal(){
       <div class="bar" style="margin-top:0;margin-bottom:6px"><i style="width:${clamp(v,3,100)}%"></i></div>`;
     let acts="";
     const act=(cls,dis,click,html)=>`<button class="abtn ${cls}" style="text-align:left${dis?";opacity:.45":""}" ${dis?"disabled":""} onclick="${click}">${html}</button>`;
-    acts+=`<div class="kick" style="margin-top:16px">The chairman's options</div>`;
+    acts+=`<div class="kick" style="margin-top:16px">Formandens muligheder</div>`;
     acts+=act("",G.talkCooldown>0,`openChat(${ix})`,
-      `<b>💬 Bring him into the office</b> — ${G.talkCooldown>0?"the door's busy for "+G.talkCooldown+" more matchday"+(G.talkCooldown===1?"":"s"):"praise him, give him the hairdryer, or promise him football"}`);
+      `<b>💬 Kald ham ind på kontoret</b> — ${G.talkCooldown>0?"døren er optaget i "+G.talkCooldown+" kampdag"+(G.talkCooldown===1?"":"e")+" til":"ros ham, giv ham føntørreren, eller lov ham fodbold"}`);
     if(p.years<=1){
       acts+=act("comm",false,`startRenewal(${ix})`,
-        `<b>✍ Open renewal talks</b> — final year: sign him or he walks for nothing next summer`);
+        `<b>✍ Åbn forlængelses-snak</b> — sidste år: skriv med ham, ellers går han gratis til sommer`);
     }
     if(!isCap){
       acts+=act("",G.captSuggested,`suggestCaptain(${ix})`,
-        `<b>© Suggest as captain</b> — ${G.captSuggested?"you've had your say on the armband this season":"the gaffer decides, but he'll hear you out once a season"}`);
+        `<b>© Foreslå som anfører</b> — ${G.captSuggested?"du har haft dit ord om armbindet i denne sæson":"gafferen bestemmer, men han lytter én gang pr. sæson"}`);
     }
     acts+=act("",!wo||thin,`openSellSheet(${ix})`,
-      `<b>Find buyers…</b> — ${!wo?"the window is shut":thin?"squad too thin, the gaffer blocks the door":"a quick ring-around, or the transfer list"}`);
-    acts+=`<button class="abtn ghost" onclick="modal=null;render()">Close</button>`;
+      `<b>Find købere…</b> — ${!wo?"vinduet er lukket":thin?"truppen er for tynd, gafferen blokerer døren":"en hurtig rundringning, eller transferlisten"}`);
+    acts+=`<button class="abtn ghost" onclick="modal=null;render()">Luk</button>`;
     return `<div class="overlay"><div class="sheet">
-      <div class="kick">${p.pos} · promised ${ROLES[p.role||"rot"].n.toLowerCase()} football${isCap?" · club captain":""}</div>
+      <div class="kick">${p.pos} · lovet ${ROLES[p.role||"rot"].n.toLowerCase()}-fodbold${isCap?" · klubbens anfører":""}</div>
       <h2>${p.name}</h2>
-      <p>Age ${p.age} · <b>${ovr(p)} ovr</b> · valued ~${kfmt(p.value)}${p.from?" · from "+p.from:""}
+      <p>${p.age} år · <b>${ovr(p)} ovr</b> · vurderet ~${kfmt(p.value)}${p.from?" · fra "+p.from:""}
         ${p.traits.length?"<br>"+p.traits.map(t=>TRAITS[t]).join(" · "):""}</p>
-      <div class="rowline" style="border:none;padding:2px 0"><span class="kick" style="color:var(--comm)">Potential</span><span class="amt">${potBandText(p,true)||"—"}${potBand(p,true)&&!potBand(p,true).exact&&(p.scouted||0)<BAL.talent.bandByScout.length-1?' <small style="opacity:.6">· scout to narrow</small>':""}</span></div>
+      <div class="rowline" style="border:none;padding:2px 0"><span class="kick" style="color:var(--comm)">Potentiale</span><span class="amt">${potBandText(p,true)||"—"}${potBand(p,true)&&!potBand(p,true).exact&&(p.scouted||0)<BAL.talent.bandByScout.length-1?' <small style="opacity:.6">· spejd for at indsnævre</small>':""}</span></div>
       ${p.inj||p.susp||p.listed?`<div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.08)">
-        ${p.inj?`<b>Injured</b> — out for ${p.inj} more matchday${p.inj===1?"":"s"}. `:""}${p.susp?"<b>Suspended</b> — misses the next matchday. ":""}${p.listed?"<b>On the transfer list</b> — offers arrive by inbox while the window is open.":""}</div>`:""}
+        ${p.inj?`<b>Skadet</b> — ude i ${p.inj} kampdag${p.inj===1?"":"e"} til. `:""}${p.susp?"<b>Karantæne</b> — misser næste kampdag. ":""}${p.listed?"<b>På transferlisten</b> — bud lander i indbakken mens vinduet er åbent.":""}</div>`:""}
       <div class="card">
-        ${bar("Attack",p.att)}${bar("Defence",p.def)}${bar("Physical",p.phy)}
-        <div class="rowline"><span>Confidence</span><span class="amt num">${Math.round(p.conf)}</span></div>
-        <div class="rowline"><span>Form</span><span class="amt">${p.form>1?"▲ rising":p.form<-1?"▼ falling":"– steady"}</span></div>
-        <div class="rowline"><span>Legs</span><span class="amt">${
-          {fresh:"fresh — ready to go again",used:"used — he's felt every one of them",flat:"flat — the gaffer needs cover"}[freshBand(p)]}</span></div></div>
+        ${bar("Angreb",p.att)}${bar("Forsvar",p.def)}${bar("Fysik",p.phy)}
+        <div class="rowline"><span>Selvtillid</span><span class="amt num">${Math.round(p.conf)}</span></div>
+        <div class="rowline"><span>Form</span><span class="amt">${p.form>1?"▲ stigende":p.form<-1?"▼ faldende":"– stabil"}</span></div>
+        <div class="rowline"><span>Benene</span><span class="amt">${
+          {fresh:"friske — klar til at gå igen",used:"brugte — han har mærket hver og en af dem",flat:"flade — gafferen mangler afløsere"}[freshBand(p)]}</span></div></div>
       <div class="card">
-        <div class="rowline"><span>Wage</span><span class="amt num">${kfmt(p.wage)}/w</span></div>
-        <div class="rowline"><span>Contract</span><span class="amt num" style="${p.years<=1?"color:var(--comm)":""}">${p.years} year${p.years===1?"":"s"}${p.years<=1?" · final":""}</span></div>
-        <div class="rowline"><span>This season</span><span class="num">${p.sapps} apps · ${p.sg} goals · ${p.smotm} motm</span></div>
-        <div class="rowline"><span>For the club</span><span class="num">${p.capps} apps</span></div></div>
+        <div class="rowline"><span>Løn</span><span class="amt num">${kfmt(p.wage)}/u</span></div>
+        <div class="rowline"><span>Kontrakt</span><span class="amt num" style="${p.years<=1?"color:var(--comm)":""}">${p.years} år${p.years<=1?" · sidste":""}</span></div>
+        <div class="rowline"><span>Denne sæson</span><span class="num">${p.sapps} kampe · ${p.sg} mål · ${p.smotm} motm</span></div>
+        <div class="rowline"><span>For klubben</span><span class="num">${p.capps} kampe</span></div></div>
       ${acts}
     </div></div>`;
   }
   if(modal.type==="chat"){
     const p=byId(modal.pid);
-    if(!p)return `<div class="overlay"><div class="sheet"><h2>He's gone</h2><p>That player has left the club.</p><button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
+    if(!p)return `<div class="overlay"><div class="sheet"><h2>Han er væk</h2><p>Den spiller har forladt klubben.</p><button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
     return `<div class="overlay"><div class="sheet">
-      <div class="kick">The office · door closed</div>
+      <div class="kick">Kontoret · døren lukket</div>
       <h2>${p.name}</h2>
-      <p>${p.pos} · conf ${Math.round(p.conf)} · form ${p.form>1?"rising":p.form<-1?"falling":"steady"} · ${p.traits.map(t=>TRAITS[t]).join(", ")||"no notable traits"}</p>
-      <button class="abtn" onclick="doChat('praise')" style="text-align:left"><b>Praise him</b> — confidence up… unless he already knows he's good</button>
-      <button class="abtn comm" onclick="doChat('hairdryer')" style="text-align:left"><b>The hairdryer</b> — lights a fire or breaks him. Depends on the man</button>
-      <button class="abtn" onclick="doChat('promise')" style="text-align:left"><b>Promise him football</b> — instant lift, but deliver within 5 matchdays</button>
-      <button class="abtn ghost" onclick="modal=null;render()">Leave it</button>
+      <p>${p.pos} · selvtillid ${Math.round(p.conf)} · form ${p.form>1?"stigende":p.form<-1?"faldende":"stabil"} · ${p.traits.map(t=>TRAITS[t]).join(", ")||"ingen særlige træk"}</p>
+      <button class="abtn" onclick="doChat('praise')" style="text-align:left"><b>Ros ham</b> — selvtilliden op… medmindre han allerede ved han er god</button>
+      <button class="abtn comm" onclick="doChat('hairdryer')" style="text-align:left"><b>Føntørreren</b> — tænder en ild eller knækker ham. Afhænger af manden</button>
+      <button class="abtn" onclick="doChat('promise')" style="text-align:left"><b>Lov ham fodbold</b> — løft med det samme, men levér inden for 5 kampdage</button>
+      <button class="abtn ghost" onclick="modal=null;render()">Lad det ligge</button>
     </div></div>`;
   }
   if(modal.type==="info"){
@@ -5777,11 +5777,11 @@ function showHT(){
     // N1: hairdryeren ("riv dem et nyt et") er fjernet. Du kan roe dem ned — eller
     // bare lade gafferen om det og se anden halvleg. En formand må gerne se på.
     box.innerHTML=burning
-      ?`<div class="kick" style="text-align:center;margin-bottom:8px">Half-time</div>
+      ?`<div class="kick" style="text-align:center;margin-bottom:8px">Pausen</div>
         <div style="display:flex;gap:8px">
-        <button class="abtn" style="flex:1" onclick="tickHT('steady')">Steady on</button>
-        <button class="abtn comm" style="flex:1" onclick="tickHT(null)">Watch it play ▸</button></div>`
-      :`<button class="abtn" style="width:100%" onclick="tickHT(null)">Second half ▸</button>`;
+        <button class="abtn" style="flex:1" onclick="tickHT('steady')">Ro på</button>
+        <button class="abtn comm" style="flex:1" onclick="tickHT(null)">Se den spille ▸</button></div>`
+      :`<button class="abtn" style="width:100%" onclick="tickHT(null)">Anden halvleg ▸</button>`;
   }
   const sk=document.getElementById("tskip");if(sk)sk.style.display="none";
 }
@@ -5816,12 +5816,12 @@ function showFT(){
   if(sum){
     sum.style.display="block";
     sum.innerHTML=`
-      <div class="card" style="margin-top:10px"><div class="kick">The gaffer's analysis</div>
+      <div class="card" style="margin-top:10px"><div class="kick">Gafferens analyse</div>
         <div style="font-size:13px;line-height:1.5;margin-top:6px">${res.analysis}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:8px;font-style:italic">${res.quote}</div></div>
-      <div class="card"><div class="rowline"><span>★ Man of the Match</span><span class="amt">${res.motm?res.motm.name+" · "+res.motm.rating:"—"}</span></div>
-        <div class="rowline"><span>Shots</span><span class="num">${res.shots[0]} – ${res.shots[1]}</span></div>
-        <div class="rowline"><span>Dominance</span><span class="num">${res.dom}%</span></div>
+      <div class="card"><div class="rowline"><span>★ Kampens spiller</span><span class="amt">${res.motm?res.motm.name+" · "+res.motm.rating:"—"}</span></div>
+        <div class="rowline"><span>Skud</span><span class="num">${res.shots[0]} – ${res.shots[1]}</span></div>
+        <div class="rowline"><span>Dominans</span><span class="num">${res.dom}%</span></div>
         ${(res.keyStats||[]).map(k=>`<div class="rowline"><span>${k.k}${k.hint?` <small>· ${k.hint}</small>`:""}</span><span class="num">${k.v}</span></div>`).join("")}
         ${res.home?`<div class="rowline"><span>Gate</span><span class="amt num">${kfmt(res.gate||0)}</span></div>`:""}</div>`;
   }
@@ -5847,13 +5847,13 @@ function renderTitle(){
     <div style="text-align:center;margin-bottom:14px">${svgShield(initials(d.club||"AR"),true,52)}
     <div class="disp" style="font-size:30px;margin-top:8px">FOOTBALL TYCOON</div>
     <div class="kick" style="margin-top:4px">Club owner</div></div>
-    <div class="letter"><div class="lh">THERE IS A CAREER IN PROGRESS</div>
-      <b>${d.club||"Your club"}</b> — ${divName}, season ${d.season||1}. The kettle is still warm.</div>
-    <button class="glowbtn" style="margin-top:16px" onclick="continueCareer()">Continue ▸</button>
-    <button class="abtn ghost" onclick="newCareer()">Start a new career <small style="opacity:.7">— this deletes the one above</small></button>
-    <div class="kick" style="margin-top:18px">Restore from a career code</div>
-    <textarea id="impcode" placeholder="Paste a career code here…" style="width:100%;min-height:54px;margin-top:6px;background:rgba(0,0,0,.25);color:inherit;border:1px solid rgba(150,175,205,.25);border-radius:9px;padding:8px;font-size:11px"></textarea>
-    <button class="abtn" style="margin-top:6px" onclick="doImportCareer()">Import career ▸</button>
+    <div class="letter"><div class="lh">DER ER EN KARRIERE I GANG</div>
+      <b>${d.club||"Din klub"}</b> — ${divName}, sæson ${d.season||1}. Kedlen er stadig varm.</div>
+    <button class="glowbtn" style="margin-top:16px" onclick="continueCareer()">Fortsæt ▸</button>
+    <button class="abtn ghost" onclick="newCareer()">Start en ny karriere <small style="opacity:.7">— det sletter den ovenfor</small></button>
+    <div class="kick" style="margin-top:18px">Gendan fra en karriere-kode</div>
+    <textarea id="impcode" placeholder="Sæt en karriere-kode ind her…" style="width:100%;min-height:54px;margin-top:6px;background:rgba(0,0,0,.25);color:inherit;border:1px solid rgba(150,175,205,.25);border-radius:9px;padding:8px;font-size:11px"></textarea>
+    <button class="abtn" style="margin-top:6px" onclick="doImportCareer()">Importér karriere ▸</button>
   </div></div>`;
 }
 function continueCareer(){
@@ -5884,55 +5884,55 @@ function newCareer(){
 }
 
 /* ---------- onboarding ---------- */
-const SWATCHES=[{h:85,n:"Grass green"},{h:0,n:"Blood red"},{h:210,n:"Navy"},{h:28,n:"Tangerine"},{h:275,n:"Violet"},{h:180,n:"Teal"},{h:330,n:"Fuchsia"},{h:48,n:"Gold"}];
+const SWATCHES=[{h:85,n:"Græsgrøn"},{h:0,n:"Blodrød"},{h:210,n:"Marineblå"},{h:28,n:"Tangerin"},{h:275,n:"Violet"},{h:180,n:"Petrol"},{h:330,n:"Fuchsia"},{h:48,n:"Guld"}];
 function renderOnboarding(){
   applyTheme(obData.hue,obData.mode);
   let inner="";
   if(obStep===0){
-    inner=`<div class="letter"><div class="lh">STEP 1 OF 5 · NAME</div>
-      Your great-uncle left you a lower-league club, its debts, and an empty trophy cabinet. Name it.</div>
-      <input id="obname" type="text" value="${obData.name}" maxlength="24" placeholder="Name your club">
-      <button class="glowbtn" style="margin-top:14px" onclick="obNext()">Sign ▸</button>`;
+    inner=`<div class="letter"><div class="lh">TRIN 1 AF 5 · NAVN</div>
+      Din grandonkel efterlod dig en klub i de lavere rækker, dens gæld og et tomt trofæskab. Giv den et navn.</div>
+      <input id="obname" type="text" value="${obData.name}" maxlength="24" placeholder="Navngiv din klub">
+      <button class="glowbtn" style="margin-top:14px" onclick="obNext()">Skriv under ▸</button>`;
   }
   if(obStep===1){
     const sw=SWATCHES.find(s=>s.h===obData.hue);
-    inner=`<div class="letter"><div class="lh">STEP 2 OF 5 · COLOUR</div>Pick <b>${obData.name}</b>'s colour.</div>
+    inner=`<div class="letter"><div class="lh">TRIN 2 AF 5 · FARVE</div>Vælg <b>${obData.name}</b>s farve.</div>
       <div class="swatches">${SWATCHES.map(s=>`<div class="sw ${obData.hue===s.h?'on':''}" style="background:linear-gradient(135deg,hsl(${s.h},88%,60%),hsl(${s.h},75%,42%))" onclick="obHue(${s.h})" title="${s.n}"></div>`).join("")}</div>
-      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Next ▸</button>`;
+      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Næste ▸</button>`;
   }
   if(obStep===2){
-    inner=`<div class="letter"><div class="lh">STEP 3 OF 5 · LOOK</div>Dark or light? Flip it any time.</div>
+    inner=`<div class="letter"><div class="lh">TRIN 3 AF 5 · UDSEENDE</div>Mørk eller lys? Skift når som helst.</div>
       <div class="modes" style="margin-top:14px;flex-direction:column">
-        <button class="${obData.mode==='dark'?'on':''}" onclick="obMode('dark')">◗&nbsp; Dark</button>
-        <button class="${obData.mode==='light'?'on':''}" onclick="obMode('light')">☀&nbsp; Light</button></div>
-      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Next ▸</button>`;
+        <button class="${obData.mode==='dark'?'on':''}" onclick="obMode('dark')">◗&nbsp; Mørk</button>
+        <button class="${obData.mode==='light'?'on':''}" onclick="obMode('light')">☀&nbsp; Lys</button></div>
+      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Næste ▸</button>`;
   }
   if(obStep===3){
     const c=obData.coach||(obData.coach=pick(COACHES));
-    inner=`<div class="letter"><div class="lh">STEP 4 OF 5 · THE GAFFER</div>
+    inner=`<div class="letter"><div class="lh">TRIN 4 AF 5 · GAFFEREN</div>
       <b>${c.n}</b> · ${c.style} · TAC ${c.tac} · MAN ${c.man} · DEV ${c.dev}</div>
-      <div class="truth"><span class="n">1</span><span>Squad: honest but limited. Build it.</span></div>
-      <div class="truth"><span class="n">2</span><span>No sponsor · 1,500 seats · £150,000 in the bank.</span></div>
-      <div class="truth"><span class="n">3</span><span>A match is saved the moment it's played. No reloads.</span></div>
-      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Next ▸</button>`;
+      <div class="truth"><span class="n">1</span><span>Truppen: ærlig men begrænset. Byg den.</span></div>
+      <div class="truth"><span class="n">2</span><span>Ingen sponsor · 1,500 souls · £150,000 i kassen.</span></div>
+      <div class="truth"><span class="n">3</span><span>En kamp gemmes i det øjeblik den spilles. Ingen omkampe.</span></div>
+      <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Næste ▸</button>`;
   }
   if(obStep===4){
     // O1: who are YOU? — the owner is now a character, not just a club
     const B=BAL.owner.backgrounds,bg=B[obData.ownerBg]||B.selfmade;
-    inner=`<div class="letter"><div class="lh">STEP 5 OF 5 · YOU</div>The club has a name. Now, chairman — who are <b>you</b>?</div>
-      <input id="obowner" type="text" value="${obData.ownerName}" maxlength="22" placeholder="Your name">
-      <div class="kick" style="margin-top:12px">Portrait</div>
+    inner=`<div class="letter"><div class="lh">TRIN 5 AF 5 · DIG</div>Klubben har et navn. Nu, formand — hvem er <b>du</b>?</div>
+      <input id="obowner" type="text" value="${obData.ownerName}" maxlength="22" placeholder="Dit navn">
+      <div class="kick" style="margin-top:12px">Portræt</div>
       <div class="swatches" style="font-size:26px">${OWNER_AVATARS.map(a=>`<div class="sw ${obData.ownerAvatar===a?'on':''}" style="display:flex;align-items:center;justify-content:center;background:hsl(${obData.hue},30%,20%)" onclick="obAvatar('${a}')">${a}</div>`).join("")}</div>
-      <div class="kick" style="margin-top:12px">Where you came from</div>
+      <div class="kick" style="margin-top:12px">Hvor du kom fra</div>
       <div class="modes" style="margin-top:8px;flex-direction:column">
         ${Object.entries(B).map(([k,b])=>`<button class="${obData.ownerBg===k?'on':''}" onclick="obBg('${k}')" style="text-align:left">${b.n} <small style="opacity:.7">· ${b.blurb}</small></button>`).join("")}</div>
-      <div class="obwhy"><b>${bg.n}.</b> ${bg.cash>0?"+"+kfmt(bg.cash)+" start cash":bg.cash<0?kfmt(bg.cash)+" start cash":"Even footing"}${bg.rep?" · reputation "+(bg.rep>0?"+":"")+bg.rep:""}${bg.fan?" · fans "+(bg.fan>0?"+":"")+bg.fan:""}${bg.repGain>1?" · builds reputation faster":""}.</div>
-      <button class="glowbtn" style="margin-top:14px" onclick="obFinish()">Take over ▸</button>`;
+      <div class="obwhy"><b>${bg.n}.</b> ${bg.cash>0?"+"+kfmt(bg.cash)+" startkapital":bg.cash<0?kfmt(bg.cash)+" startkapital":"Lige vilkår"}${bg.rep?" · omdømme "+(bg.rep>0?"+":"")+bg.rep:""}${bg.fan?" · fans "+(bg.fan>0?"+":"")+bg.fan:""}${bg.repGain>1?" · bygger omdømme hurtigere":""}.</div>
+      <button class="glowbtn" style="margin-top:14px" onclick="obFinish()">Tag over ▸</button>`;
   }
   app().innerHTML=`<div class="ob"><div class="box">
     <div style="text-align:center;margin-bottom:14px">${svgShield(initials(obData.name),true,52)}
     <div class="disp" style="font-size:30px;margin-top:8px">${obStep===0?"FOOTBALL TYCOON":obData.name}</div>
-    <div class="kick" style="margin-top:4px">${obStep===0?"A football story, from the bottom":"Owner-elect: you"}</div></div>
+    <div class="kick" style="margin-top:4px">${obStep===0?"En fodboldhistorie, fra bunden":"Kommende ejer: dig"}</div></div>
     ${inner}</div></div>`;
 }
 function obNext(){
