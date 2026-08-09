@@ -708,6 +708,20 @@ const BAL={
      ejere, skandaler. ALT tager af DIN personlige formue (personalWealth),
      ALDRIG klubkassen (G.balance) — den tunede kluboekonomi er urørt. Omdømme er
      valutaen der bygges. */
+  /* M1: den persistente pyramide. Verden var kun MIN division — 13 modstandere
+     der blev omdøbt og gen-seedet ved hvert divisionsskift, så intet udenfor min
+     række eksisterede, og selv min række mistede hukommelsen. Nu findes alle
+     4 divisioner × 14 klubber PERMANENT: alle spiller runder, alle rykker op og
+     ned, og en klub beholder navn, styrke og omtale hele karrieren. Det er
+     fundamentet for mogul-laget (M2+): man kan ikke købe andele i en verden der
+     glemmer sig selv. moveAdj afløser reseed-formlens (3-div)*4: en klub der
+     rykker op forstærkes, en der rykker ned svækkes — sværhedstrappen holder. */
+  world:{
+    divs:4, size:14,          // 4 divisions × 14 clubs (me + 55 AI)
+    moveAdj:6,                // strength swing when a club changes division
+    pressStart:50, pressWin:2, pressLoss:-2,  // omtale: a rolling sentiment per club
+    upSpots:2, downSpots:2    // exchanged between adjacent divisions each season
+  },
   ownerLife:{
     every:{min:3, max:6},       // matchdays between owner-life events
     chance:0.55,                // ... and a roll, so it is not clockwork
@@ -803,6 +817,7 @@ function loadGame(){
   if(!Number.isFinite(G.admins))G.admins=0;
   if(!Number.isFinite(G.protest))G.protest=protestFor(G.fanMood,0);
   for(const p of [...G.squad,...G.market,...G.freeAgents])if(!Number.isFinite(p.load))p.load=0;
+  ensureWorld();   // M1: en karriere gemt før pyramiden fandtes får sin verden født her
   // the id counter lives outside G — restore it above every id in play
   PID=1+[...G.squad,...G.market,...G.freeAgents].reduce((m,p)=>Math.max(m,p.id||0),0);
   modal=null;nego=null;screen="home";
@@ -1348,15 +1363,24 @@ function newGame(name,hue,mode){
     inbox:[],news:[],msgId:1,lastResult:null,deadlineDone:{},playoff:null,
     history:[],adCount:0,titles:0
   };
+  /* M1: hele pyramiden fødes her — 13 modstandere i min division plus 42 klubber
+     i de tre andre. Alle med persistent wid og omtale (press). Verden husker. */
   const used=new Set([name]);
-  while(G.teams.length<13){
-    const n=pick(TOWN1)+" "+pick(TOWN2);
-    if(used.has(n))continue;used.add(n);
+  let wid=1;
+  const genClub=div=>{
+    let n;do{n=pick(TOWN1)+" "+pick(TOWN2);}while(used.has(n));used.add(n);
     // The chairman's XI carries a systematic edge (coach bonus, leader bonus,
     // home crowd, confidence), so raw parity meant promotion at the first
     // attempt every single time. League Three has to actually be a division.
-    G.teams.push({name:n,att:R(49,61),def:R(49,61),phy:R(44,62),pts:0,gd:0,pl:0});
-  }
+    // Higher divisions are stronger by (3-div)*moveAdj — the ladder the old
+    // reseed formula encoded, now carried by the clubs themselves.
+    const lift=(3-div)*BAL.world.moveAdj;
+    return {wid:wid++,name:n,div,att:R(49,61)+lift,def:R(49,61)+lift,phy:R(44,62),
+      pts:0,gd:0,pl:0,press:BAL.world.pressStart};
+  };
+  while(G.teams.length<13)G.teams.push(genClub(3));
+  G.worldRest=[];
+  for(let d=0;d<3;d++)for(let i=0;i<BAL.world.size;i++)G.worldRest.push(genClub(d));
   G.fixtures=makeFixtures();
   refreshMarket();
   pickCaptain();
@@ -1950,12 +1974,38 @@ function playMatchday(){
   modal={type:"prematch",match,round};
   render();
 }
+function clubPress(c,gf,ga){
+  const W=BAL.world;
+  c.press=clamp((c.press===undefined?W.pressStart:c.press)+(gf>ga?W.pressWin:gf<ga?W.pressLoss:0),0,100);
+}
 function simRestOfRound(round){
   for(const [h,a] of round){
     if(h===0||a===0)continue;
     const H=G.teams[h-1],A=G.teams[a-1];
     const lh=clamp(1.15+(H.att-A.def)/22+0.25,0.25,3.4), la=clamp(1.15+(A.att-H.def)/22,0.2,3.2);
-    applyPts(h,poisson(lh),a,poisson(la));
+    const gh=poisson(lh),ga=poisson(la);
+    applyPts(h,gh,a,ga);
+    clubPress(H,gh,ga);clubPress(A,ga,gh);
+  }
+  simWorldRound();   // M1: resten af pyramiden spiller også i eftermiddag
+}
+/* M1: de tre andre divisioner spiller deres runde — simpel parring, samme
+   styrkeformel. Ingen fixtures-bogholderi for AI-divisioner (prototype-ærligt:
+   de spiller "en runde"); tabellerne lever, og det er dem verden læses på. */
+function simWorldRound(){
+  if(!G.worldRest)return;
+  for(let d=0;d<BAL.world.divs;d++){
+    if(d===G.div)continue;
+    const clubs=G.worldRest.filter(c=>c.div===d);
+    const order=[...clubs].sort(()=>Math.random()-0.5);
+    for(let i=0;i+1<order.length;i+=2){
+      const H=order[i],A=order[i+1];
+      const lh=clamp(1.15+(H.att-A.def)/22+0.25,0.25,3.4), la=clamp(1.15+(A.att-H.def)/22,0.2,3.2);
+      const gh=poisson(lh),ga=poisson(la);
+      H.pl++;A.pl++;H.gd+=gh-ga;A.gd+=ga-gh;
+      if(gh>ga)H.pts+=3;else if(ga>gh)A.pts+=3;else{H.pts++;A.pts++;}
+      clubPress(H,gh,ga);clubPress(A,ga,gh);
+    }
   }
 }
 function prematchBack(){modal=null;render();}
@@ -2535,7 +2585,7 @@ function updateFormMood(res){
   easeMood(); // the way back: anger cools toward a baseline (egen funktion -> maalbar)
   updateProtest();
   if(G.talkCooldown>0)G.talkCooldown--;
-  for(const t of G.teams){t.att=clamp(t.att+R(-1,1)*0.5,40,75);t.def=clamp(t.def+R(-1,1)*0.5,40,75);}
+  for(const t of G.teams){t.att=clamp(t.att+R(-1,1)*0.5,40,84);t.def=clamp(t.def+R(-1,1)*0.5,40,84);}  // M1: loftet hævet — Premier-klubber ligger over det gamle 75
 }
 /* "Vejen tilbage": vreden koeler mod en baseline, aldrig over. Trukket ud i
    egen funktion (pakke 29 / QA's N1), saa harness'en kan KALDE spillets easing
@@ -2635,14 +2685,57 @@ function startPostSeason(){
 const DIV_OBJECTIVE={3:8,2:10,1:9,0:7};
 /* A new division means new opponents. Shared by promotion and relegation so
    the two directions cannot drift apart. */
-function reseedLeague(){
-  /* Pakke T1 raised the coefficient 2→3. Since the market now scales to the
-     division a club sits in, a promoted chairman can keep arming himself with
-     league-appropriate players — which used to be impossible above the old
-     base≤61 cap and was what made the late career plateau. The higher divisions
-     therefore have to be harder to hold the "derefter 1-3 oprykninger" target;
-     League Three (newGame, not reseeded) is untouched, so season 1 is unchanged. */
-  for(const t of G.teams){t.name=pick(TOWN1)+" "+pick(TOWN2);t.att=R(50,66)+(3-G.div)*4;t.def=R(50,66)+(3-G.div)*4;}
+/* M1: reseedLeague() er død — verden husker. I stedet bytter pyramiden klubber
+   mellem nabodivisioner ved hvert sæsonskift: top-2 op, bund-2 ned, i ALLE par.
+   Jeg optager selv en plads: er jeg rykket op, tager jeg den ene af min gamle
+   divisions up-pladser (den anden går til den bedste modstander); spejlvendt ved
+   nedrykning. Klubberne BEHOLDER wid/navn/omtale — kun div og styrke flytter sig
+   (±moveAdj: oprykkede forstærkes af divisionens penge, nedrykkede svækkes — det
+   er trappen den gamle reseed-formel indkodede, nu båret af klubberne selv). */
+function ensureWorld(){
+  if(G.worldRest&&G.worldRest.length)return;
+  // migration: en karriere gemt før M1 har ingen verden — fød den omkring den
+  // division spilleren står i, med samme trappe som newGame.
+  const used=new Set([G.club,...G.teams.map(t=>t.name)]);
+  let wid=1;
+  for(const t of G.teams){t.wid=wid++;if(t.press===undefined)t.press=BAL.world.pressStart;if(t.div===undefined)t.div=G.div;}
+  G.worldRest=[];
+  for(let d=0;d<BAL.world.divs;d++){
+    if(d===G.div)continue;
+    for(let i=0;i<BAL.world.size;i++){
+      let n;do{n=pick(TOWN1)+" "+pick(TOWN2);}while(used.has(n));used.add(n);
+      const lift=(3-d)*BAL.world.moveAdj;
+      G.worldRest.push({wid:wid++,name:n,div:d,att:R(49,61)+lift,def:R(49,61)+lift,phy:R(44,62),
+        pts:0,gd:0,pl:0,press:BAL.world.pressStart});
+    }
+  }
+}
+function applyPyramidExchange(promoted,relegated,oldDiv){
+  ensureWorld();
+  const W=BAL.world;
+  for(const t of G.teams)if(t.div===undefined)t.div=oldDiv;
+  const standings=d=>{
+    const list=d===oldDiv?[...G.teams]:G.worldRest.filter(c=>c.div===d);
+    return list.sort((a,b)=>b.pts-a.pts||b.gd-a.gd||a.name.localeCompare(b.name));
+  };
+  // movers computed on the FINAL tables of every division, before anything moves
+  const up=[],down=[];
+  for(let d=1;d<W.divs;d++){
+    const lower=standings(d),upper=standings(d-1);
+    let upSlots=W.upSpots,downSlots=W.downSpots;
+    if(d===oldDiv&&promoted)upSlots--;        // I take one of my division's up-slots
+    if(d-1===oldDiv&&relegated)downSlots--;   // ... or one of its down-slots
+    for(let i=0;i<upSlots;i++)if(lower[i])up.push({c:lower[i],to:d-1});
+    for(let i=0;i<downSlots;i++){const c=upper[upper.length-1-i];if(c)down.push({c,to:d});}
+  }
+  for(const m of up){m.c.div=m.to;m.c.att=clamp(m.c.att+W.moveAdj,40,84);m.c.def=clamp(m.c.def+W.moveAdj,40,84);}
+  for(const m of down){m.c.div=m.to;m.c.att=clamp(m.c.att-W.moveAdj,40,84);m.c.def=clamp(m.c.def-W.moveAdj,40,84);}
+  // rebuild the two arrays around my (possibly new) division — a club lives in
+  // exactly ONE of them, so G stays a tree
+  const all=[...G.teams,...G.worldRest];
+  G.teams=all.filter(c=>c.div===G.div);
+  G.worldRest=all.filter(c=>c.div!==G.div);
+  for(const c of G.worldRest){c.pts=0;c.gd=0;c.pl=0;}   // their new season starts at zero too
 }
 function relegationSpot(pos,rows){
   const RG=BAL.relegation;
@@ -2708,10 +2801,10 @@ function finishSeason(o){
      +(G.fundRaided?0:O.trustFundKept));}
   const promoted=o.promoted&&G.div>0;
   const relegated=!!o.relegated&&G.div<BAL.relegation.floorDiv&&!promoted;
+  const oldDiv=G.div;   // M1: pyramide-udvekslingen skal kende min gamle division
   settleCommitments(promoted);   // before the summer wipes p.sg — goal bonuses need it
   if(promoted){
     G.div--;G.wageCap=Math.round(G.wageCap*BAL.wages.capOnPromotion/100)*100;
-    reseedLeague();
     if(G.sponsor)G.sponsor.per=Math.round(G.sponsor.per*BAL.sponsor.onPromotion); // may be shirtless — that used to crash the run
     // the squad renegotiates too: a higher division costs more than the cap alone
     const before=G.squad.reduce((s,p)=>s+p.wage,0);
@@ -2726,7 +2819,6 @@ function finishSeason(o){
   else if(relegated){
     const wasDiv=G.divNames[G.div];
     G.div++;G.wageCap=Math.round(G.wageCap*BAL.wages.capOnRelegation/100)*100;
-    reseedLeague();
     if(G.sponsor)G.sponsor.per=Math.round(G.sponsor.per*BAL.sponsor.onRelegation);
     bumpTrust(BAL.owners.trustRelegation);
     const before=G.squad.reduce((s,p)=>s+p.wage,0);
@@ -2735,6 +2827,8 @@ function finishSeason(o){
     msg("Ledger (bookkeeper)","L","Relegation has a price tag too","Some contracts had a clause, most did not. The squad still costs "+kfmt(after)+"/w against "+kfmt(before)+"/w in "+wasDiv+" — on "+G.divNames[G.div]+" money, and against a cap of "+kfmt(G.wageCap)+". Sell, renegotiate, or drown, chairman.",null);
     addNews("CLUB","Relegated to "+G.divNames[G.div]+". The banner outside the Shed End has been taken down for repairs it does not need.");
   }
+  // M1: hele pyramiden bytter klubber — én gang, uanset om jeg selv flyttede mig
+  applyPyramidExchange(promoted,relegated,oldDiv);
   /* Pakke 16/19: maalsaetningen hoerer til divisionen og forhandles paa ny hvert
      aar. EET sted saetter den -- her, lige efter divisionen kan have flyttet
      sig. Den stod ogsaa inde i baade oprykningens og nedrykningens gren, og to
@@ -4849,8 +4943,13 @@ function fanBanner(){
   return G.fanMood>55?"WE ARE "+G.club.split(" ")[0].toUpperCase():"IN IT TOGETHER. MOSTLY.";
 }
 function viewTable(){
-  const rows=table();
-  return `<div class="card"><div class="kick" style="margin-bottom:6px">${G.divNames[G.div]}</div>
+  // M1: hele pyramiden kan læses — divisionsvælger over tabellen
+  ensureWorld();
+  const d=(G.tableDiv===undefined||G.tableDiv===null)?G.div:G.tableDiv;
+  const bar=`<div class="modes" style="margin-bottom:10px">`+[0,1,2,3].map(x=>`<button class="${d===x?'on':''}" onclick="G.tableDiv=${x};render()">${G.divNames[x].replace("League ","L").replace("Premier Division","Prem")}</button>`).join("")+`</div>`;
+  const rows=d===G.div?table()
+    :G.worldRest.filter(c=>c.div===d).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||a.name.localeCompare(b.name)).map((c,i)=>({i:-1,n:c.name,pts:c.pts,gd:c.gd,pl:c.pl}));
+  return bar+`<div class="card"><div class="kick" style="margin-bottom:6px">${G.divNames[d]}${d===G.div?"":" · elsewhere in the pyramid"}</div>
     <table><tr><th>#</th><th>Club</th><th class="r">Pl</th><th class="r">GD</th><th class="r">Pts</th></tr>
     ${rows.map((r,ix)=>{
       const zone=ix<2?'style="background:var(--acc)"':ix<6?'style="background:var(--comm)"':'style="background:transparent"';

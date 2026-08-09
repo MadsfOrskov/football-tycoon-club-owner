@@ -1,0 +1,39 @@
+# ARBEJDSKØ — MOGUL-OMBYGNINGEN: spillet er personen, klubben er et aktiv
+
+*Skrevet efter designafklaring med Mads. Dette er den STORE omlægning: spillet omstruktureres omkring ejeren — et helt ejerlag med mange sider, investeringer, finansoverblik, portefølje af klubber med præstation og omtale — og man klikker IND i en klub for at drive den. Selvstændig: læs `Claude.md`, GDD og `WORKPLAN-OWNER.md` (O1-O3 er bygget) først.*
+
+## Beslutninger låst med Mads (9/8 2026)
+1. **Fuld simulation af alle ejede klubber** — men med **tilstedeværelses-modellen**: du har én krop. Hver uge vælger du HVOR du er; den besøgte klub får fuld dybde (kamp, ordrer, forhandlinger). Fraværende klubber drives af en **ansat direktør** med et mandat (budget, transferlinje, målsætning) og eskalerer kun store beslutninger til dit skrivebord ("bestyrelsespapirer"). Frit hop pr. kampdag er bevidst FRAVALGT — opmærksomhed er mogul-ressourcen. Direktører er personer med stil (genbrug agent/gaffer-skabelonen); at overrule dem koster.
+2. **Tid: en global "næste uge"-knap.** Ejerlaget har sin egen fremdrift; alt afvikles (alle ligaer, investeringer, events), og du dykker kun ned i det du vil se.
+3. **Fuld persistent pyramide.** Alle 4 divisioner × 14 klubber eksisterer PERMANENT: alle rykker op/ned, har værdi, form og omtale. Ingen reseed — verden husker. **På sigt: ligaer i hele verden** (flere lande) — byg pyramiden så den kan blive til flere.
+4. **Klubkøb ad alle fire veje:** klubmægler med tilbud på skrivebordet (kriseklubber billigt — T1's desperation på klubniveau) · frit bud på enhver klub i pyramiden · adgangskrav før køb nr. 2+ (formue/omdømme/succes) · interessekonflikt-regler (ikke to KONTROLLEREDE klubber i samme division; kollision efter oprykning tvinger salg).
+5. **Vindermål: blanding af net worth og dynasti** — formuen OG fodboldmagten (klubber i topdivisioner, mesterskaber på tværs, omdømme) måles begge; æra-opsummeringen vægter begge.
+
+## Ufravigelig ramme (som T/N/O-serierne)
+Én pakke ad gangen · `node --check` + 10×5 `--stats` grøn pr. pakke · én commit pr. pakke · alle tal i BAL · nye modaler i handleModal OG HANDLED_MODALS (sat+tegnet) · **sabotér hver invariant først** (mål spillets kode via `H.call`) · 200×20 `--bot=both` før rapport · klubøkonomiens måltal må ikke skride (ejerlagets penge er `personalWealth`, aldrig `G.balance`).
+
+---
+
+# Pakke M1 — Den persistente pyramide (verdens-ombygningen) ✅ *bygget i session 9/8*
+`G.worldRest` (42 klubber i de tre andre divisioner) + persistente `wid`/`press` på alle klubber. Alle divisioner spiller runder (`simWorldRound` i `simRestOfRound`). Sæsonskift: `applyPyramidExchange` — top-2 op / bund-2 ned i ALLE nabopar, klubberne BEHOLDER identitet (±`BAL.world.moveAdj` styrke ved flytning, så sværhedstrappen holder). `reseedLeague()` er død. Tabel-skærmen får divisionsvælger. Save-migration for gamle karrierer. Invariant `checkWorld`: 55 AI-klubber, 13 i min division/14 i andre, unikke wid'er, exchange flytter de rigtige og identiteten overlever — sabotage-verificeret.
+
+# Pakke M2 — Ejerlagets sider: portefølje, andele, investeringer, finanser
+**a) You-fanens undersider:** `Desk` (nuværende viewOwner) · `Empire` (portefølje) · `Invest` · `Books` (personlige finanser: udbytter ind, forbrug ud, net worth-graf fra `netWorthHistory`).
+**b) Empire:** kort pr. ejet klub/andel (division, placering, værdi, din andel, omtale/press). Gennemse pyramiden → klubside med værdi/omtale/ejerens vilje → **frit bud**. Andele (minoritet) i enhver klub: pris = klubværdi-proxy × premium; værdi følger klubbens resultater/press; udbytte pr. sæson = andel × abstrakt sæsonnetto (division + placering, tal i BAL). KONTROL (>50%) af klub nr. 2 kræver adgangskravene og respekterer konflikt-reglen; en kontrolleret klub nr. 2 er *direktør-drevet abstrakt* indtil M3 (kaster udbytte og værdi, kan endnu ikke besøges).
+**c) Klubmægleren:** en personlighed der sender tilbud til skrivebordet; kriseklubber (lav abstrakt kasse/press) kommer med rabat.
+**d) Omtale:** press-tallet (M1) vises på alle kort; dit eget omdømme (O1) er personens omtale.
+**Invariant:** en andel koster personalWealth (aldrig G.balance), udbytter lander i personalWealth, netWorth() medregner andele; konflikt-reglen blokerer kontrol-køb i egen division; adgangskrav blokerer under tærsklen. Sabotér hver.
+
+# Pakke M3 — Tilstedeværelse & direktører (multi-klub for alvor)
+Flere FULDE klub-tilstande (G omstruktureres: `P` = personen, `P.clubs[]` = fulde klub-verdener, aktive klub = den du besøger). Ugentligt tilstedeværelses-valg · direktører som personer med mandat og tålmodighed · eskaleringspapirer på skrivebordet · den globale "næste uge"-knap afløser "Play matchday" som fremdrift. Dette er den tungeste pakke — kræver sit eget nat-design (harness'ens bot skal drive to klubber!).
+
+# Pakke M4 — Vindermål & æraen
+Dynasti-måling (klubber pr. division, samlede trofæer på tværs, omdømme-toppe) + net worth i æra-opsummeringen; milepæle ("første £1M", "to klubber i Premier"). Balancemål for hele mogul-økonomien.
+
+# Pakke M5 (senere nætter) — Verden vokser
+Flere lande/ligaer oven på pyramide-strukturen (M1 er bygget generisk nok: divisioner er data, ikke kode). Kontinentale turneringer som drøm.
+
+---
+
+# Verifikation
+Grøn = REGRESSION_OK. Efter HVER pakke: `--stats` — klubbens måltal (netto/indtjening/store kampe/admin/oprykning) må ikke skride; M-lagets penge går udenom klubkassen. 200×20 `--bot=both` før rapport. Natrapport med målte tal, afvigelser og det uafprøvede.
