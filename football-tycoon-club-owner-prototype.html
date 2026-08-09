@@ -729,6 +729,14 @@ const BAL={
   world:{
     divs:4, size:14,          // 4 divisions × 14 clubs (me + 55 AI)
     moveAdj:6,                // strength swing when a club changes division
+    /* R7: sen-spillet strammes. Trappen (3-div)*moveAdj var lineær, så Premier
+       kun var ét moveAdj-trin over League One — botten endte i Premier med
+       millioner. topLift gør de to øverste divisioner EKSTRA stærke, og topBuy
+       er de rige klubbers indkøb: en lille sæsonlig forstærkning i div 0-1, så
+       toppen bliver ved med at være en kamp i stedet for en kroning. */
+    topLift:{1:3,0:8},        // ekstra styrke oven i trappen for div 1 og 0
+    topBuy:{1:1,0:2},         // sæsonlig indkøbs-drift (0..n på att og def)
+    topCap:88,                // topklubbernes loft (før 84 overalt)
     pressStart:50, pressWin:2, pressLoss:-2,  // omtale: a rolling sentiment per club
     upSpots:2, downSpots:2    // exchanged between adjacent divisions each season
   },
@@ -893,6 +901,14 @@ function loadGame(){
   if(G.fund>0||G.fundBonus>0){G.balance+=Math.round((G.fund||0)+(G.fundBonus||0));
     addNews("CLUB","The stadium fund has been folded back into the club account — every penny, bonus included.");}
   delete G.fund;delete G.fundBonus;delete G.fundTarget;delete G.fundRaided;
+  // R7: en verden født før topLift mangler toppens ekstra styrke — bag den på én gang
+  if(!G.worldTopLifted&&BAL.world.topLift){
+    for(const c of [...(G.teams||[]),...(G.worldRest||[])]){
+      const t=(BAL.world.topLift||{})[c.div]||0;
+      if(t&&c.att!==undefined){c.att=clamp(c.att+t,40,BAL.world.topCap||84);c.def=clamp(c.def+t,40,BAL.world.topCap||84);}
+    }
+    G.worldTopLifted=true;
+  }
   // R1c: fokus, mentorer og sponsor-stunts udgik — døde felter og ubesvarede stunt-beskeder ryddes
   delete G.mentors;delete G.stuntDone;
   for(const p of [...G.squad,...G.market,...G.freeAgents])delete p.focus;
@@ -1411,6 +1427,7 @@ function newGame(name,hue,mode){
     owner:{name:"Formanden",avatar:"🧑‍💼",background:"selfmade"},reputation:BAL.owner.repStart,netWorthHistory:[],ownerLifeMD:0,  // O1/O3: ejer-identitet + ejer-liv
     stakes:[],stakeIncome:0,  // M2: andele i pyramidens klubber {wid,pct,paid}
     layer:"owner",  // M2.5: hvilken verden du står i — "owner" (guld, dig) eller "club" (inde i klubben)
+    worldTopLifted:true,  // R7: verden fødes MED toppens ekstra styrke — migrationen må ikke løfte igen
 
     netEwma:0,trust:BAL.owners.trustStart,admins:0,valHistory:[],commitments:[],protest:0,flavourSeen:[],
     /* Whose return leg is a big match. Stored as {opp,md,by} — an INDEX and two
@@ -1438,9 +1455,10 @@ function newGame(name,hue,mode){
     // The chairman's XI carries a systematic edge (coach bonus, leader bonus,
     // home crowd, confidence), so raw parity meant promotion at the first
     // attempt every single time. League Three has to actually be a division.
-    // Higher divisions are stronger by (3-div)*moveAdj — the ladder the old
-    // reseed formula encoded, now carried by the clubs themselves.
-    const lift=(3-div)*BAL.world.moveAdj;
+    // Higher divisions are stronger by divLift(div) — the ladder the old
+    // reseed formula encoded, now carried by the clubs themselves (R7: plus
+    // topLift, so the top two divisions sit ABOVE the linear ladder).
+    const lift=divLift(div);
     return {wid:wid++,name:n,div,att:R(49,61)+lift,def:R(49,61)+lift,phy:R(44,62),
       pts:0,gd:0,pl:0,press:BAL.world.pressStart};
   };
@@ -1455,6 +1473,8 @@ function newGame(name,hue,mode){
   addNews("LEAGUE","The "+G.divNames[G.div]+" season kicks off. Twenty-six matchdays. One dream. Several dodgy pitches.");
 }
 function G_DIV_WAGE(div){return {3:1,2:1.8,1:3.2,0:6}[div]||1;}
+/* R7: divisionens styrketrappe — lineær + topLift i de to øverste rækker. */
+function divLift(d){return (3-d)*BAL.world.moveAdj+((BAL.world.topLift||{})[d]||0);}
 /* ---------- O1: the owner as a character ----------
    Imperium = din kontante formue + din equity i klubben (andel × klubværdi).
    Egen funktion, så den kan måles udefra som netWorth/reputation. */
@@ -2818,7 +2838,7 @@ function ensureWorld(){
     if(d===G.div)continue;
     for(let i=0;i<BAL.world.size;i++){
       let n;do{n=pick(TOWN1)+" "+pick(TOWN2);}while(used.has(n));used.add(n);
-      const lift=(3-d)*BAL.world.moveAdj;
+      const lift=divLift(d);
       G.worldRest.push({wid:wid++,name:n,div:d,att:R(49,61)+lift,def:R(49,61)+lift,phy:R(44,62),
         pts:0,gd:0,pl:0,press:BAL.world.pressStart});
     }
@@ -2842,11 +2862,20 @@ function applyPyramidExchange(promoted,relegated,oldDiv){
     for(let i=0;i<upSlots;i++)if(lower[i])up.push({c:lower[i],to:d-1});
     for(let i=0;i<downSlots;i++){const c=upper[upper.length-1-i];if(c)down.push({c,to:d});}
   }
-  for(const m of up){m.c.div=m.to;m.c.att=clamp(m.c.att+W.moveAdj,40,84);m.c.def=clamp(m.c.def+W.moveAdj,40,84);}
-  for(const m of down){m.c.div=m.to;m.c.att=clamp(m.c.att-W.moveAdj,40,84);m.c.def=clamp(m.c.def-W.moveAdj,40,84);}
+  /* R7: styrkeskiftet er FORSKELLEN i divisionsløft — så en klub der går ind i
+     div 0/1 også bærer topLift, og en der falder ud af toppen afleverer det. */
+  const cap=W.topCap||84;
+  for(const m of up){const d=divLift(m.to)-divLift(m.c.div);m.c.div=m.to;m.c.att=clamp(m.c.att+d,40,cap);m.c.def=clamp(m.c.def+d,40,cap);}
+  for(const m of down){const d=divLift(m.to)-divLift(m.c.div);m.c.div=m.to;m.c.att=clamp(m.c.att+d,40,cap);m.c.def=clamp(m.c.def+d,40,cap);}
   // rebuild the two arrays around my (possibly new) division — a club lives in
   // exactly ONE of them, so G stays a tree
   const all=[...G.teams,...G.worldRest];
+  // R7: toppen køber. Rige klubber i div 0-1 forstærkes lidt hvert sæsonskifte,
+  // så Premier ikke står stille mens spillerens trup udvikler sig mod loftet.
+  for(const c of all){
+    const b=(W.topBuy||{})[c.div]||0;
+    if(b){c.att=clamp(c.att+R(0,b),40,cap);c.def=clamp(c.def+R(0,b),40,cap);}
+  }
   G.teams=all.filter(c=>c.div===G.div);
   G.worldRest=all.filter(c=>c.div!==G.div);
   for(const c of G.worldRest){c.pts=0;c.gd=0;c.pl=0;}   // their new season starts at zero too
