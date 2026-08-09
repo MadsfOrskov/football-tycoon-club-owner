@@ -4170,7 +4170,7 @@ function svgShield(txt,accent,size){
 function render(){
   if(!G){if(bootSave)renderTitle();else renderOnboarding();return;}
   let html=header()+'<div class="content">';
-  if(screen==="home")html+=viewHome();
+  if(screen==="home")html+=viewOwner();
   if(screen==="inbox")html+=viewInbox();
   if(screen==="squad")html+=viewSquad();
   if(screen==="market")html+=viewMarket();
@@ -4195,13 +4195,61 @@ function header(){
 function toggleMode(){G.mode=G.mode==="dark"?"light":"dark";applyTheme(G.hue,G.mode);render();}
 function navbar(){
   const u=unreadCount();
-  const t=[["home","Home"],["inbox","Inbox"],["squad","Squad"],["market","Market"],["club","Club"],["table","Table"]];
+  const t=[["home","You"],["club","Club"],["squad","Squad"],["market","Market"],["table","Table"],["inbox","Inbox"]];
   return '<nav>'+t.map(([k,l])=>`<button class="${screen===k?'on':''}" onclick="go('${k}')">${l}${k==='inbox'&&u?`<span class="badge num">${u}</span>`:''}</button>`).join("")+'</nav>';
 }
 function go(s){screen=s;if(s==="inbox")G.inbox.forEach(m=>m.unread=false);keepScroll=false;saveGame();render();}
 
 /* ---------- views ---------- */
-function viewHome(){
+/* O2: the owner's home — you, the mogul, not the club. The team content moved to
+   the Club tab's "Team" sub-view (teamOverview below). */
+function matchStrip(){
+  if(G.phase==="season"&&G.md<G.rounds){
+    const round=G.fixtures[G.md],mine=round.find(([a,b])=>a===0||b===0);
+    const home=mine[0]===0,opp=teamName(home?mine[1]:mine[0]);
+    const dl=(G.md===5&&!G.deadlineDone.summer)||(G.md===14&&!G.deadlineDone.winter);
+    return `<div class="card"><div class="rowline" style="border:none;padding-bottom:6px"><span class="kick">Matchday ${G.md+1}/${G.rounds} · ${home?"vs "+opp+" (H)":"away to "+opp}</span></div>
+      <button class="glowbtn" onclick="playMatchday()">${dl?"⚡ Deadline Day":"▶&nbsp; Play matchday"}</button></div>`;
+  }
+  if(G.phase==="playoff_semi"||G.phase==="playoff_final")
+    return `<div class="card"><button class="glowbtn" onclick="playPlayoff()">▶&nbsp; Play ${G.phase==="playoff_semi"?"Semi-Final":"Final"}</button></div>`;
+  return "";
+}
+function viewOwner(){
+  const o=G.owner||{name:"The Chairman",avatar:"🧑‍💼",background:"selfmade"};
+  const nw=netWorth(),rep=reputationRead(),bg=BAL.owner.backgrounds[o.background];
+  const hist=G.netWorthHistory||[],prev=hist.length?hist[hist.length-1].v:null;
+  const trend=prev?Math.round((nw-prev)/Math.max(1,Math.abs(prev))*100):null;
+  const relKeys=Object.keys(G.agentRel||{});
+  let bestAgent=null;
+  if(relKeys.length){const k=relKeys.reduce((a,b)=>(G.agentRel[b]>(G.agentRel[a]||0)?b:a));if(G.agentRel[k]>0.15){const ag=AGENTS.find(x=>x.key===k);bestAgent=ag?ag.n.split(" ")[0]:null;}}
+  const equity=nw-(G.personalWealth||0);
+  let h=`<div class="hero"><div class="inner">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="font-size:44px;line-height:1">${o.avatar}</div>
+      <div><div class="cname" style="font-size:20px">${o.name}</div>
+      <div class="csub">${bg?bg.n:"Owner"} · ${G.myShare}% of ${G.club}</div></div></div>
+    <div class="kick" style="margin-top:12px">Your empire</div>
+    <div style="font-size:30px" class="num"><b>${kfmt(nw)}</b> ${trend!==null?`<span style="font-size:13px;color:${trend>=0?'var(--acc)':'#E05A4A'}">${trend>=0?"▲ +":"▼ "}${trend}%</span>`:""}</div>
+    <div class="kick" style="font-size:9px">Personal fortune ${kfmt(G.personalWealth||0)} · your stake ${kfmt(equity)}</div>
+  </div></div>`;
+  h+=`<div class="duo">
+    <div><div class="kick">Reputation</div><div class="pname" style="font-size:17px">${rep.label}</div>
+      <div class="bar" style="margin-top:6px"><i style="width:${rep.value}%"></i></div></div>
+    <div><div class="kick">The people</div>
+      <div class="kick" style="font-size:9px;margin-top:6px">Board <b>${Math.round(trustLevel())}%</b> · Fans <b>${Math.round(G.fanMood)}</b></div>
+      ${bestAgent?`<div class="kick" style="font-size:9px;margin-top:3px">Closest agent: <b>${bestAgent}</b></div>`:'<div class="kick" style="font-size:9px;margin-top:3px">No agents warmed to you yet</div>'}</div></div>`;
+  const dec=[];
+  if(G.dividendDue)dec.push("A dividend decision is waiting.");
+  if(!isMajority())dec.push("You are a minority owner — buy back above "+BAL.owners.majorityAt+"%.");
+  if(G.owners.length&&G.ownerBoughtSeason!==G.season)dec.push("You could buy out a co-owner this season.");
+  if(G.fireSale)dec.push("Administration: a fire sale is running.");
+  if(dec.length)h+=`<div class="card"><div class="kick" style="margin-bottom:2px">On your desk</div>${dec.map(d=>`<div class="newsline">${d}</div>`).join("")}</div>`;
+  h+=matchStrip();
+  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Word around the game</div>${G.news.slice(0,4).map(n=>`<div class="newsline"><span class="tag">${n.tag}</span>${n.txt}</div>`).join("")||'<div class="newsline">Quiet.</div>'}</div>`;
+  return h;
+}
+function teamOverview(){
   let h="";
   if(G.phase==="season"&&G.md<G.rounds){
     const round=G.fixtures[G.md];
@@ -4480,10 +4528,10 @@ function marketRow(p,ix,fa){
 }
 function viewClub(){
   const b=G.standBuild;
-  // N8: klubsiden delt i faner, saa hver del passer paa én skaerm
-  const tab=G.clubTab||"ground";
-  const bar=`<div class="modes" style="margin-bottom:10px">`+[["ground","Ground"],["money","Money"],["board","Board"]].map(x=>`<button class="${tab===x[0]?'on':''}" onclick="G.clubTab='${x[0]}';render()">${x[1]}</button>`).join("")+`</div>`;
-  return bar+(tab==="ground"?`${stadiumSvg()}
+  // N8/O2: klubsiden i faner — Team (holdet) + Ground/Money/Board
+  const tab=G.clubTab||"team";
+  const bar=`<div class="modes" style="margin-bottom:10px">`+[["team","Team"],["ground","Ground"],["money","Money"],["board","Board"]].map(x=>`<button class="${tab===x[0]?'on':''}" onclick="G.clubTab='${x[0]}';render()">${x[1]}</button>`).join("")+`</div>`;
+  return bar+(tab==="team"?teamOverview():"")+(tab==="ground"?`${stadiumSvg()}
   ${b?`<div class="card"><div class="rowline"><span>${STANDS[b.key].n} · level ${b.lvl}</span><span class="cn num" style="color:var(--comm)">${b.remain} MD LEFT</span></div>
     <div class="bar amber"><i style="width:${Math.round(100*(5-b.remain)/5)}%"></i></div>
     <div class="boost"><button onclick="buildBoost()">▶ WATCH AD · −1 MD</button><button class="iap" onclick="grantReward('build')">FINISH NOW · £0.99 <span style="font-size:8px">(IAP)</span></button></div></div>`:""}
