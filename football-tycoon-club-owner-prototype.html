@@ -352,7 +352,10 @@ const BAL={
     askMult:1.2, openMult:0.72,
     moodDiscount:0.05, insultBelow:0.62, lockSeasons:2,
     trustStart:15, trustPerSeason:5, trustObjective:7, trustMissed:-4,
-    trustFundKept:3, trustAdmin:-30, trustRaid:-12, trustPromise:-5, trustFavourite:-8,
+    /* R1b: fonden er væk; trustFundKept gives nu ubetinget (den VAR næsten
+       altid givet — raid var sjældent), så tillids-trappen står urørt. trustRaid
+       udgik med raid-knappen. */
+    trustFundKept:3, trustAdmin:-30, trustPromise:-5, trustFavourite:-8,
     /* Pakke 15b: the Main Stand is the one board-facing thing you can BUILD.
        Small on purpose — next to trustAdmin −30 it is a nod, not a shortcut. */
     trustMainStand:4,
@@ -375,7 +378,7 @@ const BAL={
     majorityAt:50, dividendMaxFrac:0.55, dividendRemindFrom:20,  // R3: kortet markeres "last chance" fra denne uge
     dividendAppetite:{butcher:0.55, "pie magnate":0.32, solicitor:0.16}
   },
-  fund:{bonusPerMD:0.015, bonusCap:0.15},
+  // R1b: stadionfonden er fjernet — banken (pakke 23) er finansieringsvejen.
   /* Pakke 21b. Stemningens smaa tal. De var alle sammen korrekte i teksten --
      og alle sammen SKREVET AF frem for bygget, hvilket er den fejlklasse
      Claude.md siger vi ikke laver mere. En lovning der er rigtig i dag, og som
@@ -880,6 +883,10 @@ function loadGame(){
   if(!Number.isFinite(G.protest))G.protest=protestFor(G.fanMood,0);
   for(const p of [...G.squad,...G.market,...G.freeAgents])if(!Number.isFinite(p.load))p.load=0;
   ensureWorld();   // M1: en karriere gemt før pyramiden fandtes får sin verden født her
+  // R1b: fonden er væk — penge i en gammel karrieres fond må ALDRIG fordampe
+  if(G.fund>0||G.fundBonus>0){G.balance+=Math.round((G.fund||0)+(G.fundBonus||0));
+    addNews("CLUB","The stadium fund has been folded back into the club account — every penny, bonus included.");}
+  delete G.fund;delete G.fundBonus;delete G.fundTarget;delete G.fundRaided;
   // the id counter lives outside G — restore it above every id in play
   PID=1+[...G.squad,...G.market,...G.freeAgents].reduce((m,p)=>Math.max(m,p.id||0),0);
   modal=null;nego=null;screen="home";
@@ -1402,7 +1409,7 @@ function newGame(name,hue,mode){
     balance:150000,ticket:10,capacity:1500,
     stands:{shed:0,main:1,family:0,away:0},standBuild:null,
     fac:{shop:0,pub:0,screen:0,clinic:0,training:0,basics:0,vip:0},facBuild:null,
-    fund:0,fundBonus:0,fundTarget:null,fundRaided:false,seasonTix:{price:150,sold:0},bigExtra:2,jerseyFactor:1,jerseyName:null,
+    seasonTix:{price:150,sold:0},bigExtra:2,jerseyFactor:1,jerseyName:null,
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
     myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,sponsorRiskMD:null,
     personalWealth:0,dividendTaken:true,lastDividend:null,   // N5/R3: ejerfinanser — kortet kommer ved foerste saesonskift
@@ -2657,24 +2664,7 @@ function settleFinances(res){
   // build progress
   if(G.standBuild){G.standBuild.remain--;if(G.standBuild.remain<=0)finishStand();}
   if(G.facBuild){G.facBuild.remain--;if(G.facBuild.remain<=0)finishFac();}
-  // stadium fund: patience earns its bonus (1.5%/MD, capped at +15%)
-  if(G.fund>0)G.fundBonus=Math.min(G.fund*BAL.fund.bonusCap,G.fundBonus+G.fund*BAL.fund.bonusPerMD);
-  // project target reached → construction starts by itself
-  /* Maalet skal stadig vaere det naeste niveau. Uden dette kunne et foraeldet
-     maal (sat foer tribunen blev betalt kontant) starte et byggeri paa et
-     niveau der er passeret -- og finishStand() saetter G.stands[key]=b.lvl
-     direkte, saa tribunen ville blive NEDGRADERET og regningen betalt. Fundet
-     af pakke 8's egen onclick/NaN-audit, som foerst naaede modalerne i nat. */
-  if(G.fundTarget&&!fundTargetValid())staleFundTarget();
-  if(G.fundTarget&&!G.standBuild&&G.fund+G.fundBonus>=G.fundTarget.cost){
-    const t=G.fundTarget;
-    let total=G.fund+G.fundBonus-t.cost;
-    G.fund=Math.max(0,Math.round(total));G.fundBonus=0;G.fundTarget=null;
-    G.standBuild={key:t.key,remain:5,lvl:t.lvl};
-    msg("Site foreman","SF","THE FUND IS FULL — WORK BEGINS","The "+STANDS[t.key].n+" project is funded. Diggers arrive Monday. The town noticed the surveyors weeks ago — they always do.",null);
-    addNews("CLUB","Construction begins on "+STANDS[t.key].n+" — paid for the patient way. The co-owners raise their terrible coffee in salute.");
-    G.fanMood=clamp(G.fanMood+3,5,100);
-  }
+  // R1b: stadionfonden er væk — kontant byggeri eller banklån er vejene.
   // economy escalation
   if(G.balance<0&&!G.warnedNeg){G.warnedNeg=true;
     msg("The co-owners","CO","A politely furious letter","\"We note with interest that the club is now technically insolvent. We trust you have a plan. We would love to hear it. Any time. Really.\"",null);}
@@ -2913,7 +2903,7 @@ function finishSeason(o){
   {const O=BAL.owners,bold=Math.max(0,G.objectiveBold||0);
    const hit=pos<=G.objectivePos;
    bumpTrust(O.trustPerSeason+(hit?O.trustObjective+bold*O.objectiveStake:O.trustMissed-bold*O.objectiveStake)
-     +(G.fundRaided?0:O.trustFundKept));}
+     +O.trustFundKept);}   // R1b: altid — fonden (og raidet) findes ikke mere
   const promoted=o.promoted&&G.div>0;
   const relegated=!!o.relegated&&G.div<BAL.relegation.floorDiv&&!promoted;
   const oldDiv=G.div;   // M1: pyramide-udvekslingen skal kende min gamle division
@@ -3029,7 +3019,7 @@ function finishSeason(o){
   G.scoutUsed=false;G.sponsorBoost=false;G.coachAsked=false;G.deadlineDone={};G.playoff=null;G.ownerLifeMD=0;  // O3: nyt ejer-liv-ur pr. sæson
   // pakke T3: goodwill cools a little each summer — a relationship is kept up, not banked once
   if(G.agentRel)for(const k in G.agentRel)G.agentRel[k]=Math.max(0,G.agentRel[k]-BAL.agents.relDecay);
-  G.bids=[];G.callbacks=[];G.midwayDone=false;G.stuntDone=false;G.sponsorChecked=false;G.sponsorRiskMD=null;G.capRaiseUsed=false;G.fundRaided=false;G.lastXI=[];
+  G.bids=[];G.callbacks=[];G.midwayDone=false;G.stuntDone=false;G.sponsorChecked=false;G.sponsorRiskMD=null;G.capRaiseUsed=false;G.lastXI=[];
   G.seasonTix.sold=0;G.jerseyFactor=1;
   G.revenge=null;   // last year's grudge died with last year's fixture list
   // the curve the boardroom reads: one point per season, kept for the career
@@ -3177,7 +3167,7 @@ function seasonTixEstimate(price){
    opsummeringen skal kunne vise hvad man gik med til. Arbejdsordren sagde
    "femte trin"; den er femte i antal og fjerde i raekken, og det er den eneste
    afvigelse. */
-const BUDGET_STEPS=["Season tickets","The kit","Stadium fund","The objective","The frame"];
+const BUDGET_STEPS=["Season tickets","The kit","The objective","The frame"];   // R1b: fondstrinnet er ude
 /* Hvad medejerne SELV forventer. Skjult i foerste runde -- samme pokerprincip
    som kontraktforhandlingen, hvor modpartens krav ikke er synligt foer man har
    budt. Helt uden terning: aabner man moedet igen, staar det samme tal der, saa
@@ -3249,8 +3239,7 @@ function dividendConfirm(){
   G.dividendTaken=true;modal=null;render();
 }
 function openBudgetMeeting(){
-  modal={type:"budget",step:0,tixPrice:G.seasonTix.price,fundAdd:0,jersey:null,capAsked:false,capMsg:null,
-    target:G.fundTarget?G.fundTarget.key:null,
+  modal={type:"budget",step:0,tixPrice:G.seasonTix.price,jersey:null,capAsked:false,capMsg:null,
     /* Forhandlingen starter fra DIVISIONENS ramme, ikke fra sidste saesons
        aftale. Ellers ratcher den: en dristig aftale saenker G.objectivePos,
        naeste moede starter derfra, og efter fem saesoner forhandler man om
@@ -3304,13 +3293,6 @@ function budgetConfirm(){
   G.seasonTix.sold=est.sold;
   const tixCash=est.cash;
   G.balance+=tixCash;
-  // fund + project
-  G.fund+=m.fundAdd;G.balance-=m.fundAdd;
-  if(m.target&&G.stands[m.target]<2){
-    const lvl=G.stands[m.target]+1;
-    G.fundTarget={key:m.target,lvl,cost:STANDCOST[lvl]};
-    addNews("FANS","Rumour in the town: surveyors seen at "+STANDS[m.target].n+". The Shed End is cautiously excited. Everything they do is cautious.");
-  }
   // jersey verdict
   const j=m.jersey||"classic";
   const verdicts={classic:[1.0,"The classic. The fans nod solemnly. Correct."],modern:[Math.random()<0.6?1.2:0.9,"The modern look divides the pub, then sells."],wild:[Math.random()<0.4?1.35:0.8,"The wild one. Either iconic or a war crime. Time will tell."]};
@@ -3325,7 +3307,7 @@ function askCapRaise(){
   const m=modal;
   if(G.capRaiseUsed||m.capAsked)return;
   m.capAsked=true;G.capRaiseUsed=true;
-  if(Math.random()<0.45+G.fanMood/400-(G.fundRaided?0.15:0)){
+  if(Math.random()<0.45+G.fanMood/400){
     G.wageCap=Math.round(G.wageCap*BAL.wages.capRaise/100)*100;
     m.capMsg="Trencher sighs, Whitmore shrugs: cap raised to "+kfmt(G.wageCap)+"/w. \"Spend it wisely. Or at all, frankly.\"";
   }else{
@@ -3336,11 +3318,10 @@ function askCapRaise(){
 function openMidway(){
   const pos=myPos();
   const verdict=pos<=G.objectivePos?"\"On track. We are cautiously — and I stress cautiously — pleased.\"":"\"You are "+ord(pos)+". The objective is top "+G.objectivePos+". Do something, chairman.\"";
-  modal={type:"midway",verdict,fundAdd:0};
+  modal={type:"midway",verdict};
   render();
 }
 function midwayConfirm(){
-  G.fund+=modal.fundAdd;G.balance-=modal.fundAdd;
   G.midwayDone=true;modal=null;
   if(G.md%4===0&&!isDeadlineDay()){G.adCount++;modal={type:"interstitial"};}  // pakke T4: deadline day er annoncefri
   render();
@@ -3432,17 +3413,7 @@ function ownerNegoSubmit(){
 }
 /* ---------- economy: bank ultimatum ---------- */
 function openBankUltimatum(){
-  // the bank raids the fund FIRST — no bonus, no ceremony
-  if(G.fund>0){
-    const amt=G.fund;
-    G.balance+=amt;G.fund=0;G.fundBonus=0;G.fundTarget=null;
-    msg("The bank","BK","The fund is gone","\"We found "+kfmt(amt)+" in something called a 'stadium fund'. It is now called 'debt repayment'. The earned bonus? Consider it a lesson.\"",null);
-    addNews("CLUB","The bank drained the stadium fund. The new stand will have to wait. Everything will have to wait.");
-    if(G.balance>=-60000){ // crisis (barely) averted by the savings
-      if(G.md>=G.rounds){startPostSeason();return;}
-      render();return;
-    }
-  }
+  // R1b: fonden findes ikke mere — banken går direkte til tvangssalg/nødlån.
   const canSell=G.squad.length>13;
   /* Banken omlaegger EN gang. Den finansierer ikke en redning nummer to.
      Det er den gamle regel ("et laan ad gangen") udtrykt gennem den nye bank,
@@ -4240,36 +4211,15 @@ function startStandBuild(key){ // direct cash build — the impatient way, no fu
   const lvl=G.stands[key]+1;
   if(lvl>2){modal={type:"info",title:"Fully built",body:STANDS[key].n+" is already at its final glory."};render();return;}
   const cost=STANDCOST[lvl];
-  if(G.balance<cost){modal={type:"info",title:"Not enough funds",body:"The builders want "+kfmt(cost)+" up front in cash. They've been burned by football clubs before. (Tip: fund it patiently via the budget meeting — patience earns up to "+pct(BAL.fund.bonusCap)+".)"};render();return;}
+  if(G.balance<cost){modal={type:"info",title:"Not enough funds",body:"The builders want "+kfmt(cost)+" up front in cash. They've been burned by football clubs before. (Tip: the bank lends against the gate the stand itself will earn.)"};render();return;}
   G.balance-=cost;
   G.standBuild={key,remain:5,lvl};
-  // betaler man kontant, er fondens plan for SAMME tribune overhalet
-  if(G.fundTarget&&G.fundTarget.key===key)staleFundTarget();
   addNews("CLUB","Construction begins on "+STANDS[key].n+". The seagulls have been served notice.");
   render();
 }
-function withdrawFund(){
-  if(G.fund<=0)return;
-  const amt=G.fund;
-  G.balance+=amt;G.fund=0;G.fundBonus=0;G.fundTarget=null;G.fundRaided=true;
-  bumpTrust(BAL.owners.trustRaid);   // the fund was the one thing they asked you not to touch
-  msg("The co-owners","CO","\"About the fund…\"","\"You raided the stadium fund. "+kfmt(amt)+" back in the kitty, every penny of earned bonus gone — and our confidence in the word 'plan' somewhat dented.\"",null);
-  addNews("CLUB","The stadium fund was emptied. The surveyors have been sent home. Again.");
-  render();
-}
-/* Et gyldigt fondsmaal peger paa NAESTE niveau for en tribune der ikke er
-   maksimeret, og det niveau skal have en pris. Alle tre steder der laeser
-   G.fundTarget bruger den samme regel, saa de ikke kan komme fra hinanden. */
-function fundTargetValid(){
-  const t=G.fundTarget;
-  if(!t||!STANDS[t.key])return false;
-  return G.stands[t.key]<2&&t.lvl===G.stands[t.key]+1&&Number.isFinite(STANDCOST[t.lvl]);
-}
-function staleFundTarget(){
-  const t=G.fundTarget;G.fundTarget=null;
-  if(t&&STANDS[t.key])msg("Site foreman","SF","The project has moved on",
-    "The "+STANDS[t.key].n+" plan in the fund is out of date — that work is already done. The money stays in the fund; pick a new project at the next budget meeting.",null);
-}
+/* R1b: stadionfonden (opsparing + bonus + raid) er fjernet — to finansierings-
+   systemer var ét for meget. Banken (pakke 23) er vejen til at bygge før
+   pengene er der, og den har allerede rente, loft og konsekvens. */
 function finishStand(){
   const b=G.standBuild;
   G.stands[b.key]=b.lvl;recalcCapacity();
@@ -4914,13 +4864,7 @@ function viewClub(){
   ${b?`<div class="card"><div class="rowline"><span>${STANDS[b.key].n} · level ${b.lvl}</span><span class="cn num" style="color:var(--comm)">${b.remain} MD LEFT</span></div>
     <div class="bar amber"><i style="width:${Math.round(100*(5-b.remain)/5)}%"></i></div>
     <div class="boost"><button onclick="buildBoost()">▶ WATCH AD · −1 MD</button><button class="iap" onclick="grantReward('build')">FINISH NOW · £0.99 <span style="font-size:8px">(IAP)</span></button></div></div>`:""}
-  ${G.fundTarget?`<div class="card"><div class="kick" style="margin-bottom:4px">Stadium fund · project: <b>${STANDS[G.fundTarget.key].n} lvl ${G.fundTarget.lvl}</b></div>
-    <div class="rowline"><span>${kfmt(Math.round(G.fund+G.fundBonus))} of ${kfmt(G.fundTarget.cost)} <small>· incl. ${kfmt(Math.round(G.fundBonus))} earned bonus</small></span>
-    <button class="sellb" onclick="withdrawFund()">Raid fund</button></div>
-    <div class="bar"><i style="width:${clamp(Math.round(100*(G.fund+G.fundBonus)/G.fundTarget.cost),2,100)}%"></i></div>
-    <div class="kick" style="font-size:9px;margin-top:6px">Construction starts automatically when full · raiding kills the bonus and the co-owners' patience</div></div>`
-  :G.fund>0?`<div class="card"><div class="rowline"><span>Stadium fund <small>· no project chosen — earning ${kfmt(Math.round(G.fundBonus))} bonus</small></span><span class="amt num">${kfmt(Math.round(G.fund))}</span></div></div>`:""}
-  <div class="card"><div class="kick" style="margin-bottom:4px">The four stands <span style="font-size:9px">· cash builds pay full price — fund the project instead and patience pays up to ${pct(BAL.fund.bonusCap)}</span></div>
+  <div class="card"><div class="kick" style="margin-bottom:4px">The four stands <span style="font-size:9px">· cash up front — or let the bank lend against the gate</span></div>
     ${Object.entries(STANDS).map(([k,s])=>{
       const lvl=G.stands[k];
       return `<div class="rowline"><span>${s.n} <small>· lvl ${lvl} · ${s.role}</small></span>
@@ -5602,25 +5546,6 @@ function renderModal(){
         <div class="why"><b>What this means:</b> ${why||"Pick one — the kit multiplies every shirt sold on a matchday, for better or worse, until next summer."}</div>`;
     }
     if(st===2){
-      const opts=Object.entries(STANDS).filter(([k])=>G.stands[k]<2);
-      const tgt=m.target&&STANDS[m.target]&&G.stands[m.target]<2?{key:m.target,lvl:G.stands[m.target]+1}:null;
-      body=`<div class="kick" style="margin-top:10px">Stadium fund · which stand are we saving for?</div>
-        <div class="modes" style="margin-top:8px;flex-wrap:wrap">
-          ${opts.map(([k,s])=>{
-            const lvl=G.stands[k]+1;
-            return `<button class="${m.target===k?'on':''}" style="flex:1 1 45%" onclick="modal.target='${k}';render()">${s.n}<br><span style="font-size:10px;opacity:.7">lvl ${lvl} · ${kfmt(STANDCOST[lvl])}</span></button>`;
-          }).join("")||'<div class="newsline">Every stand is at its final glory. Nothing left to save for.</div>'}</div>
-        <div class="kick" style="margin-top:10px">Deposit from the bank <small style="text-transform:none">· you hold ${kfmt(G.balance)}</small></div>
-        <div class="stepper">
-          <button onclick="modal.fundAdd=Math.max(0,modal.fundAdd-10000);render()" title="−${kfmt(10000)}">‹</button>
-          <span class="val num" style="font-size:26px">${kfmt(m.fundAdd)}</span>
-          <button onclick="modal.fundAdd=Math.min(Math.max(0,G.balance),modal.fundAdd+10000);render()" title="+${kfmt(10000)}">›</button></div>
-        ${tgt?`<div class="card" style="margin-top:10px"><div class="rowline"><span>${STANDS[tgt.key].n} lvl ${tgt.lvl}</span><span class="amt num">${kfmt(STANDCOST[tgt.lvl])}</span></div>
-          <div class="rowline"><span>In the fund after tonight</span><span class="num">${kfmt(G.fund+m.fundAdd)}</span></div>
-          <div class="bar"><i style="width:${clamp(Math.round(100*(G.fund+m.fundAdd)/STANDCOST[tgt.lvl]),2,100)}%"></i></div></div>`:""}
-        <div class="why"><b>What this means:</b> money in the fund earns 1.5% a matchday, up to +15%, and building starts by itself when it's full. But it is money you cannot spend on players — and if the bank ever comes calling, the fund is the first thing they take.</div>`;
-    }
-    if(st===3){
       /* Pakke 19. Forventningsmoedet. Runde 1 er blind -- deres eget tal er
          skjult, praecis som modpartens loenkrav i en kontraktforhandling. */
       const rows=G.teams.length+1;
@@ -5643,14 +5568,13 @@ function renderModal(){
             <div class="rowline"><span>They had written</span><span class="amt num">top ${m.objTheirs}</span></div>
             <div class="rowline"><span>Board's verdict at season's end</span><span class="num" style="color:${bold>0?"var(--acc)":bold<0?"#E07A6A":"inherit"}">${bold>0?"+"+(bold*BAL.owners.objectiveStake).toFixed(1)+" trust either way · bonus +"+pct(bold*BAL.owners.objectivePrize):bold<0?"their shares cost +"+pct(-bold*BAL.owners.objectiveTimid):"as usual"}</span></div></div>`:""}`;
     }
-    if(st===4){
+    if(st===3){
       const est=seasonTixEstimate(m.tixPrice);
-      const after=G.balance+est.cash-m.fundAdd;
+      const after=G.balance+est.cash;
       const wages=G.squad.reduce((s,p)=>s+p.wage,0);
       body=`<div class="card" style="margin-top:10px">
           <div class="rowline"><span>Season tickets</span><span class="amt num">£${m.tixPrice} · ${est.sold.toLocaleString("en-GB")} holders</span></div>
           <div class="rowline"><span>Kit</span><span class="amt">${m.jersey?m.jersey[0].toUpperCase()+m.jersey.slice(1):"Classic (default)"}</span></div>
-          <div class="rowline"><span>Fund deposit${m.target&&STANDS[m.target]?" · "+STANDS[m.target].n:""}</span><span class="amt num">${kfmt(m.fundAdd)}</span></div>
           <div class="rowline"><span><b>Working capital after tonight</b></span><span class="amt num" style="color:${after<0?"#E07A6A":"var(--acc)"}">${kfmt(after)}</span></div>
           <div class="rowline"><span>Wage bill <small>· of ${kfmt(G.wageCap)} cap</small></span><span class="num">${kfmt(wages)}/w</span></div>
           ${commitmentsOwed()?`<div class="rowline"><span>Signed away <small>· instalments &amp; clauses still to pay</small></span><span class="amt num" style="color:#E07A6A">−${kfmt(commitmentsOwed())}</span></div>`:""}</div>
@@ -5679,11 +5603,6 @@ function renderModal(){
       <div class="biglabel">January · The Midway Meeting</div>
       <h2>Half-time, chairman</h2>
       <div class="dlg"><div class="iav">CO</div><div class="bubble">${modal.verdict}</div></div>
-      <div class="kick" style="margin-top:12px">Top up the stadium fund?</div>
-      <div class="stepper">
-        <button onclick="modal.fundAdd=Math.max(0,modal.fundAdd-10000);render()" title="−${kfmt(10000)}">‹</button>
-        <span class="val num" style="font-size:24px">${kfmt(modal.fundAdd)}</span>
-        <button onclick="modal.fundAdd=Math.min(Math.max(0,G.balance),modal.fundAdd+10000);render()" title="+${kfmt(10000)}">›</button></div>
       ${G.myShare<100&&!G.capRaiseUsed?`<button class="abtn comm" onclick="askCapRaise()">Request wage-cap raise</button>`:""}
       ${modal.capMsg?`<p style="margin-top:10px"><b>${modal.capMsg}</b></p>`:""}
       <button class="glowbtn" onclick="midwayConfirm()">Back to work ▸</button>
