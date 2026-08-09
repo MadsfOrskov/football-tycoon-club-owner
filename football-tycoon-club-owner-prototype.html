@@ -666,14 +666,16 @@ const BAL={
      modspil OG konsekvens (ingen nøgne knapper), alle trukket fra rigtige
      klubber i G.teams (T1's verden). Annoncefrit — deadline day er hellig. */
   deadline:{
-    slots:{min:3, max:5},
+    slots:{min:5, max:8},    // N6: a bigger night — 5-8 rolling events
+    revealStart:2,           // N6: how many have "arrived" when the window opens; the rest tick in
     heistDiscount:0.64,      // a skint club dumps a good man at this fraction of value (T1's desperation)
-    panicPremium:1.30,       // a panic bid lands above the player's value
+    heistBaseLift:5,         // N6: deadline-day steals are drawn from a stronger club — a marquee name
+    panicPremium:1.45,       // N6: a panic bid lands well above the player's value — juicier
     pushChance:0.5,          // pressing a panic bid: it goes up, or the caller walks
-    pushBump:1.15,           // ... and if it goes up, by this much
+    pushBump:1.18,           // ... and if it goes up, by this much
     holdCost:0.25,           // pay this share of his value (loyalty bonus) to keep a poached man
-    poachRaise:0.30,         // a rival's poach offer, above value, that you must beat to hold
-    times:["21:40","22:10","22:35","22:47","23:20","23:55"]  // the ticking clock
+    poachRaise:0.35,         // N6: a rival's poach offer, above value, that you must beat to hold
+    times:["21:15","21:40","22:05","22:25","22:47","23:05","23:30","23:57"]  // the ticking clock
   },
   agents:{
     relGain:0.12, relDecay:0.03, relSoften:0.06, relCap:1,
@@ -1506,10 +1508,10 @@ function marketBase(t){
   const core=Math.round((t.att+t.def+t.phy)/3);
   return clamp(core+R(BAL.market.baseSpreadLo,BAL.market.baseSpreadHi),34,84);
 }
-function genMarketPlayer(pos){
+function genMarketPlayer(pos,lift){
   const idx=Math.floor(Math.random()*G.teams.length);
   const t=G.teams[idx];
-  const pl=genPlayer(pos,marketBase(t),G_DIV_WAGE(G.div));
+  const pl=genPlayer(pos,clamp(marketBase(t)+(lift||0),34,88),G_DIV_WAGE(G.div));  // N6: lift = a marquee deadline steal
   assignClub(pl,idx);
   // the heist: a skint club dumps a good man cheap. Rare, and likelier at the
   // clubs that have least — a last-minute coup, not a standing discount.
@@ -3367,8 +3369,8 @@ function isDeadlineDay(){return G.md===5||G.md===14;}
 function buildDeadlineEvents(){
   const D=BAL.deadline,events=[];
   const rivalIdx=()=>Math.floor(Math.random()*G.teams.length);
-  // 1) the heist — a skint club dumps a good man cheap (T1's desperation, dialled up)
-  const heist=genMarketPlayer(pick(["DF","MF","FW","MF"]));
+  // 1) the heist — a skint club dumps a GOOD man cheap. N6: a marquee steal (baseLift).
+  const heist=genMarketPlayer(pick(["DF","MF","FW","MF"]),D.heistBaseLift);
   heist.value=Math.max(1000,Math.round(heist.value*D.heistDiscount/1000)*1000);
   heist.desperation=D.heistDiscount;heist.heist=true;
   events.push({kind:"heist",time:"",fromIdx:heist.fromIdx,player:heist,price:heist.value,done:false,
@@ -3403,7 +3405,14 @@ function buildDeadlineEvents(){
   return events;
 }
 function openDeadline(key){
-  modal={type:"deadline",key,events:buildDeadlineEvents(),closed:false};
+  const events=buildDeadlineEvents();
+  // N6: the feed doesn't land all at once — a few have "arrived", the rest tick in.
+  modal={type:"deadline",key,events,shown:Math.min(BAL.deadline.revealStart,events.length),closed:false};
+  render();
+}
+function dlAdvance(){ // N6: the clock ticks on — the next event arrives
+  if(!modal||modal.type!=="deadline")return;
+  modal.shown=Math.min(modal.events.length,(modal.shown||0)+1);
   render();
 }
 function dlEvt(i){return modal&&modal.events&&modal.events[i];}
@@ -4896,13 +4905,23 @@ function renderModal(){
         <div class="rowline"><span>${e.name} <small>· ${e.pos} · ${e.ov} ovr</small></span><span class="amt num">${kfmt(e.offer)}</span></div>
         ${e.done?`<div class="why">${e.outcome||"Passed -- you let this one go by."}</div>`:`<div class="boost"><button onclick="dlPoachHold(${i})">Hold him · ${kfmt(e.hold)}</button><button onclick="dlPoachLet(${i})">Let him go · ${kfmt(e.offer)}</button></div>`}</div>`;
     };
-    const openCount=m.events.filter(e=>!e.done).length;
-    return `<div class="overlay"><div class="sheet">
+    // N6: a fullscreen rolling feed — only what has "arrived" so far, newest on top,
+    // the clock ticking as each call lands. The rest come in when you let time pass.
+    const shown=m.shown||m.events.length;
+    const arrived=m.events.slice(0,shown);
+    const clock=arrived.length?arrived[arrived.length-1].time:BAL.deadline.times[0];
+    const openCount=arrived.filter(e=>!e.done).length;
+    const moreToCome=shown<m.events.length;
+    const feed=arrived.map((e,i)=>({e,i})).reverse().map(o=>card(o.e,o.i)).join("");
+    return `<div class="overlay"><div class="sheet" style="max-height:92vh">
       <div class="biglabel">⚡ DEADLINE DAY ⚡</div>
-      <h2>The phones are hot</h2>
-      <p>A rolling feed until the window slams shut. ${openCount?openCount+" live — choose fast, each one is gone by midnight.":"All settled. The fax machine finally cools."}</p>
-      ${m.events.map((e,i)=>card(e,i)).join("")}
-      <button class="glowbtn" onclick="dlClose()">Close window & play matchday ▸</button>
+      <div class="tclock" style="margin:2px auto 6px"><b class="num">${clock}</b></div>
+      <div class="kick" style="text-align:center;margin-bottom:6px">${shown} of ${m.events.length} in · ${openCount?openCount+" live":"all settled"}</div>
+      ${feed}
+      ${moreToCome
+        ?`<button class="glowbtn" onclick="dlAdvance()">Let the clock run ▸ <small style="opacity:.7">next call incoming</small></button>
+          <button class="abtn ghost" onclick="dlClose()">Slam the window shut &amp; play ▸</button>`
+        :`<button class="glowbtn" onclick="dlClose()">Window shut — play matchday ▸</button>`}
     </div></div>`;
   }
   if(modal.type==="bank"){
