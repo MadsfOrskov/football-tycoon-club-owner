@@ -37,6 +37,13 @@ body.light .kick b{color:var(--accDeep);}
 
 /* ---------- header ---------- */
 .top{display:flex;align-items:center;gap:11px;padding:20px 16px 0;}
+/* M2.5: guld er DIG. Ejer-lagets top + nav bærer guldtonen; klublaget beholder klubfarven. */
+.top.gold h1{color:#E3BE62}
+nav.gold button.on{color:#E3BE62}
+.ownerbar{display:flex;justify-content:space-between;align-items:center;cursor:pointer;
+  background:rgba(10,12,16,.92);border-bottom:1px solid rgba(227,190,98,.4);
+  padding:6px 16px;font-size:11px;font-weight:800;color:#E3BE62;letter-spacing:.04em;
+  position:sticky;top:0;z-index:15;}
 .top h1{font-family:'BarlowC';font-style:italic;font-weight:900;font-size:22px;text-transform:uppercase;line-height:.95;}
 .top .sub{font-size:10px;font-weight:600;color:var(--muted);letter-spacing:1.4px;text-transform:uppercase;margin-top:4px;}
 .top .right{margin-left:auto;text-align:right;}
@@ -1360,6 +1367,7 @@ function newGame(name,hue,mode){
     personalWealth:0,dividendDue:false,lastDividend:null,   // N5: ejerfinanser
     owner:{name:"The Chairman",avatar:"🧑‍💼",background:"selfmade"},reputation:BAL.owner.repStart,netWorthHistory:[],ownerLifeMD:0,  // O1/O3: ejer-identitet + ejer-liv
     stakes:[],stakeIncome:0,  // M2: andele i pyramidens klubber {wid,pct,paid}
+    layer:"owner",  // M2.5: hvilken verden du står i — "owner" (guld, dig) eller "club" (inde i klubben)
 
     netEwma:0,trust:BAL.owners.trustStart,admins:0,valHistory:[],commitments:[],protest:0,flavourSeen:[],
     /* Whose return leg is a big match. Stored as {opp,md,by} — an INDEX and two
@@ -2035,6 +2043,9 @@ function playMatchday(){
   // commit to an approach (choosePrematch), so stepping back costs nothing and,
   // crucially, cannot simulate the round twice.
   modal={type:"prematch",match,round};
+  // M2.5: står du HJEMME (ejer-laget), blander du dig ikke — gafferen får
+  // "din afgørelse", og kampen afvikles uden teamtalk-modalen.
+  if(G.layer==="owner"&&!match.isPlayoff){giveOrder("free",false);return;}
   render();
 }
 function clubPress(c,gf,ga){
@@ -4385,8 +4396,14 @@ function svgShield(txt,accent,size){
 }
 function render(){
   if(!G){if(bootSave)renderTitle();else renderOnboarding();return;}
-  let html=header()+'<div class="content">';
-  if(screen==="home")html+=viewYou();
+  if(G.layer===undefined)G.layer="owner";   // save-migration: gamle karrierer vågner hjemme
+  // M2.5: lagene håndhæves af NAVIGATIONEN (hvilke knapper der findes), ikke af
+  // en hård omdirigering her — så kan alt stadig renderes og måles udefra.
+  const inClub=G.layer==="club";
+  let html=(inClub?ownerBar():"")+header()+'<div class="content">';
+  if(screen==="home")html+=viewOwner();
+  if(screen==="empire")html+=viewEmpire();
+  if(screen==="books")html+=viewBooks();
   if(screen==="inbox")html+=viewInbox();
   if(screen==="squad")html+=viewSquad();
   if(screen==="market")html+=viewMarket();
@@ -4402,7 +4419,19 @@ function render(){
   keepScroll=true;
   if(modal&&modal.type==="ticker")runTicker();
 }
+/* M2.5: den tynde guld-linje — altid vejen hjem, aldrig i vejen */
+function ownerBar(){
+  const o=G.owner||{name:"You"};
+  return `<div class="ownerbar" onclick="exitClub()"><span>‹ ${(o.name||"You").split(" ")[0].toUpperCase()}</span><span class="num">${kfmt(G.personalWealth||0)} · wk ${Math.min(G.md+1,G.rounds)} · S${G.season}</span></div>`;
+}
 function header(){
+  if(G.layer!=="club"){
+    const o=G.owner||{name:"The Chairman",avatar:"🧑‍💼"};
+    return `<div class="top gold"><div style="font-size:30px;line-height:1">${o.avatar||"🧑‍💼"}</div>
+      <div><h1>${o.name}</h1><div class="sub">${reputationRead().label} · Week ${Math.min(G.md+1,G.rounds)} · S${G.season}</div></div>
+      <div class="right"><small>Net worth</small><b class="num">${kfmt(netWorth())}</b></div>
+      <button class="modebtn" onclick="toggleMode()">${G.mode==="dark"?"☀":"◗"}</button></div>`;
+  }
   return `<div class="top">${svgShield(G.badge,true,40)}
     <div><h1>${G.club}</h1><div class="sub">${G.divNames[G.div]} · ${ord(myPos())} · S${G.season}</div></div>
     <div class="right"><small>Bank${typeof G.lastNet==="number"?` · <span style="color:${G.lastNet>=0?"var(--acc)":"#E07A6A"}">${G.lastNet>=0?"+":"−"}${kfmt(Math.abs(G.lastNet))}/MD</span>`:""}</small><b class="num">${kfmt(G.balance)}</b></div>
@@ -4410,27 +4439,51 @@ function header(){
 }
 function toggleMode(){G.mode=G.mode==="dark"?"light":"dark";applyTheme(G.hue,G.mode);render();}
 function navbar(){
+  if(G.layer!=="club"){
+    const bell=deskDoorbell().length;
+    const t=[["home","Office"],["empire","Empire"],["books","Books"]];
+    return '<nav class="gold">'+t.map(([k,l])=>`<button class="${screen===k?'on':''}" onclick="go('${k}')">${l}${k==='home'&&bell?`<span class="badge num">${bell}</span>`:''}</button>`).join("")+'</nav>';
+  }
   const u=unreadCount();
-  const t=[["home","You"],["club","Club"],["squad","Squad"],["market","Market"],["table","Table"],["inbox","Inbox"]];
+  const t=[["club","Club"],["squad","Squad"],["market","Market"],["table","Table"],["inbox","Inbox"]];
   return '<nav>'+t.map(([k,l])=>`<button class="${screen===k?'on':''}" onclick="go('${k}')">${l}${k==='inbox'&&u?`<span class="badge num">${u}</span>`:''}</button>`).join("")+'</nav>';
 }
 function go(s){screen=s;if(s==="inbox")G.inbox.forEach(m=>m.unread=false);keepScroll=false;saveGame();render();}
+/* ---------- M2.5: de to lag — du GÅR IND i klubben og hjem igen ----------
+   Ejer-laget (guld) er dit: Kontor · Imperium · Bøger. Klublaget (klubbens
+   farve) er klubbens: Klub · Trup · Marked · Tabel · Indbakke — og findes kun
+   når du er gået ind. Tilstedeværelsen er implicit: du ER hvor du gik ind. */
+function enterClub(toScreen){G.layer="club";screen=toScreen||"club";keepScroll=false;saveGame();render();}
+function exitClub(){G.layer="owner";screen="home";keepScroll=false;saveGame();render();}
+/* Dørklokken: hastende klubpost giver en linje på dit bord. Bordet er en
+   dørklokke, ikke en svarknap — trykket hopper dig IND i klubben. Invariantens
+   løfte: intet tidskritisk item kan udløbe uden at have haft en linje her. */
+function deskDoorbell(){
+  return (G.inbox||[]).filter(m=>m.action&&!m.done)
+    .map(m=>({id:m.id,title:m.title,urgent:!!(m.action.expires!==undefined&&m.action.expires-G.md<=1)}));
+}
+/* "Næste uge" — tiden bor hos DIG. Hjemmefra afvikles din klubs kamp under
+   gafferen alene (ordren er "din afgørelse", tickeren spoles); store
+   begivenheder (deadline day, banken, sæsonskiftet) banker stadig på. I
+   playoff-tiden er hver kamp for stor til at skippe — så føres du derind. */
+function nextWeek(){
+  if(G.phase!=="season"||G.md>=G.rounds){enterClub();return;}
+  playMatchday();
+}
 
 /* ---------- views ---------- */
 /* O2/M2: the owner's home — you, the mogul. Sub-tabs: Desk (dagen), Empire
    (porteføljen: din klub, dine andele, hele pyramiden til købs), Books (dine
    personlige penge). Team content lives on the Club tab (teamOverview). */
-function viewYou(){
-  const tab=G.youTab||"desk";
-  const bar=`<div class="modes" style="margin-bottom:10px">`+[["desk","Desk"],["empire","Empire"],["books","Books"]].map(x=>`<button class="${tab===x[0]?'on':''}" onclick="G.youTab='${x[0]}';render()">${x[1]}</button>`).join("")+`</div>`;
-  return bar+(tab==="desk"?viewOwner():tab==="empire"?viewEmpire():viewBooks());
-}
+/* M2.5: You-undersiderne blev til ejer-lagets egen nav (Office/Empire/Books) —
+   viewYou-tabbaren er væk; render() kalder viewOwner/viewEmpire/viewBooks direkte. */
 function viewEmpire(){
   ensureWorld();
   // my club, my stakes, then the whole pyramid — every club has a price
-  let h=`<div class="card"><div class="kick" style="margin-bottom:2px">Your club</div>
+  let h=`<div class="card" style="border-color:var(--strokeAcc)"><div class="kick" style="margin-bottom:2px">Your club · you run it</div>
     <div class="rowline"><span><b>${G.club}</b> <small>· ${G.divNames[G.div]} · ${ord(myPos())}</small></span><span class="amt num">${G.myShare}%</span></div>
-    <div class="rowline"><span>Club value <small>· your slice ${kfmt(Math.round(clubValuation()*G.myShare/100))}</small></span><span class="amt num">${kfmt(clubValuation())}</span></div></div>`;
+    <div class="rowline"><span>Club value <small>· your slice ${kfmt(Math.round(clubValuation()*G.myShare/100))}</small></span><span class="amt num">${kfmt(clubValuation())}</span></div>
+    <button class="glowbtn" onclick="enterClub()">Enter the club ▸</button></div>`;
   const stakes=G.stakes||[];
   h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Your stakes ${G.stakeIncome?`<small>· paid ${kfmt(G.stakeIncome)} last season</small>`:""}</div>
     ${stakes.map(st=>{const c=findWorldClub(st.wid);if(!c)return "";
@@ -4464,18 +4517,6 @@ function viewBooks(){
   <div class="card"><div class="kick" style="margin-bottom:2px">Net worth by season</div>
     ${hist.map(x=>`<div class="rowline"><span>Season ${x.s}</span><span class="amt num">${kfmt(x.v)}</span></div>`).join("")||'<div class="newsline">Your first season is still being written.</div>'}</div>`;
 }
-function matchStrip(){
-  if(G.phase==="season"&&G.md<G.rounds){
-    const round=G.fixtures[G.md],mine=round.find(([a,b])=>a===0||b===0);
-    const home=mine[0]===0,opp=teamName(home?mine[1]:mine[0]);
-    const dl=(G.md===5&&!G.deadlineDone.summer)||(G.md===14&&!G.deadlineDone.winter);
-    return `<div class="card"><div class="rowline" style="border:none;padding-bottom:6px"><span class="kick">Matchday ${G.md+1}/${G.rounds} · ${home?"vs "+opp+" (H)":"away to "+opp}</span></div>
-      <button class="glowbtn" onclick="playMatchday()">${dl?"⚡ Deadline Day":"▶&nbsp; Play matchday"}</button></div>`;
-  }
-  if(G.phase==="playoff_semi"||G.phase==="playoff_final")
-    return `<div class="card"><button class="glowbtn" onclick="playPlayoff()">▶&nbsp; Play ${G.phase==="playoff_semi"?"Semi-Final":"Final"}</button></div>`;
-  return "";
-}
 function viewOwner(){
   const o=G.owner||{name:"The Chairman",avatar:"🧑‍💼",background:"selfmade"};
   const nw=netWorth(),rep=reputationRead(),bg=BAL.owner.backgrounds[o.background];
@@ -4500,13 +4541,28 @@ function viewOwner(){
     <div><div class="kick">The people</div>
       <div class="kick" style="font-size:9px;margin-top:6px">Board <b>${Math.round(trustLevel())}%</b> · Fans <b>${Math.round(G.fanMood)}</b></div>
       ${bestAgent?`<div class="kick" style="font-size:9px;margin-top:3px">Closest agent: <b>${bestAgent}</b></div>`:'<div class="kick" style="font-size:9px;margin-top:3px">No agents warmed to you yet</div>'}</div></div>`;
+  // M2.5: bordet — stående beslutninger + dørklokken for hastende klubpost.
+  // Bordet er en dørklokke, ikke en svarknap: trykket hopper dig IND i klubben.
   const dec=[];
   if(G.dividendDue)dec.push("A dividend decision is waiting.");
   if(!isMajority())dec.push("You are a minority owner — buy back above "+BAL.owners.majorityAt+"%.");
   if(G.owners.length&&G.ownerBoughtSeason!==G.season)dec.push("You could buy out a co-owner this season.");
   if(G.fireSale)dec.push("Administration: a fire sale is running.");
-  if(dec.length)h+=`<div class="card"><div class="kick" style="margin-bottom:2px">On your desk</div>${dec.map(d=>`<div class="newsline">${d}</div>`).join("")}</div>`;
-  h+=matchStrip();
+  const bell=deskDoorbell();
+  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">On your desk${dec.length+bell.length?" · <b>"+(dec.length+bell.length)+"</b>":""}</div>
+    ${dec.map(d=>`<div class="newsline">${d}</div>`).join("")}
+    ${bell.map(b=>`<div class="newsline" style="cursor:pointer${b.urgent?";color:var(--comm)":""}" onclick="enterClub('inbox')">✉ ${G.club}: ${b.title}${b.urgent?" · <b>expires soon</b>":""} — go in ▸</div>`).join("")}
+    ${dec.length+bell.length?"":'<div class="newsline">A clean desk. Enjoy it while it lasts.</div>'}</div>`;
+  if(G.phase==="season"&&G.md<G.rounds){
+    const dl=(G.md===5&&!G.deadlineDone.summer)||(G.md===14&&!G.deadlineDone.winter);
+    h+=`<div class="card"><div class="kick">The week</div>
+      <div class="rowline" style="border:none"><span style="font-size:12px">Week ${G.md+1} of ${G.rounds} — the pyramid plays. Your gaffer runs the side unless you go in.</span></div>
+      <button class="glowbtn" onclick="nextWeek()">${dl?"⚡ Deadline Day":"▶&nbsp; Next week"}</button></div>`;
+  }else{
+    h+=`<div class="card"><div class="kick">The week</div>
+      <div class="rowline" style="border:none"><span style="font-size:12px">${G.phase==="playoff_semi"||G.phase==="playoff_final"?"A playoff night — too big to watch from home.":"The season is settling."}</span></div>
+      <button class="glowbtn" onclick="nextWeek()">▶&nbsp; Go to the club</button></div>`;
+  }
   h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Word around the game</div>${G.news.slice(0,4).map(n=>`<div class="newsline"><span class="tag">${n.tag}</span>${n.txt}</div>`).join("")||'<div class="newsline">Quiet.</div>'}</div>`;
   return h;
 }
@@ -5740,6 +5796,8 @@ function renderModal(){
 let tickTimer=null;
 function openTicker(match,_){
   modal={type:"ticker",match,minute:0,gf:0,ga:0,skipped:false,usedSkip:false,half:1,ht:false,ft:false};
+  // M2.5: hjemmefra ser du ikke kampen minut for minut — resultatet kommer til dig.
+  if(G.layer==="owner"&&!match.big&&!match.isPlayoff){modal.skipped=true;modal.usedSkip=true;}
   render();
 }
 function tickerEventPool(){
@@ -5794,6 +5852,8 @@ function startTickLoop(){
 }
 function showHT(){
   const M=modal.match;
+  // M2.5: hjemmefra er der ingen omklædningsrums-beslutning — gafferen kører anden halvleg selv.
+  if(G.layer==="owner"&&!M.big&&!M.isPlayoff){modal.ht=true;tickHT(null);modal.skipped=true;return;}
   modal.ht=true;modal.skipped=false;
   const el=document.getElementById("tmin");if(el)el.textContent="HT";
   const burning=modal.gf<=modal.ga;
