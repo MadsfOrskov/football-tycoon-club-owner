@@ -556,9 +556,9 @@ const BAL={
   /* penalty: of a season's income if the clause is missed. onPromotion /
      onRelegation: what the shirt is worth in the new division — both were bare
      constants (1.6 up, nothing down) inside finishSeason. */
-  sponsor:{penalty:0.2, stuntFee:6000, perDivision:0.6, onPromotion:1.6, onRelegation:0.66,
+  sponsor:{penalty:0.2, perDivision:0.6, onPromotion:1.6, onRelegation:0.66,
     // pakke 21a: the window the collapse day is drawn from, once a season
-    riskFrom:8, riskTo:20, stuntMD:11, boost:8000},
+    riskFrom:8, riskTo:20, boost:8000},
   /* The protest ladder (GDD): "først bannere, så tavshed (uhyggeligst), så
      boykot med økonomisk konsekvens. Vrede har trin, ikke bare et tal."
      `hysteresis` is what makes the way back possible but slow: you slip down a
@@ -887,6 +887,10 @@ function loadGame(){
   if(G.fund>0||G.fundBonus>0){G.balance+=Math.round((G.fund||0)+(G.fundBonus||0));
     addNews("CLUB","The stadium fund has been folded back into the club account — every penny, bonus included.");}
   delete G.fund;delete G.fundBonus;delete G.fundTarget;delete G.fundRaided;
+  // R1c: fokus, mentorer og sponsor-stunts udgik — døde felter og ubesvarede stunt-beskeder ryddes
+  delete G.mentors;delete G.stuntDone;
+  for(const p of [...G.squad,...G.market,...G.freeAgents])delete p.focus;
+  if(Array.isArray(G.inbox))G.inbox=G.inbox.filter(m=>!(m.action&&m.action.kind==="stunt"));
   // the id counter lives outside G — restore it above every id in play
   PID=1+[...G.squad,...G.market,...G.freeAgents].reduce((m,p)=>Math.max(m,p.id||0),0);
   modal=null;nego=null;screen="home";
@@ -1314,18 +1318,13 @@ const FLAVOR=[
 /* GDD linje 121: "8-10 fiktive firma-karakterer MED AGENDA følger dig gennem
    karrieren". Fire havde en karakterlinje; ingen af dem havde en agenda man
    kunne læse før man skrev under. `agenda` er hvad de vil HAVE af klubben.
-   `risk` og `stunt` er de to adfærd der før stod som navnetjek inde i
-   sponsorLifeEvents() — nu felter, så en ny sponsor kan bære dem. */
+   `risk` er en adfærd der før stod som navnetjek inde i
+   sponsorLifeEvents() — nu et felt, så en ny sponsor kan bære den. */
 const SPONSORS=[
  {n:"Harlow Brewery",av:"HB",per:4200,character:"Proud, local, loyal — they'll follow you up the leagues.",
-  agenda:"Wants the club to stay the town's club. Pays fairly, expects respectability, never asks for a stunt."},
+  agenda:"Wants the club to stay the town's club. Pays fairly, expects respectability, never asks for favours."},
  {n:"Duncroft Mattress Co.",av:"DM",per:3800,character:"The Mattress King wants his name on everything.",
-  agenda:"Wants his name on the shirt, the stand, the pies and the tannoy. Will pay extra for spectacle.",
-  stunt:{title:"The Mattress King has an idea",
-   txt:"\"Picture it: your keeper diving onto one of MY mattresses at half-time. The crowd will love it. Or hate it. One of those.\"",
-   good:"Against all odds: the crowd LOVED it. The keeper now wants a mattress deal of his own.",
-   bad:"The keeper dove. The mattress slid. The clip is everywhere and none of it is flattering.",
-   no:"You declined. The Mattress King respects it. \"Big mistake. Big. Huge,\" he says, quietly impressed."}},
+  agenda:"Wants his name on the shirt, the stand, the pies and the tannoy. Will pay extra for spectacle."},
  {n:"NimbusCoin",av:"NC",per:6500,character:"Pays wildly. Read the small print. There is a lot of small print.",
   agenda:"Wants legitimacy and wants it this quarter. Pays over the odds because it may not be here next year.",
   risk:0.30},
@@ -1339,12 +1338,7 @@ const SPONSORS=[
   agenda:"Wants respectability by association and a top-half finish in writing. Will enforce the clause to the pound.",
   demandTough:true},
  {n:"Glint Energy Drinks",av:"GE",per:5800,character:"Loud, young, in a hurry. Sponsors anything that moves.",
-  agenda:"Wants the youth teams in their colours and clips for their feed. Attention is the whole deal.",
-  stunt:{title:"\"We want a halftime thing\"",
-   txt:"\"Crossbar challenge, prize wheel, our lot in the branded shirts, a big noise. Family fun. Mostly noise.\"",
-   good:"Three kids hit the crossbar and the Shed End adopted all of them. Genuinely charming.",
-   bad:"The prize wheel jammed, the music was too loud, and the second half started four minutes late.",
-   no:"You said no. \"Respect the brand integrity,\" they replied, which was not what you said at all."}},
+  agenda:"Wants the youth teams in their colours and clips for their feed. Attention is the whole deal."},
  {n:"Tarn Valley Removals",av:"TV",per:3600,character:"Family firm. The grandfather played centre-half here in 1961.",
   agenda:"Wants the club's history taken seriously. Ask about the grandfather and the money gets easier."},
  {n:"Orrell Holdings",av:"OH",per:7200,character:"Nobody is entirely sure what they do. The cheque clears.",
@@ -1364,15 +1358,11 @@ const COACHES=[
  {n:"Halim Osei",tac:61,man:60,dev:58,style:"balanced",line:"No promises and no excuses. Give me a squad, not an eleven, and ask me again in twenty games."},
  {n:"Bren Cudlipp",tac:55,man:38,dev:70,style:"academy",line:"The first team is the shop window. The academy is the shop. Spend on the shop."}
 ];
-/* En sponsor i G skal vaere FLAD. `stunt` er et nested objekt paa SPONSORS-
-   konstanten, og en shallow spread ville laegge SAMME objekt to steder i G:
-   den underskrevne aftale OG det tilbud der stadig ligger i indbakken.
-   assertSerialisable kraever et TRAE, og JSON ville goere dem til to kopier, saa
-   identitetstjek holder op med at virke. Fanget af en 20-saesoners koersel i
-   pakke 10 -- ved fem saesoner naaede botten sjaeldent at have begge dele i G
-   samtidig. Stuntets ordlyd slaas alligevel op i SPONSORS paa navn. */
+/* En sponsor i G skal vaere FLAD (assertSerialisable kraever et TRAE, og et
+   delt nested objekt ville ligge to steder i G). SPONSORS er flade felter nu
+   (stuntet udgik i R1c), men kopien beholdes som choke point. */
 const sponsorDef=n=>SPONSORS.find(x=>x.n===n);
-const sponsorCopy=o=>{const c={...o};delete c.stunt;return c;};
+const sponsorCopy=o=>({...o});
 const coachOvr=c=>Math.round((c.tac+c.man+c.dev)/3);
 
 /* ---------- state ---------- */
@@ -1381,15 +1371,14 @@ const OWNER_AVATARS=["🧑‍💼","👩‍💼","🎩","🧔","👑","🕶️"]
 
 /* Players are identified by ID, never by name. There are only 28×26 = 728
    possible names, so with 15+ players on the books duplicates are near
-   certain over a career — and captain, mentors and inbox offers all used to
+   certain over a career — and captain and inbox offers all used to
    be keyed on the name string, which meant the wrong man got the armband. */
 let PID=1;
 function byId(id){return (G&&G.squad.find(p=>p.id===id))||null;}
-/* Every route out of the squad must go through here, or the armband and the
-   mentor pairs are left pointing at a man who no longer plays for the club. */
+/* Every route out of the squad must go through here, or the armband is
+   left pointing at a man who no longer plays for the club. */
 function detachPlayer(p){
   if(p.id===G.captain)G.captain=null;
-  G.mentors=G.mentors.filter(m=>m.vet!==p.id&&m.kid!==p.id);
   /* Enhver vej ud af truppen taeller mod brandudsalgets maal -- det er derfor
      krediteringen sidder HER, i det ene choke point alle exits gaar igennem, og
      ikke i hvert enkelt salgsflow. Under administrationen betyder det at DINE
@@ -1411,7 +1400,7 @@ function newGame(name,hue,mode){
     fac:{shop:0,pub:0,screen:0,clinic:0,training:0,basics:0,vip:0},facBuild:null,
     seasonTix:{price:150,sold:0},bigExtra:2,jerseyFactor:1,jerseyName:null,
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
-    myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,stuntDone:false,sponsorChecked:false,sponsorRiskMD:null,
+    myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,sponsorChecked:false,sponsorRiskMD:null,
     personalWealth:0,dividendTaken:true,lastDividend:null,   // N5/R3: ejerfinanser — kortet kommer ved foerste saesonskift
     owner:{name:"The Chairman",avatar:"🧑‍💼",background:"selfmade"},reputation:BAL.owner.repStart,netWorthHistory:[],ownerLifeMD:0,  // O1/O3: ejer-identitet + ejer-liv
     stakes:[],stakeIncome:0,  // M2: andele i pyramidens klubber {wid,pct,paid}
@@ -1429,7 +1418,7 @@ function newGame(name,hue,mode){
     squad:posPlan.map(p=>genPlayer(p,R(42,58),G_DIV_WAGE(3))),
     market:[],freeAgents:[],scoutPending:0,scoutUsed:false,sponsorBoost:false,
     wageCap:BAL.wages.cap,bids:[],callbacks:[],lastXI:[],
-    captain:null,captSuggested:false,talkCooldown:0,mentors:[],soldTo:[],agentRel:{},
+    captain:null,captSuggested:false,talkCooldown:0,soldTo:[],agentRel:{},
     teams:[],me:{pts:0,gd:0,pl:0},fixtures:[],
     inbox:[],news:[],msgId:1,lastResult:null,deadlineDone:{},playoff:null,
     history:[],adCount:0,titles:0
@@ -1701,7 +1690,7 @@ function genPlayer(pos,base,wmult){
     wage:Math.round((ov*BAL.wages.scale*wmult+R(-70,110))/10)*10,
     value:0,pot,scouted:0,agentKey:BAL.agents.list[Math.floor(Math.random()*BAL.agents.list.length)].key,
     traits:[...new Set(traits)],gem:false,inj:0,susp:0,sg:0,sapps:0,smotm:0,load:0,
-    conf:R(42,60),focus:null,capps:0,promiseMD:null,years:R(1,3),from:null,fromIdx:-1,
+    conf:R(42,60),capps:0,promiseMD:null,years:R(1,3),from:null,fromIdx:-1,
     desperation:1,heist:false,valNoise:1+(Math.random()*2-1)*BAL.market.noise,
     listed:false,reqDone:false,renewLockMD:-99};
   p.value=playerValuation(p);
@@ -2956,8 +2945,7 @@ function finishSeason(o){
     }
   }
   if(leavers.length)msg("Ledger (bookkeeper)","L","GONE FOR NOTHING","Contracts expired, no renewals signed: "+leavers.join(" · ")+". Value walked out the door with its boots under its arm.",null);
-  // aging & development — matches played fuel young growth; focus doubles down
-  applyMentors();
+  // aging & development — matches played fuel young growth
   for(const p of G.squad){
     p.age++;
     let dev;
@@ -2971,7 +2959,6 @@ function finishSeason(o){
     }else dev=(p.age<30?R(-1,1):-R(1,3));
     p.att=clamp(p.att+dev,25,95);p.def=clamp(p.def+dev,25,95);
     p.phy=clamp(p.phy+(p.age>=30?-R(1,3):dev),25,95);
-    if(p.focus&&p.age<28){p[p.focus]=clamp(p[p.focus]+(p.age<24?2:1),25,95);}
     /* Pakke T2: growth respects the hidden ceiling. A boy grows TOWARD pot, never
        past it — so two players with identical visible stats but different pots
        develop into different men. Shave the top attribute until overall sits at
@@ -3006,7 +2993,6 @@ function finishSeason(o){
     }
   }
   G.captSuggested=false;G.talkCooldown=0;
-  G.mentors=G.mentors.filter(m=>byId(m.vet)&&byId(m.kid));
   if(!G.captain||!byId(G.captain))pickCaptain();
   // sponsor expiry
   if(G.sponsor){G.sponsor.seasonsLeft--;if(G.sponsor.seasonsLeft<=0){G.sponsor=null;sponsorRenewal();}}
@@ -3019,7 +3005,7 @@ function finishSeason(o){
   G.scoutUsed=false;G.sponsorBoost=false;G.coachAsked=false;G.deadlineDone={};G.playoff=null;G.ownerLifeMD=0;  // O3: nyt ejer-liv-ur pr. sæson
   // pakke T3: goodwill cools a little each summer — a relationship is kept up, not banked once
   if(G.agentRel)for(const k in G.agentRel)G.agentRel[k]=Math.max(0,G.agentRel[k]-BAL.agents.relDecay);
-  G.bids=[];G.callbacks=[];G.midwayDone=false;G.stuntDone=false;G.sponsorChecked=false;G.sponsorRiskMD=null;G.capRaiseUsed=false;G.lastXI=[];
+  G.bids=[];G.callbacks=[];G.midwayDone=false;G.sponsorChecked=false;G.sponsorRiskMD=null;G.capRaiseUsed=false;G.lastXI=[];
   G.seasonTix.sold=0;G.jerseyFactor=1;
   G.revenge=null;   // last year's grudge died with last year's fixture list
   // the curve the boardroom reads: one point per season, kept for the career
@@ -3063,7 +3049,7 @@ function sponsorLater(){
   if(cont==="matchday")afterMatchday();else render();
 }
 
-/* ---------- captain, office chats, mentors, retirement ---------- */
+/* ---------- captain, office chats, retirement ---------- */
 function pickCaptain(){
   const cands=[...G.squad].sort((a,b)=>((b.traits.includes("leader")?30:0)+b.age+ovr(b)/4)-((a.traits.includes("leader")?30:0)+a.age+ovr(a)/4));
   G.captain=cands[0]?cands[0].id:null;
@@ -3107,28 +3093,6 @@ function doChat(kind){
     out="\"You'll get your football.\" He believes you. Deliver within "+BAL.clock.promiseMD+" matchdays — or his agent calls. (Confidence +5)";
   }
   modal={type:"info",title:"The office door closes",body:out};render();
-}
-function setMentor(id){
-  const vet=byId(id);if(!vet)return;
-  const kids=G.squad.filter(p=>p.age<22&&p.pos===vet.pos&&p.id!==vet.id);
-  if(!kids.length){modal={type:"info",title:"No apprentice",body:"No under-22 "+vet.pos+" in the squad for "+vet.name.split(" ")[1]+" to take under his wing."};render();return;}
-  if(G.mentors.length>=2&&!G.mentors.find(m=>m.vet===vet.id)){modal={type:"info",title:"Two pairs max",body:"The gaffer allows two mentor pairs. More and it becomes a crèche."};render();return;}
-  const kid=kids.sort((a,b)=>ovr(b)-ovr(a))[0];
-  G.mentors=G.mentors.filter(m=>m.vet!==vet.id);
-  G.mentors.push({vet:vet.id,kid:kid.id});
-  addNews("CLUB",vet.name.split(" ")[1]+" takes "+kid.name.split(" ")[1]+" under his wing. They stay out an hour after training. The kid carries the cones. It's tradition.");
-  render();
-}
-function applyMentors(){
-  for(const m of G.mentors){
-    const vet=byId(m.vet),kid=byId(m.kid);
-    if(!vet||!kid)continue;
-    kid.att=clamp(kid.att+1,25,95);kid.def=clamp(kid.def+1,25,95);
-    if(vet.traits.length&&Math.random()<0.25&&!kid.traits.includes(vet.traits[0])){
-      kid.traits.push(vet.traits[0]);
-      addNews("CLUB",kid.name.split(" ")[1]+" has started to remind people of "+vet.name.split(" ")[1]+". "+(["leader","grafter","biggame"].includes(vet.traits[0])?"The good parts, thankfully.":"Not necessarily the good parts."));
-    }
-  }
 }
 function applyRetirements(){
   const retiring=G.squad.filter(p=>p.age>=35||(p.age>=34&&Math.random()<0.4));
@@ -4155,20 +4119,6 @@ function handleAction(m,choice){
     if(choice==="list"){p.listed=true;m.done=true;m.body="He's on the list. He trained beautifully today — funny, that.";}
     else{p.conf=clamp(p.conf-5,10,95);m.done=true;m.body="Request refused. He'll stay. His body will, anyway — the rest is negotiable.";}
   }
-  if(a.kind==="stunt"){
-    /* The outcome text used to be about mattresses, in a branch reached by any
-       sponsor with a stunt. The message carries the sponsor's NAME and the
-       wording is looked up in SPONSORS (a constant, never in G), so the second
-       showman in the pool does not get the first one's props. */
-    const sp=sponsorDef(a.who),st=sp&&sp.stunt,fee=BAL.sponsor.stuntFee;
-    if(choice==="yes"){
-      G.balance+=fee;m.done=true;
-      if(Math.random()<0.35){G.fanMood=clamp(G.fanMood-4,5,100);
-        m.body=(st?st.bad:"It happened. The clip is everywhere.")+" "+kfmt(fee)+" richer, slightly less dignified.";}
-      else{G.fanMood=clamp(G.fanMood+2,5,100);
-        m.body=(st?st.good:"Against all odds, the crowd loved it.")+" "+kfmt(fee)+", and nobody is embarrassed.";}
-    }else{m.done=true;m.body=st&&st.no?st.no:"You declined. It was noted, and quietly respected.";}
-  }
   if(a.kind==="sponsorChoice"){
     const o=choice==="A"?a.offers[0]:a.offers[1];
     G.sponsor=sponsorCopy(o);m.done=true;
@@ -4335,10 +4285,9 @@ function sponsorLifeEvents(){
       ?"\"Top "+target+", as agreed. Carry on, chairman — the boys at the brewery are pleased.\""
       :"\"The deal says top "+target+". You are "+ord(pos)+". We are not angry. We are disappointed. You have half a season to fix it before the clause bites.\"",null);
   }
-  /* The collapse and the stunt used to be NAME CHECKS on two of the four
-     sponsors. With ten in the pool that meant six of them were decoration, so
-     both behaviours are fields on the sponsor now (`risk`, `stunt`) and any
-     sponsor written with them behaves. Same code path, more characters. */
+  /* The collapse used to be a NAME CHECK on one of the four sponsors. With
+     ten in the pool that meant most were decoration, so the behaviour is a
+     field on the sponsor now (`risk`) and any sponsor written with it behaves. */
   /* Pakke 21a, QA's F8. R(8,20) blev trukket PAA NY hver kampdag. Laest som
      skrevet ligner det "en tilfaeldig kampdag mellem 8 og 20"; hvad det gjorde
      var et lotteri hver kampdag med 1/13 chance for at ramme, saa den effektive
@@ -4354,11 +4303,6 @@ function sponsorLifeEvents(){
     G.sponsor=null;G.sponsorOffered=false;
     return;
   }
-  {const def=sponsorDef(G.sponsor.n);
-   if(def&&def.stunt&&G.md===BAL.sponsor.stuntMD&&!G.stuntDone){
-     G.stuntDone=true;
-     msg(G.sponsor.n,G.sponsor.av,def.stunt.title,def.stunt.txt+" "+kfmt(BAL.sponsor.stuntFee)+".",{kind:"stunt",who:G.sponsor.n});
-   }}
 }
 
 /* ---------- table ---------- */
@@ -4677,7 +4621,6 @@ function inboxActions(m){
       ibtn(id,"walk","Walk away","ghost");
     case "callback":return ibtn(id,"ok","Hear him out","");
     case "transferReq":return ibtn(id,"list","List him","comm")+ibtn(id,"no","Refuse","ghost");
-    case "stunt":return ibtn(id,"yes","Do it · +"+kfmt(BAL.sponsor.stuntFee),"")+ibtn(id,"no","No thanks","ghost");
   }
   return "";
 }
@@ -4719,11 +4662,10 @@ function viewSquad(){
     h+=list.map((x,i)=>squadRow(x.p,i===list.length-1)).join("");
   }
   h+=`<div class="kick" style="margin-top:12px;font-size:9.5px;text-transform:none;letter-spacing:.2px">
-    Tap a player for contract, chat, focus, mentoring and sale.${wo?"":" The window is shut — selling reopens when it does."}</div></div>`;
+    Tap a player for contract, chat and sale.${wo?"":" The window is shut — selling reopens when it does."}</div></div>`;
   return h;
 }
 function squadRow(p,last){
-  const mentor=G.mentors.find(m=>m.vet===p.id||m.kid===p.id);
   const chips=[];
   if(p.id===G.captain)chips.push('<span class="mini a">©</span>');
   if(p.inj)chips.push(`<span class="mini r">Inj ${p.inj}md</span>`);
@@ -4737,8 +4679,6 @@ function squadRow(p,last){
   }
   if(p.listed)chips.push('<span class="mini c">Listed</span>');
   if(p.gem)chips.push('<span class="mini c">Gem</span>');
-  if(mentor)chips.push(`<span class="mini a">${mentor.vet===p.id?"Mentor":"Apprentice"}</span>`);
-  if(p.focus)chips.push(`<span class="mini a">${p.focus} ↑</span>`);
   chips.push(`<span class="mini ${p.years<=1?"c":"m"}">${p.years}yr</span>`);
   return `<div class="srow${last?" last":""}" role="button" tabindex="0" aria-label="${p.name}, ${p.pos}, ${ovr(p)} overall" onclick="openPlayer(${p.id})">
     <span class="posb">${p.pos}</span>
@@ -4749,10 +4689,6 @@ function squadRow(p,last){
 function openPlayer(id){
   if(!byId(id))return;
   modal={type:"player",pid:id};render();
-}
-function setFocus(id,f){
-  const p=byId(id);if(!p)return;
-  p.focus=p.focus===f?null:f;render();
 }
 function openSellSheet(id){
   // the gate lives here, not in the markup — every caller gets the same rule
@@ -4812,7 +4748,6 @@ function executeSale(p,club,bid){
     addNews("CLUB","Maureen's column: 'A promise at "+G.club.split(" ")[0]+" is apparently a currency that devalues fast.'");
   }
   if(p.id===G.captain){G.captain=null;pickCaptain();addNews("CLUB","The armband needs a new arm. "+(G.captain?nameOf(G.captain)+" gets it.":""));}
-  G.mentors=G.mentors.filter(m=>m.vet!==p.id&&m.kid!==p.id);
   addNews("TRANSFER",p.name+" sold to "+club+" for "+kfmt(bid)+". You'll meet again — the fixture list guarantees it.");
   return true;
 }
@@ -5692,17 +5627,11 @@ function renderModal(){
       <p>That player has left the club. The noticeboard is out of date again.</p>
       <button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
     const isCap=p.id===G.captain;
-    const mentor=G.mentors.find(m=>m.vet===p.id||m.kid===p.id);
     const wo=windowOpen();
     const thin=G.squad.length<=13;
     const bar=(label,v)=>`<div class="rowline" style="border-bottom:none;padding-bottom:2px"><span>${label}</span><span class="amt num">${v}</span></div>
       <div class="bar" style="margin-top:0;margin-bottom:6px"><i style="width:${clamp(v,3,100)}%"></i></div>`;
     let acts="";
-    if(p.age<28){
-      acts+=`<div class="kick" style="margin-top:14px">Training focus <span style="font-size:9px;text-transform:none">· doubles down on one attribute every summer</span></div>
-        <div class="modes" style="margin-top:8px">${["att","def","phy"].map(f=>
-          `<button class="${p.focus===f?'on':''}" onclick="setFocus(${ix},'${f}')">${f.toUpperCase()}</button>`).join("")}</div>`;
-    }
     const act=(cls,dis,click,html)=>`<button class="abtn ${cls}" style="text-align:left${dis?";opacity:.45":""}" ${dis?"disabled":""} onclick="${click}">${html}</button>`;
     acts+=`<div class="kick" style="margin-top:16px">The chairman's options</div>`;
     acts+=act("",G.talkCooldown>0,`openChat(${ix})`,
@@ -5710,10 +5639,6 @@ function renderModal(){
     if(p.years<=1){
       acts+=act("comm",false,`startRenewal(${ix})`,
         `<b>✍ Open renewal talks</b> — final year: sign him or he walks for nothing next summer`);
-    }
-    if(p.age>=28){
-      acts+=act("",false,`setMentor(${ix})`,
-        `<b>Make him a mentor</b> — ${mentor&&mentor.vet===p.id?"currently guiding "+surnameOf(mentor.kid):"he takes a young "+p.pos+" under his wing"}`);
     }
     if(!isCap){
       acts+=act("",G.captSuggested,`suggestCaptain(${ix})`,
@@ -5740,8 +5665,7 @@ function renderModal(){
         <div class="rowline"><span>Wage</span><span class="amt num">${kfmt(p.wage)}/w</span></div>
         <div class="rowline"><span>Contract</span><span class="amt num" style="${p.years<=1?"color:var(--comm)":""}">${p.years} year${p.years===1?"":"s"}${p.years<=1?" · final":""}</span></div>
         <div class="rowline"><span>This season</span><span class="num">${p.sapps} apps · ${p.sg} goals · ${p.smotm} motm</span></div>
-        <div class="rowline"><span>For the club</span><span class="num">${p.capps} apps</span></div>
-        ${mentor?`<div class="rowline"><span>${mentor.vet===p.id?"Mentoring":"Learning from"}</span><span class="amt">${nameOf(mentor.vet===p.id?mentor.kid:mentor.vet)}</span></div>`:""}</div>
+        <div class="rowline"><span>For the club</span><span class="num">${p.capps} apps</span></div></div>
       ${acts}
     </div></div>`;
   }
