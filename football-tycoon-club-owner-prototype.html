@@ -1512,9 +1512,21 @@ function refreshMarket(){
   G.market=["GK","DF","DF","MF","MF","FW"].map(p=>genMarketPlayer(p));
   G.freeAgents=["DF","MF","FW"].map(p=>{const pl=genMarketPlayer(p);pl.desperation=1;pl.heist=false;pl.wage=Math.round(pl.wage*BAL.wages.freeAgentMult/10)*10;pl.free=true;pl.value=playerValuation(pl);return pl;});
 }
+/* N3: en frisk liste navne — reklame/IAP. Beholder verserende bud og Reg's gem,
+   skifter resten ud. En repeterbar "opdatér markedet nu". */
+function marketReroll(){
+  const kept=G.market.filter(p=>p.pendingBid||p.gem);
+  const slots=["GK","DF","DF","MF","MF","FW"];
+  const need=Math.max(4,6-kept.length);
+  const fresh=slots.slice(0,need).map(pos=>genMarketPlayer(pos));
+  G.market=[...kept,...fresh];
+  addNews("MARKET","A fresh list lands on Reg's desk — new names to look at.");
+}
+function startMarketRefresh(){modal={type:"rewarded",reward:"market"};render();}
 function marketFlow(){ // the living market: names in, names out — window days are worth checking
   if(!windowOpen())return;
-  if(G.market.length<8&&Math.random()<0.35){
+  // N3: friske navne oftere — ca. hver 2.-3. kampdag i vinduet
+  if(G.market.length<9&&Math.random()<0.5){
     const pl=genMarketPlayer(pick(["GK","DF","DF","MF","MF","FW"]));
     G.market.push(pl);
     addNews("MARKET",pl.from+(pl.heist?" — short of cash — quietly make "+pl.name+" available BELOW value. Reg is already reaching for his coat.":" quietly make "+pl.name+" available. Reg has already circled the name."));
@@ -3822,6 +3834,7 @@ function grantReward(kind){
   if(kind==="scout"){G.scoutUsed=true;G.scoutPending=BAL.clock.scoutMD;addNews("SCOUT","Reg has packed his flask and left on a mission. Report expected in "+BAL.clock.scoutMD+" matchdays.");}
   if(kind==="sponsor"){G.sponsorBoost=true;G.balance+=BAL.sponsor.boost;addNews("CLUB","Sponsor top-up: +"+kfmt(BAL.sponsor.boost)+". Their logo is now also on the corner flags.");}
   if(kind==="build"&&G.standBuild){G.standBuild.remain=Math.max(0,G.standBuild.remain-1);if(G.standBuild.remain===0)finishStand();addNews("CLUB","The builders found an extra crew. The stand grows visibly.");}
+  if(kind==="market")marketReroll();   // N3: en frisk liste navne, ad/IAP
   modal=null;render();
 }
 function deliverScout(){
@@ -4350,7 +4363,9 @@ function viewMarket(){
   h+=`<div class="card"><div class="kick" style="margin-bottom:4px">Free agents · no fee, bigger wages</div>
     ${G.freeAgents.map((p,ix)=>marketRow(p,ix,true)).join("")||'<div class="newsline">None right now. They are all on beaches.</div>'}</div>`;
   h+=`<div class="card"><div class="rowline"><div style="max-width:220px;font-size:12px">Send Reg on a scouting mission — report in 2 matchdays.</div>
-    <button class="abtn comm" onclick="startScout()" ${G.scoutUsed?"disabled style='opacity:.4'":""}>▶ Scout <span style="font-size:8px">AD</span></button></div></div>`;
+    <button class="abtn comm" onclick="startScout()" ${G.scoutUsed?"disabled style='opacity:.4'":""}>▶ Scout <span style="font-size:8px">AD</span></button></div>
+    ${w.open?`<div class="rowline" style="border:none"><div style="max-width:220px;font-size:12px">Not seeing the right names? Pull a fresh list.</div>
+    <button class="abtn" onclick="startMarketRefresh()">▶ Fresh names <span style="font-size:8px">AD</span></button></div>`:""}</div>`;
   return h;
 }
 function marketRow(p,ix,fa){
@@ -4932,7 +4947,7 @@ function renderModal(){
   }
   if(modal.type==="rewarded"){
     const k=modal.reward;
-    const txt=k==="scout"?"Belønning: Reg sendes på mission (rapport om 2 kampdage).":k==="sponsor"?"Belønning: +"+kfmt(BAL.sponsor.boost)+" fra sponsoren.":"Belønning: −1 kampdag på byggeriet.";
+    const txt=k==="scout"?"Belønning: Reg sendes på mission (rapport om 2 kampdage).":k==="sponsor"?"Belønning: +"+kfmt(BAL.sponsor.boost)+" fra sponsoren.":k==="market"?"Belønning: en frisk liste af markedsspillere.":"Belønning: −1 kampdag på byggeriet.";
     return `<div class="overlay"><div class="sheet">
       <div class="kick">Monetisation placeholder</div>
       <div class="adbox"><b>REWARDED VIDEO</b>30 sek. frivillig video ville afspilles her</div>
