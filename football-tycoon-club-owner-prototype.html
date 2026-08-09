@@ -1957,17 +1957,8 @@ function htChoice(c){
   const match=modal.match;
   match.htDone=true;
   if(c==="steady")match.h2=simHalf(match,{own:0.85,opp:0.72});
-  if(c==="fury"){
-    /* "Riv dem et nyt et" er ogsaa en ordre -- en gung-ho anden halvleg. Vil
-       gafferen ikke (lav odds for en jagt), koster det som en insister:
-       bestyrelsen og omklaedningsrummet. "Det gaelder ALT du beder ham om." */
-    if(Math.random()>=gafferAcceptOdds("win")){
-      insistCost();
-      addNews("CLUB","Half-time. The gaffer wanted calm; you wanted blood. You got your way, and a cold dressing room.");
-    }
-    match.h2=simHalf(match,{own:1.35,opp:1.25});
-  }
-  if(c&&(match.h1.gf<match.h1.ga)&&Math.random()<0.5)match.h2.gf++; // trailing desperation push
+  // N1: "fury"/hairdryeren er fjernet — kun den roligere "steady" er tilbage.
+  if(c==="steady"&&(match.h1.gf<match.h1.ga)&&Math.random()<0.5)match.h2.gf++; // trailing desperation push
   match.h2events=[...halfEvents(match,2,match.h2.gf,match.h2.ga),...(match.inc2||[]).map(e=>({...e}))].sort((a,b)=>a.m-b.m);
   // pakke 20: pausetalen ER en ny beslutning, saa den anden halvleg rulles om
   // her -- og skal derfor staa fast fra netop dette oejeblik og ikke foer.
@@ -5301,11 +5292,13 @@ function showHT(){
   const box=document.getElementById("tht");
   if(box){
     box.style.display="block";
+    // N1: hairdryeren ("riv dem et nyt et") er fjernet. Du kan roe dem ned — eller
+    // bare lade gafferen om det og se anden halvleg. En formand må gerne se på.
     box.innerHTML=burning
-      ?`<div class="kick" style="text-align:center;margin-bottom:8px">Half-time — the gaffer looks at you${(()=>{const o=Math.round(gafferAcceptOdds("win")*100);return " · he's "+(o>=66?"up for it":o>=40?"unsure":"against it")+" ("+o+"%)";})()}</div>
+      ?`<div class="kick" style="text-align:center;margin-bottom:8px">Half-time</div>
         <div style="display:flex;gap:8px">
         <button class="abtn" style="flex:1" onclick="tickHT('steady')">Steady on</button>
-        <button class="abtn comm" style="flex:1" onclick="tickHT('fury')">Riv dem et nyt et</button></div>`
+        <button class="abtn comm" style="flex:1" onclick="tickHT(null)">Watch it play ▸</button></div>`
       :`<button class="abtn" style="width:100%" onclick="tickHT(null)">Second half ▸</button>`;
   }
   const sk=document.getElementById("tskip");if(sk)sk.style.display="none";
