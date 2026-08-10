@@ -287,7 +287,7 @@ const BAL={
   matchday:{                 // £ per spectator, every home game (× facilitetens niveau-effekt)
     kiosk:2.4, shop:1.2, pub:0.8, lights:0.4,   // B2/D3: 'basics' blev delt — lyset bærer per-hoved-delen
     merch:0.45, shopMerchBoost:0.5, vipFlat:3000,
-    bigScreenGate:0.10, awayEndBigGate:0.06
+    bigScreenGate:0.10, awayEndBigGate:0.08
   },
   /* B2 (Mads 10/8): faciliteter er NIVEAUER, ikke køb. Effekten følger eff[niveau]
      (aftagende — niveau 3 er ikke tre butikker), driften er fast pr. niveau og
@@ -337,7 +337,10 @@ const BAL={
     moodPenaltyAbove:16      // dearer than this and the terraces grumble — × money.price[div]
   },
   demand:{                   // the town, not the concrete
-    base:1400, perDivision:0.85, familyStand:0.22,
+    /* STADION-10: byens efterspørgsel er en TABEL pr. division — den gamle
+       lineære trappe toppede ved ~5.000, og et 100.000-stadion skal kunne
+       fyldes i Premier (~30-50.000 efterspurgt midt i tabellen, mere i top). */
+    base:1400, divMult:{3:1,2:3,1:8,0:35}, familyStand:0.29,
     parking:0.02, loos:0.01, lights:0.02   // D3: 'basics' 0.05 fordelt — ikke ganget op
   },
   wages:{
@@ -433,7 +436,7 @@ const BAL={
      ingen invariant holder oeje med, er sponsorklausulens 20 % der venter paa
      at blive forkert. */
   mood:{win:3, draw:0, loss:-4, dearTicket:-1,
-        familyPerTier:0.5, pubDrift:0.2,
+        familyPerTier:0.65, pubDrift:0.2,
         standOpens:6, parkingOpens:1, loosOpens:2, lightsOpens:1, pubOpens:4, vipOpens:-3},   // D3: basics' +4 fordelt
   /* Freshness. The game's unit of time is the MATCHDAY — there are no rest
      days — so a battery that empties and refills does not work. Instead a
@@ -652,7 +655,14 @@ const BAL={
      homeBonus(), which is exactly the thing BAL exists to prevent: the stand's
      own description promises "feeds the 12th man" and there was no way to see
      how much without reading the match engine. */
-  stands:{shedHome:0.05},
+  /* STADION-10 (Mads 10/8): "et stadion skal have et maks på 100.000 tilskuere
+     og … 10 niveauer af hver tribune ligesom alt det andet." Effekten pr.
+     tribune følger samme aftagende eff-kurve som faciliteterne (BAL.fac.eff),
+     ankret så niveau 2 svarer til den gamle balance; prisen er pr. TILFØJET
+     sæde og stiger pr. niveau — de øverste etager er sen-spillets store dræn
+     (~£130M for et fuldt 100.000-stadion). */
+  stands:{shedHome:0.067, maxLvl:10,
+    seatCost:[0,70,150,260,420,650,950,1400,2000,2800,3800]},   // £ pr. nyt sæde på niveau n
   /* Deal structures (GDD): "Ratebetaling (køb over 2-4 rater — køb større end
      kassen, bind fremtiden) og bonusklausuler (+£ ved oprykning / pr. mål —
      flyt risikoen til fremtiden). Rå pris er altid muligt; strukturer er
@@ -1682,17 +1692,26 @@ function settleStakes(){
 const pct=n=>Math.round(n*100)+"%";
 const perHead=n=>"£"+n.toFixed(2)+" per spectator, every home game";
 const STANDS={
- shed:{n:"The Shed End",role:"Atmosfære — hjemmebanefordel +"+BAL.stands.shedHome.toFixed(2)+" pr. etage",cap:[0,1000,2000]},
+ shed:{n:"The Shed End",role:"Atmosfære — hjemmebanefordel op til +"+(BAL.stands.shedHome*4).toFixed(2)+" fuldt udbygget",cap:[0,1000,2000,3300,5000,7200,10000,13400,17000,21000,25000]},
  /* Pakke 15, decided by Mads 7/8. "Seats & boardroom gravitas" once promised
     something the code never did, so nat 2 cut the promise back to the truth and
     put the question in DECISIONS-NEEDED. The answer came back: BOTH effects.
     The stand now unlocks the VIP boxes (which the stadium drawing has always
     hung off it) and pays a small, honest amount of board trust per tier. */
- main:{n:"Main Stand",role:"Sæder — det største kapacitetsspring pr. etage · låser VIP-boksene op · +"+BAL.owners.trustMainStand+" bestyrelsestillid pr. etage",cap:[0,1500,3000]},
- family:{n:"Family Stand",role:"Fanvækst: +"+pct(BAL.demand.familyStand)+" efterspørgsel i byen, humør +"+BAL.mood.familyPerTier+" pr. kampdag pr. etage",cap:[0,1000,2000]},
- away:{n:"Away End",role:"Gate +"+pct(BAL.matchday.awayEndBigGate)+" pr. etage i store kampe",cap:[0,800,1600]}
+ main:{n:"Main Stand",role:"Sæder — det største kapacitetsspring · låser VIP-boksene op · +"+BAL.owners.trustMainStand+" bestyrelsestillid pr. etage",cap:[0,1500,3000,4800,7200,10200,14000,18500,23000,27000,30000]},
+ family:{n:"Family Stand",role:"Fanvækst: op til +"+pct(BAL.demand.familyStand*4)+" efterspørgsel i byen fuldt udbygget, humør følger med",cap:[0,1000,2000,3100,4600,6500,8800,11500,14300,17200,20000]},
+ away:{n:"Away End",role:"Gate op til +"+pct(BAL.matchday.awayEndBigGate*4)+" i store kampe fuldt udbygget",cap:[0,800,1600,2800,4400,6500,9200,12500,16300,20500,25000]}
 };
-const STANDCOST=[0,70000,150000];
+/* STADION-10: prisen for NÆSTE etage = de tilføjede sæder × sædeprisen på det
+   niveau. Anker: niveau 1-2 koster som før (70k/150k). Fuldt: ~£130M. */
+function standNextCost(key){
+  const lvl=G.stands[key]||0,cap=STANDS[key].cap;
+  if(lvl>=BAL.stands.maxLvl)return 0;
+  return Math.round((cap[lvl+1]-cap[lvl])*BAL.stands.seatCost[lvl+1]/500)*500;
+}
+/* Tribunens VIRKNING følger fac-effekt-kurven (aftagende mod ×4), ankret så
+   niveau 2 ≈ den gamle balance (konstanterne er justeret 2/1.5). */
+function standEff(key){return BAL.fac.eff[clamp(G.stands[key]||0,0,BAL.stands.maxLvl)];}
 const FACS={
  shop:{n:"Klubshoppen",cost:35000,txt:"+merch- & kampdagsindtægt pr. niveau"},
  pub:{n:"Stadionpubben",cost:30000,txt:"+kampdagsindtægt og +humør pr. niveau"},
@@ -2038,7 +2057,7 @@ function bigGameBonus(){return G.squad.some(p=>p.traits.includes("biggame"))?2.5
    End keeps paying on every rung. */
 function homeBonus(big){ // dynamic 12th man: crowd × mood × Shed End
   const H=BAL.home,quiet=protestLevel()>=2?BAL.protest.silentCrowd:1;
-  return H.base+H.crowd*(attendance(big)/G.capacity)*(G.fanMood/100)*quiet+G.stands.shed*BAL.stands.shedHome;
+  return H.base+H.crowd*(attendance(big)/G.capacity)*(G.fanMood/100)*quiet+standEff("shed")*BAL.stands.shedHome;
 }
 function myLambdas(t,home,big,appr,weather){
   const s=myStrength();
@@ -2729,7 +2748,7 @@ function updateProtest(){
 }
 function townDemand(){
   const D=BAL.demand;
-  const d=D.base*(1+(3-G.div)*D.perDivision)*(1+G.stands.family*D.familyStand)
+  const d=D.base*(D.divMult[G.div]||1)*(1+standEff("family")*D.familyStand)
         *(1+facEff("parking")*D.parking+facEff("loos")*D.loos+facEff("lights")*D.lights);   // B2/D3
   // a boycott is a hard ceiling on the town, not a nudge to the mood factor
   return protestLevel()>=3?d*BAL.protest.boycottCap:d;
@@ -2762,7 +2781,7 @@ function gateReceipts(res){
   if(!res.home)return {att:0,gate:0,extras:0};
   const att=Math.max(attendance(res.big),G.seasonTix.sold);
   const paying=Math.max(0,att-G.seasonTix.sold);
-  const bigMult=(res.big&&facLvl("screen")?1+BAL.matchday.bigScreenGate*facEff("screen"):1)*(res.big?1+G.stands.away*BAL.matchday.awayEndBigGate:1);
+  const bigMult=(res.big&&facLvl("screen")?1+BAL.matchday.bigScreenGate*facEff("screen"):1)*(res.big?1+standEff("away")*BAL.matchday.awayEndBigGate:1);
   const gate=Math.round(paying*gatePrice(res.big)*bigMult);
   const M=BAL.matchday;
   // B2: indtægten følger fremmødet × niveau-effekten — en stor shop i en tom klub er ren udgift
@@ -2832,7 +2851,7 @@ function updateFormMood(res){
   }
   {const MO=BAL.mood;
    G.fanMood=clamp(G.fanMood+(w?MO.win:d?MO.draw:MO.loss)+(gatePrice(res.big)>BAL.ticket.moodPenaltyAbove*divPriceMult()?MO.dearTicket:0)
-     +G.stands.family*MO.familyPerTier+MO.pubDrift*facEff("pub"),5,100);}
+     +standEff("family")*MO.familyPerTier+MO.pubDrift*facEff("pub"),5,100);}
   easeMood(); // the way back: anger cools toward a baseline (egen funktion -> maalbar)
   updateProtest();
   if(G.talkCooldown>0)G.talkCooldown--;
@@ -4353,8 +4372,8 @@ function deliverScout(){
 function startStandBuild(key){ // direct cash build — the impatient way, no fund bonus
   if(G.standBuild){modal={type:"info",title:"Ét byggeri ad gangen",body:"Håndværkerne nægter at dele sjakket. Fagforeningsregler, åbenbart."};render();return;}
   const lvl=G.stands[key]+1;
-  if(lvl>2){modal={type:"info",title:"Færdigbygget",body:STANDS[key].n+" står allerede i sin fulde pragt."};render();return;}
-  const cost=STANDCOST[lvl];
+  if(lvl>BAL.stands.maxLvl){modal={type:"info",title:"Færdigbygget",body:STANDS[key].n+" står allerede i sin fulde pragt."};render();return;}
+  const cost=standNextCost(key);
   if(G.balance<cost){modal={type:"info",title:"Ikke penge nok",body:"Håndværkerne vil have "+kfmt(cost)+" kontant på forskud. De er blevet brændt af fodboldklubber før. (Tip: banken låner mod den gate tribunen selv vil tjene.)"};render();return;}
   G.balance-=cost;
   G.standBuild={key,remain:5,lvl};
@@ -5030,8 +5049,8 @@ function viewClub(){
   <div class="card"><div class="kick" style="margin-bottom:4px">De fire tribuner <span style="font-size:9px">· kontant på forskud — eller lad banken låne mod gaten</span></div>
     ${Object.entries(STANDS).map(([k,s])=>{
       const lvl=G.stands[k];
-      return `<div class="rowline"><span>${s.n} <small>· niv ${lvl} · ${s.role}</small></span>
-        ${lvl>=2?'<span class="sc">MAX</span>':(b?'<span class="sc" style="opacity:.5">…</span>':`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="startStandBuild('${k}')">${lvl===0?"Byg":"Udbyg"} · ${kfmt(STANDCOST[lvl+1])}</button>`)}</div>`;
+      return `<div class="rowline"><span>${s.n} <small>· ${lvl}/${BAL.stands.maxLvl} · ${s.cap[lvl].toLocaleString("en-GB")} pladser · ${s.role}</small></span>
+        ${lvl>=BAL.stands.maxLvl?'<span class="sc">MAX</span>':(b?'<span class="sc" style="opacity:.5">…</span>':`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="startStandBuild('${k}')">${lvl===0?"Byg":"Niv. "+(lvl+1)} · ${kfmt(standNextCost(k))}</button>`)}</div>`;
     }).join("")}</div>
   <div class="card"><div class="kick" style="margin-bottom:4px">Faciliteter <span style="font-size:9px">· niveauer koster drift hver kampdag — luk ned i trange tider</span></div>
     ${Object.entries(FACS).map(([k,f])=>{
@@ -5179,8 +5198,12 @@ function stadiumSvg(){
 
   /* --- a stand, in tiers, with a roof --- */
   const building=k=>G.standBuild&&G.standBuild.key===k;
+  /* STADION-10: tegningen har to etager, trappen har ti trin. Niveau 1-4
+     tegnes som én etage, 5-10 som to — tætheden i crowd-feltet følger
+     stadig fremmødet, så væksten kan ses i mængden. */
+  const vT=k=>{const l=G.stands[k]||0;return l===0?0:l<=4?1:2;};
   function stand(key,m,cols,rows,r,base){
-    const lvl=G.stands[key];
+    const lvl=vT(key);
     if(lvl<1){
       const c=building(key)?"var(--comm)":C.ghost;
       const [lx,ly]=m(0.55,0.5);
@@ -5238,14 +5261,14 @@ function stadiumSvg(){
     +quad(mapP,0.42,0.58,-0.022,0,`stroke="${C.line}" stroke-width="1.8" fill="none"`)
     +quad(mapP,0.435,0.565,1,1.022,`stroke="${C.line}" stroke-width="1.8" fill="none"`);
 
-  const shedM=shedMap(G.stands.shed),awayM=awayMap(G.stands.away);
+  const shedM=shedMap(vT("shed")),awayM=awayMap(vT("away"));
   const bnrCol=protest>=1?"#E07A6A":"var(--acc)";
-  const bnr=G.stands.shed>=1?(([bx,by])=>`<text x="${bx.toFixed(1)}" y="${by.toFixed(1)}" text-anchor="middle" font-family="BarlowC" font-style="italic" font-weight="900" font-size="10" fill="${bnrCol}" letter-spacing="2.6">${fanBanner()}</text>`)(shedM(G.stands.shed>=2?0.82:0.78,0.5)):"";
+  const bnr=vT("shed")>=1?(([bx,by])=>`<text x="${bx.toFixed(1)}" y="${by.toFixed(1)}" text-anchor="middle" font-family="BarlowC" font-style="italic" font-weight="900" font-size="10" fill="${bnrCol}" letter-spacing="2.6">${fanBanner()}</text>`)(shedM(vT("shed")>=2?0.82:0.78,0.5)):"";
   /* Rung one: hand-painted sheets go up along the side stands. They are drawn
      as bedsheets, because that is what they are. */
   const protestSheets=protest>=1?[[-1,"main"],[1,"family"]].map(([side,k])=>{
-    if(G.stands[k]<1)return "";
-    const m=sideMap(side,G.stands[k]);
+    if(vT(k)<1)return "";
+    const m=sideMap(side,vT(k));
     return [0.30,0.58].slice(0,protest>=2?2:1).map((v,ix)=>
       quad(m,0.10,0.30,v,v+0.14,`fill="#E07A6A" opacity=".${protest>=3?"85":"7"}" stroke="${C.edge}" stroke-width=".5"`)
     ).join("");
@@ -5261,13 +5284,13 @@ function stadiumSvg(){
       <rect x="164" y="27" width="62" height="25" rx="2" fill="${dark?"#0D170F":"#1A231B"}"/>
       <text x="195" y="45" text-anchor="middle" font-family="BarlowC" font-style="italic" font-weight="900" font-size="15" fill="var(--acc)">${G.badge}</text>`:""}
     ${pylon(86,P.fy,34,19)}${pylon(304,P.fy,34,19)}
-    ${stand("shed",shedM,22,G.stands.shed>=2?4:3,1.35,100)}${bnr}
+    ${stand("shed",shedM,22,vT("shed")>=2?4:3,1.35,100)}${bnr}
     ${pitch}
-    ${stand("main",sideMap(-1,G.stands.main),17,3,1.5,2200)}
-    ${stand("family",sideMap(1,G.stands.family),17,3,1.5,4400)}
+    ${stand("main",sideMap(-1,vT("main")),17,3,1.5,2200)}
+    ${stand("family",sideMap(1,vT("family")),17,3,1.5,4400)}
     ${stand("away",awayM,20,2,1.4,6600)}
     ${protestSheets}
-    ${G.fac.vip&&G.stands.main>=1?[0.28,0.4,0.52,0.64].map(v=>quad(sideMap(-1,G.stands.main),0.66,0.86,v,v+0.085,`fill="var(--acc)" opacity=".5" stroke="${C.edge}" stroke-width=".6"`)).join(""):""}
+    ${G.fac.vip&&vT("main")>=1?[0.28,0.4,0.52,0.64].map(v=>quad(sideMap(-1,vT("main")),0.66,0.86,v,v+0.085,`fill="var(--acc)" opacity=".5" stroke="${C.edge}" stroke-width=".6"`)).join(""):""}
     ${cone(86,P.fy,34,54)}${cone(304,P.fy,34,54)}${cone(24,P.ny,48,74)}${cone(366,P.ny,48,74)}
     ${pylon(24,P.ny,48,26)}${pylon(366,P.ny,48,26)}
     ${G.fac.pub?hut(88,74,30,22,"PIES"):""}${G.fac.shop?hut(272,74,30,22,"SHOP"):""}
