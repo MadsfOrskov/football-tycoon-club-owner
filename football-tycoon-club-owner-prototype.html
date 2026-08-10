@@ -4456,7 +4456,7 @@ function toggleMode(){G.mode=G.mode==="dark"?"light":"dark";applyTheme(G.hue,G.m
 function navbar(){
   if(G.layer!=="club"){
     const bell=deskDoorbell().length;
-    const t=[["home","Kontor"],["empire","Imperium"],["books","Bøger"]];
+    const t=[["home","Kontor"],["empire","Imperium"],["books","Økonomi"]];
     return '<nav class="gold">'+t.map(([k,l])=>`<button class="${screen===k?'on':''}" onclick="go('${k}')">${l}${k==='home'&&bell?`<span class="badge num">${bell}</span>`:''}</button>`).join("")+'</nav>';
   }
   const u=unreadCount();
@@ -4465,7 +4465,7 @@ function navbar(){
 }
 function go(s){screen=s;if(s==="inbox")G.inbox.forEach(m=>m.unread=false);keepScroll=false;saveGame();render();}
 /* ---------- M2.5: de to lag — du GÅR IND i klubben og hjem igen ----------
-   Ejer-laget (guld) er dit: Kontor · Imperium · Bøger. Klublaget (klubbens
+   Ejer-laget (guld) er dit: Kontor · Imperium · Økonomi. Klublaget (klubbens
    farve) er klubbens: Klub · Trup · Marked · Tabel · Indbakke — og findes kun
    når du er gået ind. Tilstedeværelsen er implicit: du ER hvor du gik ind. */
 function enterClub(toScreen){G.layer="club";screen=toScreen||"club";keepScroll=false;saveGame();render();}
@@ -4906,7 +4906,7 @@ function viewClub(){
       <div class="rowline" style="border-bottom:none"><span style="font-size:20px" class="num"><b>${kfmt(V.total)}</b></span>
         <span class="amt">${arrow} ${prev?(dir>0?"+":"")+Math.round(dir*100)+"% siden S"+prev.s:"første sæson"}</span></div>
       ${line("Aktiver · trup, stadion, grunden",V.assets)}
-      ${line("Indtjening · bøgernes form, sponsor, TV",V.earnings)}
+      ${line("Indtjening · økonomiens form, sponsor, TV",V.earnings)}
       ${line("Brand · byen, divisionen, meritterne",V.brand)}
       ${line("Gæld · lån, overtræk, ar",V.debt,true)}
       <div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Sejre, byggeri og overskud løfter værdien; nedrykning, gæld og underskud sænker den.</div></div>`;
@@ -5492,7 +5492,7 @@ function renderModal(){
   if(modal.type==="dividend"){
     const m=modal,mine=Math.round((m.amount||0)*G.myShare/100),others=(m.amount||0)-mine;
     return `<div class="overlay"><div class="sheet">
-      <div class="biglabel">Sæsonens afslutning · bøgerne</div>
+      <div class="biglabel">Sæsonens afslutning · økonomien</div>
       <h2>${m.majority?"Udbyttet — dit valg":"Bestyrelsen tager sit"}</h2>
       <div class="card">
         <div class="rowline"><span>Klubbens kasse</span><span class="amt num">${kfmt(m.cash)}</span></div>
