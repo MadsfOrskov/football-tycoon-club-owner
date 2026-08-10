@@ -846,13 +846,31 @@ function exportCareerText(){
   const raw=(typeof localStorage!=="undefined")?localStorage.getItem(SAVE_KEY):null;
   return raw||JSON.stringify({v:1,club:G.club,season:G.season,div:G.div,G});
 }
+/* QA nat 5+6, fund N1: den gamle udgave skrev til localStorage FOER den vidste,
+om koden kunne indlaeses -- og loadGame() saetter G=d.G, foer den kan naa at fejle.
+En kode der bestod det fire-felts overfladetjek men vaeltede indlaesningen, tog
+derfor baade gemmet OG den koerende karriere med sig -- mens modalen forsikrede
+spilleren om at "intet er aendret". Maalt: 10 af 10 karrierer tabt, ogsaa efter
+genstart. Vektoren er snaever i dag, men enhver fremtidig nat der tilfoejer et
+paakraevet felt til G goer hver allerede eksporteret kode til en karrieredraeber.
+Derfor: tag en kopi af begge, skriv, og rul BEGGE tilbage hvis det ikke holder. */
 function importCareerText(txt){
+  const keepG=G;
+  let backup=null,hadBackup=false,wrote=false;
   try{
     const d=JSON.parse(txt);
     if(!d||d.v!==1||!d.G||!d.G.club||!Array.isArray(d.G.squad)||!Array.isArray(d.G.teams))return false;
-    localStorage.setItem(SAVE_KEY,JSON.stringify(d));
-    return loadGame();
-  }catch(e){return false;}
+    try{backup=localStorage.getItem(SAVE_KEY);hadBackup=backup!==null;}catch(e){}
+    localStorage.setItem(SAVE_KEY,JSON.stringify(d));wrote=true;
+    if(loadGame())return true;
+    throw new Error("loadGame afviste koden");
+  }catch(e){
+    /* Kun rulle tilbage hvis vi faktisk skrev -- ellers ville en ren gibberish-kode,
+    der aldrig naaede skrivningen, komme til at slette et gem der intet var i vejen med. */
+    if(wrote){try{hadBackup?localStorage.setItem(SAVE_KEY,backup):localStorage.removeItem(SAVE_KEY);}catch(e2){}}
+    G=keepG;   // og den koerende karriere tilbage, saa skaermen ikke staar med et halvt indlaest G
+    return false;
+  }
 }
 function doImportCareer(){
   const el=document.getElementById("impcode");
