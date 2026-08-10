@@ -615,7 +615,32 @@ const BAL={
      constants (1.6 up, nothing down) inside finishSeason. */
   sponsor:{penalty:0.2, perDivision:0.6, onPromotion:1.6, onRelegation:0.66,
     // pakke 21a: the window the collapse day is drawn from, once a season
-    riskFrom:8, riskTo:20, boost:8000},
+    riskFrom:8, riskTo:20, boost:8000,
+    /* B3: fire slots i stedet for et. Hovedsponsoren er hele beloebet;
+       de tre andre er andele af det, fordi et stadionnavn og en
+       drikkevareaftale ikke er lige saa meget vaerd som brystet paa troejen.
+       `openFrom` er den division man skal op i, foer nogen overhovedet
+       ringer om slottet -- i League Three vil ingen koebe stadionnavnet. */
+    slots:{
+      main:  {n:"Hovedsponsor",     share:1.00, openFrom:3, txt:"Navnet på brystet"},
+      shirt: {n:"Trøjeleverandøren",share:0.42, openFrom:3, txt:"Den der syr trøjerne"},
+      drinks:{n:"Drikkevarer",      share:0.30, openFrom:2, txt:"Kiosken, pubben, tribunen"},
+      ground:{n:"Stadionnavnet",    share:0.72, openFrom:1, txt:"Byens mening om det er ikke til salg"}
+    },
+    /* B3: risikoen er PRAESTATIONSBASERET, ikke et lotteri. Lav grundbetaling,
+       store bonusser hvis DU leverer -- saa kan man spille sig til gevinsten,
+       og sponsoren bliver en indsats paa ens egen ambition. Tallene er
+       multiplikatorer paa en HEL saesons grundbetaling. */
+    /* Hvor ofte den kommercielle afdeling ringer om et FRIT slot (pr. kampdag). */
+    knockChance:0.045,
+    bonus:{promotion:0.60, top4:0.32, title:0.85,
+      /* Forventningsmoedet: lover du hoejt over for bestyrelsen, tror
+         sponsorerne ogsaa mere paa dig -- og saa haenger to udbetalinger paa
+         samme saeson. Ganges paa hver bonus pr. trin dristighed. */
+      perBoldStep:0.14},
+    /* Stadionnavne-dilemmaet (GDD, eget afsnit): byen synes ikke det er til
+       salg. Prisen tages i fanhumoer den dag der skrives under. */
+    groundNameMood:-7},
   /* The protest ladder (GDD): "først bannere, så tavshed (uhyggeligst), så
      boykot med økonomisk konsekvens. Vrede har trin, ikke bare et tal."
      `hysteresis` is what makes the way back possible but slow: you slip down a
@@ -971,6 +996,42 @@ function loadGame(){
      mangler, er de to nye felter. Uden facOff ville facLvl() laese undefined
      og hver facilitet vaere "lukket" ved indlaesning; uden facBuild.to ville et
      byggeri der var i gang faerdiggoere til niveau NaN. */
+  /* B3: G.sponsor (et enkelt objekt) blev G.sponsors -- fire slots. Den gamle
+     aftale ER hovedsponsoren, saa den flyttes over med sin resttid og sit
+     beloeb. Uden det her mistede en karriere hele sin sponsorindtaegt paa en
+     indlaesning, og klubvaerdien faldt med den. De tre nye slots starter frie.
+     `ref` saettes til `per`, saa en gammel aftale uden bonusser kan afregnes af
+     den samme kode som en ny. */
+  if(!G.sponsors||typeof G.sponsors!=="object"){
+    G.sponsors={main:null,shirt:null,drinks:null,ground:null};
+    if(G.sponsor&&typeof G.sponsor==="object"){
+      const d=sponsorCopy(G.sponsor);
+      d.slot="main";d.ref=d.per;d.triggers=[];d.boldAt=1;d.shape="safe";d.shapeLabel="Sikker";
+      G.sponsors.main=d;
+    }
+  }
+  /* Ogsaa hvis kortet mangler helt (en haandredigeret eller fremmed gemmefil):
+     spillet maa ikke kaste paa en manglende sponsorstruktur. */
+  if(!G.sponsors||typeof G.sponsors!=="object")G.sponsors={};
+  for(const k of sponsorSlotKeys())if(G.sponsors[k]===undefined)G.sponsors[k]=null;
+  for(const k in G.sponsors)if(!(k in BAL.sponsor.slots))delete G.sponsors[k];
+  /* En aftale gemt foer bonusserne fandtes mangler felterne, ogsaa naar
+     G.sponsors selv findes (en gemmefil fra midt i nat 7). */
+  for(const k of sponsorSlotKeys()){
+    const d=G.sponsors[k];if(!d)continue;
+    if(!Array.isArray(d.triggers))d.triggers=[];
+    if(!Number.isFinite(d.ref))d.ref=d.per;
+    if(!Number.isFinite(d.boldAt))d.boldAt=1;
+    d.slot=k;
+  }
+  delete G.sponsor;
+  /* Et gammelt sponsorDue-objekt havde ingen slot og kun to tilbud. */
+  if(G.sponsorDue&&typeof G.sponsorDue==="object"){
+    if(!G.sponsorDue.slot)G.sponsorDue.slot="main";
+    if(!Array.isArray(G.sponsorDue.offers)||!G.sponsorDue.offers.length)G.sponsorDue=null;
+  }
+  if(Array.isArray(G.inbox))for(const m of G.inbox)
+    if(m.action&&m.action.kind==="sponsorChoice"&&!m.action.slot)m.action.slot="main";
   if(!G.facOff||typeof G.facOff!=="object")G.facOff={};
   /* D3: "det usexede basale" blev delt i parkering, toiletter og lys. Den der
      har betalt de £15.000 har betalt for alle tre -- saa niveauet flyttes over
@@ -1492,6 +1553,28 @@ const COACHES=[
    (stuntet udgik i R1c), men kopien beholdes som choke point. */
 const sponsorDef=n=>SPONSORS.find(x=>x.n===n);
 const sponsorCopy=o=>({...o});
+/* ---------- B3: fire sponsorslots ----------
+   G.sponsor (et enkelt objekt) blev G.sponsors -- et kort med fire slots, som
+   G.stands og G.fac. mainSponsor() er hovedsponsoren; sponsorIncome() er
+   summen af det hele, og det er den settleFinances laeser. Ingen laeser
+   G.sponsors.main direkte uden om helperne, saa der er ET sted at aendre. */
+function sponsorSlotKeys(){return Object.keys(BAL.sponsor.slots);}
+function mainSponsor(){return (G&&G.sponsors)?G.sponsors.main:null;}
+function signedSponsors(){
+  if(!G||!G.sponsors)return [];
+  return sponsorSlotKeys().filter(k=>G.sponsors[k]).map(k=>({k,d:G.sponsors[k]}));
+}
+function sponsorIncome(){return signedSponsors().reduce((s,x)=>s+(x.d.per||0),0);}
+/* Hele aftalens resterende vaerdi -- bruges af klubvaerdien. */
+function sponsorDealValue(rounds){
+  return signedSponsors().reduce((s,x)=>s+(x.d.per||0)*rounds*Math.max(0,x.d.seasonsLeft||0),0);
+}
+/* Et slot er kun aabent, naar klubben er stor nok til at nogen ringer om det. */
+function sponsorSlotOpen(k){
+  const sl=BAL.sponsor.slots[k];
+  return !!sl&&G.div<=sl.openFrom;
+}
+function sponsorSlotFree(k){return sponsorSlotOpen(k)&&!(G.sponsors&&G.sponsors[k]);}
 const coachOvr=c=>Math.round((c.tac+c.man+c.dev)/3);
 
 /* ---------- state ---------- */
@@ -1542,7 +1625,7 @@ function newGame(name,hue,mode){
        because the opponents are regenerated on promotion. */
     revenge:null,
     build:null,buildCost:80000,loans:[],warnedNeg:false,bankForced:false,
-    sponsor:null,sponsorOffered:false,sponsorDue:null,
+    sponsors:{main:null,shirt:null,drinks:null,ground:null},sponsorOffered:false,sponsorDue:null,
     coach:{...pick(COACHES)},
     fanMood:60,objectivePos:8,objectiveBold:0,pendingMatch:null,gafferPatience:BAL.orders.startPatience,lastOrder:null,
     squad:posPlan.map(p=>genPlayer(p,R(42,58),G_DIV_WAGE(3))),
@@ -1794,7 +1877,7 @@ function valuationParts(){
   const facs=Object.keys(FACS).reduce((n,k)=>n+facOwned(k),0);
   const assets=squad+G.capacity*V.perSeat+facs*V.perFacility+V.freehold;
 
-  const sponsorV=G.sponsor?G.sponsor.per*rounds*Math.max(0,G.sponsor.seasonsLeft||0)*V.sponsorWeight:0;
+  const sponsorV=sponsorDealValue(rounds)*V.sponsorWeight;
   const earnings=(G.netEwma||0)*V.earningsMultiple+sponsorV+tvMoney()*rounds*V.tvWeight;
 
   const promos=G.history.filter(h=>h.promoted).length;
@@ -2843,7 +2926,7 @@ function settleFinances(res){
      ude -- en fanshop koster ogsaa noget den uge holdet spiller i Grimsby.
      Lukkede faciliteter koster nul; det er noedbremsen. */
   const upkeep=facUpkeep();res.upkeep=upkeep;
-  const net=(G.sponsor?G.sponsor.per:0)+tvMoney()+gate+extras-wages-loanPay-upkeep;
+  const net=sponsorIncome()+tvMoney()+gate+extras-wages-loanPay-upkeep;
   G.balance+=net;G.lastNet=net;      // "kassen + ugentligt netto altid synligt" (GDD)
   /* Rolling earnings for the valuation. G.periodNet is no good for this — it
      resets every sixth matchday, so a club's earning power would appear to
@@ -2853,12 +2936,13 @@ function settleFinances(res){
   G.periodNet+=net;G.periodMD++;
   if(G.periodMD>=BAL.clock.reportMD)bookkeeperReport();
   sponsorLifeEvents();
+  sponsorSlotKnock();     // B3: de tre andre slots banker paa af sig selv
   // first sponsor offers arrive after MD 1 — as a decision you cannot walk past
-  if(!G.sponsor&&!G.sponsorOffered){G.sponsorOffered=true;
-    const a=sponsorCopy(SPONSORS[0]),b=sponsorCopy(SPONSORS[2]);
-    a.per=2800;a.seasonsLeft=2;a.demand=null;
-    b.per=4200;b.seasonsLeft=1;b.demand="top 8 finish or "+pct(BAL.sponsor.penalty)+" penalty";
-    G.sponsorDue={offers:[a,b],renewal:false};}
+  /* B3: det foerste sponsortilbud gaar nu gennem den SAMME generator som alle
+     andre -- foer var det to haandskrevne kort med bare beloeb (£2.800/£4.200),
+     som hverken kendte divisionen, slottet eller bonusstigen. */
+  if(!mainSponsor()&&!G.sponsorOffered){G.sponsorOffered=true;
+    G.sponsorDue={slot:"main",offers:sponsorOffersFor("main"),renewal:false};}
   // build progress
   if(G.standBuild){G.standBuild.remain--;if(G.standBuild.remain<=0)finishStand();}
   if(G.facBuild){G.facBuild.remain--;if(G.facBuild.remain<=0)finishFac();}
@@ -3098,6 +3182,7 @@ function finishSeason(o){
   else{prize=divPrize(BAL.prize.missed);txt="You finished "+ord(pos)+". The co-owners 'note the result with interest'. That's owner-speak for: do better.";}
   G.balance+=prize;
   sponsorSettleDemand(pos);          // the top-N clause is settled before the deal rolls over
+  sponsorSettleBonus({pos,promoted:!!o.promoted});   // B3: og bonusserne DU har spillet dig til
   G.history.push({season:G.season,div:G.divNames[G.div],pos,promoted:!!o.promoted,relegated:!!o.relegated,
     objective:G.objectivePos,bold:G.objectiveBold||0,hit:pos<=G.objectivePos});
   /* Trust is time plus delivery. It is why a share costs ~1,9× fair in season 1
@@ -3117,7 +3202,7 @@ function finishSeason(o){
   settleCommitments(promoted);   // before the summer wipes p.sg — goal bonuses need it
   if(promoted){
     G.div--;G.wageCap=Math.round(G.wageCap*BAL.wages.capOnPromotion/100)*100;
-    if(G.sponsor)G.sponsor.per=Math.round(G.sponsor.per*BAL.sponsor.onPromotion); // may be shirtless — that used to crash the run
+    for(const x of signedSponsors())x.d.per=Math.round(x.d.per*BAL.sponsor.onPromotion); // may be shirtless — that used to crash the run
     // the squad renegotiates too: a higher division costs more than the cap alone
     const before=G.squad.reduce((s,p)=>s+p.wage,0);
     for(const p of G.squad)p.wage=Math.round(p.wage*BAL.wages.promotionRise/10)*10;
@@ -3131,7 +3216,7 @@ function finishSeason(o){
   else if(relegated){
     const wasDiv=G.divNames[G.div];
     G.div++;G.wageCap=Math.round(G.wageCap*BAL.wages.capOnRelegation/100)*100;
-    if(G.sponsor)G.sponsor.per=Math.round(G.sponsor.per*BAL.sponsor.onRelegation);
+    for(const x of signedSponsors())x.d.per=Math.round(x.d.per*BAL.sponsor.onRelegation);
     bumpTrust(BAL.owners.trustRelegation);
     const before=G.squad.reduce((s,p)=>s+p.wage,0);
     for(const p of G.squad)p.wage=Math.round(p.wage*BAL.wages.relegationDrop/10)*10;
@@ -3213,7 +3298,18 @@ function finishSeason(o){
   G.captSuggested=false;G.talkCooldown=0;
   if(!G.captain||!byId(G.captain))pickCaptain();
   // sponsor expiry
-  if(G.sponsor){G.sponsor.seasonsLeft--;if(G.sponsor.seasonsLeft<=0){G.sponsor=null;sponsorRenewal();}}
+  /* B3: hver aftale loeber sin egen tid ud. Kun hovedsponsoren udloeser et
+     fornyelsestilbud med det samme -- de tre andre slots bliver bare frie, og
+     den kommercielle afdeling ringer af sig selv naar der er noget at ringe om. */
+  for(const x of signedSponsors()){
+    x.d.seasonsLeft--;
+    if(x.d.seasonsLeft<=0){
+      const gone=x.d.n,slot=x.k;
+      G.sponsors[slot]=null;
+      if(slot==="main")sponsorRenewal();
+      else addNews("CLUB",gone+" let their "+BAL.sponsor.slots[slot].n.toLowerCase()+" deal lapse. The slot is free again.");
+    }
+  }
   G.season++;G.md=0;G.phase="season";
   // R3 (variant B+): udbyttet er et KORT paa bordet, ikke en tvungen modal.
   if(isMajority())G.dividendTaken=false;   // kortet ligger paa bordet hele saesonen
@@ -3234,28 +3330,113 @@ function finishSeason(o){
   saveGame();
   render();
 }
+/* ---------- B3: tre tilbud, og de skal vaere reelt forskellige ----------
+   Mads: "Tre tilbud ad gangen med reelle forskelle -- ikke tre variationer af
+   samme beloeb." Og: "Lav grundbetaling, store bonusser hvis DU leverer."
+   Formen er derfor en RISIKOSTIGE, ikke tre priser:
+     0 SIKKER   fuld grundbetaling, tre saesoner, ingen bonus
+     1 DELT     lavere grund, to saesoner, bonus for oprykning
+     2 ALT PAA  lav grund, en saeson, bonus for oprykning + top 4 + mesterskab
+   Bonusserne regnes af REFERENCEBELOEBET (`ref`), ikke af den nedsatte grund --
+   ellers ville "lav grund" ogsaa betyde "lille bonus", og stigen ville forsvinde. */
+/* B3: de tre bonusudloesere. Hver har baade sit NAVN og sin MAALING her, saa
+   teksten paa kortet og pengene ved saesonslut ikke kan komme fra hinanden.
+   GDD'ens "en pokalrunde" er ikke med: der er ingen pokal i spillet endnu
+   (ROADMAP, ikke min ordre), saa mesterskabet er den tredje udloeser. */
+const SPONSOR_TRIGGERS={
+  promotion:{kort:"oprykning", txt:"Rykker klubben op",   hit:o=>!!o.promoted},
+  top4:     {kort:"top 4",     txt:"Slutter i top 4",     hit:o=>o.pos<=4},
+  title:    {kort:"mesterskab",txt:"Vinder divisionen",   hit:o=>o.pos===1}
+};
+const SPONSOR_SHAPES=[
+  {id:"safe", label:"Sikker",   perMult:1.00, seasons:3, triggers:[]},
+  {id:"split",label:"Delt",     perMult:0.72, seasons:2, triggers:["promotion"]},
+  {id:"allin",label:"Alt på ambitionen", perMult:0.45, seasons:1, triggers:["promotion","top4","title"]}
+];
+/* Dristigheden fra forventningsmoedet ganger bonusserne. Lover du hoejt begge
+   steder, haenger to udbetalinger paa samme saeson -- praecis koblingen planen
+   beder om. */
+function sponsorBoldFactor(){return 1+Math.max(0,G.objectiveBold||0)*BAL.sponsor.bonus.perBoldStep;}
+function sponsorBonusAmount(d,trigger){
+  return Math.round((d.ref||d.per)*G.rounds*(BAL.sponsor.bonus[trigger]||0)*(d.boldAt||1));
+}
+function sponsorOffersFor(slot){
+  const sl=BAL.sponsor.slots[slot];
+  const scale=(1+(3-G.div)*BAL.sponsor.perDivision)*sl.share;
+  /* Tre FORSKELLIGE firmaer -- aldrig samme navn to gange paa samme bord. */
+  const pool=SPONSORS.slice();
+  const chosen=[];
+  while(chosen.length<SPONSOR_SHAPES.length&&pool.length)chosen.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);
+  const bold=sponsorBoldFactor();
+  return chosen.map((c,i)=>{
+    const sh=SPONSOR_SHAPES[i];
+    const o=sponsorCopy(c);
+    o.slot=slot;o.shape=sh.id;o.shapeLabel=sh.label;
+    o.ref=Math.round(c.per*scale);
+    o.per=Math.round(o.ref*sh.perMult);
+    o.seasonsLeft=sh.seasons;
+    o.triggers=sh.triggers.slice();
+    o.boldAt=bold;                    // laases ved TILBUDDET, saa summen ikke skrider bagefter
+    /* Den gamle top-N-klausul beholdes paa den mest kravstore form, og kun paa
+       hovedsponsoren -- den er hovedsponsorens smaatryk, ikke drikkevarernes. */
+    o.demand=(slot==="main"&&sh.id==="allin")
+      ? "top "+Math.max(4,G.objectivePos-2)+" finish or "+pct(BAL.sponsor.penalty)+" penalty" : null;
+    return o;
+  });
+}
 function sponsorRenewal(){
-  const first=pick(SPONSORS);
-  const rest=SPONSORS.filter(s=>s.n!==first.n);          // never two identical cards
-  const offers=[sponsorCopy(first),sponsorCopy(pick(rest.length?rest:SPONSORS))];
-  offers[0].per=Math.round(offers[0].per*(1+(3-G.div)*BAL.sponsor.perDivision));offers[0].seasonsLeft=2;offers[0].demand=null;
-  offers[1].per=Math.round(offers[1].per*(1+(3-G.div)*BAL.sponsor.perDivision)*1.35);offers[1].seasonsLeft=1;offers[1].demand="top "+Math.max(4,G.objectivePos-2)+" finish or "+pct(BAL.sponsor.penalty)+" penalty";
   // shown after the budget meeting, not buried in the inbox
-  G.sponsorDue={offers,renewal:true};
+  G.sponsorDue={slot:"main",offers:sponsorOffersFor("main"),renewal:true};
+}
+/* De tre andre slots: den kommercielle afdeling ringer af sig selv, naar
+   klubben er stor nok og slottet er frit. Ikke hver kampdag -- en gang i
+   ny og næ, saa det er en begivenhed og ikke en stroem. */
+function sponsorSlotKnock(){
+  if(G.sponsorDue||G.phase!=="season")return;
+  const free=sponsorSlotKeys().filter(k=>k!=="main"&&sponsorSlotFree(k));
+  if(!free.length)return;
+  if(Math.random()>=BAL.sponsor.knockChance)return;
+  const slot=pick(free);
+  G.sponsorDue={slot,offers:sponsorOffersFor(slot),renewal:false};
+}
+function sponsorLine(o){
+  const b=(o.triggers||[]).length
+    ? " · bonus: "+(o.triggers||[]).map(t=>SPONSOR_TRIGGERS[t].kort+" "+kfmt(sponsorBonusAmount(o,t))).join(" + ")
+    : " · ingen bonus";
+  return o.n+" · "+kfmt(o.per)+"/kampdag i "+o.seasonsLeft+" sæson"+(o.seasonsLeft===1?"":"er")+b+(o.demand?" · krav: "+o.demand:"");
 }
 function sponsorInbox(d){
-  const [a,b]=d.offers;
-  const line=o=>o.n+" · "+kfmt(o.per)+"/w · "+o.seasonsLeft+" season"+(o.seasonsLeft===1?"":"s")+(o.demand?" · demand: "+o.demand:", no strings");
-  msg("Commercial dept.","£",d.renewal?"Sponsorship expires — two offers":"Your first sponsorship — two offers",
-    (d.renewal?"You asked to think about it. ":"The club has NO main sponsor, and the shirt looks naked. ")+
-    "A: "+line(a)+". B: "+line(b)+".",{kind:"sponsorChoice",offers:[a,b]});
+  const slotName=BAL.sponsor.slots[d.slot].n;
+  msg("Kommerciel afdeling","£",slotName+": tre tilbud venter",
+    (d.renewal?"Du bad om at tænke over det. ":"")+"Der er tre kuverter på bordet om "+slotName.toLowerCase()+". "+
+    d.offers.map((o,i)=>"("+"ABC"[i]+") "+sponsorLine(o)).join(" "),
+    {kind:"sponsorChoice",slot:d.slot,offers:d.offers.map(sponsorCopy)});
+}
+/* Underskriften. ET sted, saa baade modalen og indbakkefallbacken gaar samme vej. */
+function sponsorSign(o,slot){
+  const d=sponsorCopy(o);
+  d.slot=slot;
+  G.sponsors[slot]=d;
+  const sl=BAL.sponsor.slots[slot];
+  /* Stadionnavne-dilemmaet (GDD, eget afsnit). Byen synes ikke navnet er til
+     salg, og prisen tages med det samme -- i humoer, ikke i penge. */
+  if(slot==="ground"){
+    G.fanMood=clamp(G.fanMood+BAL.sponsor.groundNameMood,5,100);
+    addNews("FANS","The ground is now the "+d.n+" Arena. Somebody has already crossed it out on the sign.");
+  }
+  addNews("CLUB",sl.n+": "+d.n+" at "+kfmt(d.per)+"/kampdag."+(d.demand?" Krav: "+d.demand+".":""));
+  const bonusTxt=(d.triggers||[]).length
+    ? "Grundbetalingen er lav med vilje: "+(d.triggers||[]).map(t=>SPONSOR_TRIGGERS[t].kort+" udløser "+kfmt(sponsorBonusAmount(d,t))).join(", ")+". Leverer du, er det den bedste aftale på bordet. Leverer du ikke, er det den dårligste."
+    : "Ingen bonus, ingen betingelser. Den samme check hver kampdag, uanset hvad der sker på banen.";
+  msg("Kommerciel afdeling","£","Underskrevet: "+d.n+" ("+sl.n.toLowerCase()+")",
+    kfmt(d.per)+" lander hver kampdag i "+d.seasonsLeft+" sæson"+(d.seasonsLeft===1?"":"er")+". "+bonusTxt,null);
 }
 function sponsorPick(i){
   const d=G.sponsorDue;if(!d)return;
-  const o=d.offers[i],cont=modal?modal.after:null;
-  G.sponsor=sponsorCopy(o);G.sponsorDue=null;
-  addNews("CLUB","New sponsorship: "+o.n+" at "+kfmt(o.per)+"/w."+(o.demand?" Demand: "+o.demand+".":""));
-  msg("Commercial dept.","£","Signed: "+o.n,"\""+(o.demand?"They want "+o.demand+" — read it twice, chairman.":"No strings, no small print, no surprises. Rare, that.")+"\" "+kfmt(o.per)+" lands every matchday.",null);
+  const o=d.offers[i];if(!o)return;
+  const cont=modal?modal.after:null;
+  G.sponsorDue=null;
+  sponsorSign(o,d.slot);
   modal=null;
   if(cont==="matchday")afterMatchday();else render();
 }
@@ -3634,7 +3815,7 @@ function openBankUltimatum(){
    settleFinances hvor de allerede blev afregnet. */
 function seasonIncome(){
   // bankens maalestok for hvad klubben kan baere: det den tjener paa en saeson
-  return Math.round(((G.sponsor?G.sponsor.per:0)+tvMoney())*G.rounds
+  return Math.round((sponsorIncome()+tvMoney())*G.rounds
     +attendance()*(G.ticket+BAL.matchday.kiosk)*homeGames());
 }
 function loansOwed(){return (G.loans||[]).reduce((s,l)=>s+l.perMD*l.left,0);}
@@ -4364,9 +4545,8 @@ function handleAction(m,choice){
     else{p.conf=clamp(p.conf-5,10,95);m.done=true;m.body="Request refused. He'll stay. His body will, anyway — the rest is negotiable.";}
   }
   if(a.kind==="sponsorChoice"){
-    const o=choice==="A"?a.offers[0]:a.offers[1];
-    G.sponsor=sponsorCopy(o);m.done=true;
-    addNews("CLUB","New sponsorship: "+o.n+" at "+kfmt(o.per)+"/w."+(o.demand?" Demand: "+o.demand+".":""));
+    const o=a.offers[{A:0,B:1,C:2}[choice]||0];
+    if(o){sponsorSign(o,a.slot||"main");m.done=true;}
   }
   render();
 }
@@ -4566,24 +4746,51 @@ function sponsorTarget(s){return parseInt((String(s.demand||"").match(/top (\d+)
    took a penny. Now it settles at season's end — which also gives you half a
    season after the MD 9 warning to climb out of it. */
 function sponsorSettleDemand(pos){
-  if(!G.sponsor||!G.sponsor.demand)return;
-  const target=sponsorTarget(G.sponsor);
+  const S=mainSponsor();
+  if(!S||!S.demand)return;
+  const target=sponsorTarget(S);
   if(pos<=target){
-    msg(G.sponsor.n,G.sponsor.av,"Clause met — paid in full","\"Top "+target+", as written. A pleasure doing business, chairman. The invoice stands.\"",null);
+    msg(S.n,S.av,"Clause met — paid in full","\"Top "+target+", as written. A pleasure doing business, chairman. The invoice stands.\"",null);
     return;
   }
-  const fine=Math.round(G.sponsor.per*G.rounds*BAL.sponsor.penalty);
+  const fine=Math.round(S.per*G.rounds*BAL.sponsor.penalty);
   G.balance-=fine;
-  msg(G.sponsor.n,G.sponsor.av,"The clause bites: −"+kfmt(fine),"\"The deal said top "+target+". You finished "+ord(pos)+". We are invoicing "+(BAL.sponsor.penalty*100)+"% of the season back — "+kfmt(fine)+". Read the small print next time, chairman.\"",null);
-  addNews("CLUB",G.sponsor.n+" claw back "+kfmt(fine)+" after the top-"+target+" clause went unmet. An expensive way to learn to read.");
+  msg(S.n,S.av,"The clause bites: −"+kfmt(fine),"\"The deal said top "+target+". You finished "+ord(pos)+". We are invoicing "+(BAL.sponsor.penalty*100)+"% of the season back — "+kfmt(fine)+". Read the small print next time, chairman.\"",null);
+  addNews("CLUB",S.n+" claw back "+kfmt(fine)+" after the top-"+target+" clause went unmet. An expensive way to learn to read.");
+}
+/* B3: bonusserne. Det her er hele pointen med den praestationsbaserede model --
+   du kan SPILLE dig til gevinsten, saa sponsoren bliver en indsats paa din egen
+   ambition frem for et lotteri. Afregnes paa alle fire slots, for de kan alle
+   fire baere en bonus. */
+function sponsorSettleBonus(outcome){
+  for(const x of signedSponsors()){
+    const d=x.d,hit=[],miss=[];
+    for(const t of (d.triggers||[])){
+      const T=SPONSOR_TRIGGERS[t];if(!T)continue;
+      (T.hit(outcome)?hit:miss).push(t);
+    }
+    if(!hit.length&&!miss.length)continue;
+    const paid=hit.reduce((s,t)=>s+sponsorBonusAmount(d,t),0);
+    if(paid>0){
+      G.balance+=paid;
+      msg(d.n,d.av,"BONUS UDLØST: +"+kfmt(paid),
+        "\""+hit.map(t=>SPONSOR_TRIGGERS[t].txt).join(". ")+". Det stod i aftalen, og du leverede. "+kfmt(paid)+" er overført.\""+
+        (miss.length?" Ikke udløst: "+miss.map(t=>SPONSOR_TRIGGERS[t].kort).join(", ")+".":""),null);
+      addNews("CLUB",d.n+" pay out "+kfmt(paid)+" in performance bonuses. The gamble paid.");
+    }else{
+      msg(d.n,d.av,"Ingen bonus i år",
+        "\"Aftalen hang på "+miss.map(t=>SPONSOR_TRIGGERS[t].kort).join(", ")+". Det blev det ikke til. Grundbetalingen står, som den skal — men vi havde begge håbet på mere.\"",null);
+    }
+  }
 }
 function sponsorLifeEvents(){
-  if(!G.sponsor)return;
+  const S=mainSponsor();
+  if(!S)return;
   // mid-season demand check
-  if(G.md===9&&G.sponsor.demand&&!G.sponsorChecked){
+  if(G.md===9&&S.demand&&!G.sponsorChecked){
     G.sponsorChecked=true;
-    const pos=myPos(),target=sponsorTarget(G.sponsor);
-    msg(G.sponsor.n,G.sponsor.av,"\"We're watching the table\"",pos<=target
+    const pos=myPos(),target=sponsorTarget(S);
+    msg(S.n,S.av,"\"We're watching the table\"",pos<=target
       ?"\"Top "+target+", as agreed. Carry on, chairman — the boys at the brewery are pleased.\""
       :"\"The deal says top "+target+". You are "+ord(pos)+". We are not angry. We are disappointed. You have half a season to fix it before the clause bites.\"",null);
   }
@@ -4599,10 +4806,10 @@ function sponsorLifeEvents(){
      i G, saa den kan laeses, gemmes og efterproeves. */
   if(G.sponsorRiskMD===null||G.sponsorRiskMD===undefined)
     G.sponsorRiskMD=R(BAL.sponsor.riskFrom,BAL.sponsor.riskTo);
-  if(G.sponsor.risk&&G.md===G.sponsorRiskMD&&Math.random()<G.sponsor.risk){
-    msg(G.sponsor.n+" (liquidators)",G.sponsor.av,"SPONSOR COLLAPSE",G.sponsor.n+" has ceased to exist. So has your sponsorship income. The small print, chairman. The small print.",null);
-    addNews("CLUB",G.sponsor.n+" implodes spectacularly. The shirt is naked again.");
-    G.sponsor=null;G.sponsorOffered=false;
+  if(S.risk&&G.md===G.sponsorRiskMD&&Math.random()<S.risk){
+    msg(S.n+" (liquidators)",S.av,"SPONSOR COLLAPSE",S.n+" has ceased to exist. So has your sponsorship income. The small print, chairman. The small print.",null);
+    addNews("CLUB",S.n+" implodes spectacularly. The shirt is naked again.");
+    G.sponsors.main=null;G.sponsorOffered=false;
     return;
   }
 }
@@ -4945,7 +5152,10 @@ function inboxActions(m){
   switch(a.kind){
     case "sellOffer":return ibtn(id,"accept","Tag imod "+kfmt(a.bid),"")+
       (a.demanded?"":ibtn(id,"demand","Kræv mere","comm"))+ibtn(id,"reject","Afvis","ghost");
-    case "sponsorChoice":return ibtn(id,"A","Tag A (sikker)","")+ibtn(id,"B","Tag B (dristig)","comm");
+    /* B3: tre tilbud -> tre knapper. Var to, og et tredje tilbud uden knap
+       ville vaere praecis pakke 0's blindgyde igen. */
+    case "sponsorChoice":return (a.offers||[]).map((o,i)=>
+      ibtn(id,"ABC"[i],(o.shapeLabel||"ABC"[i])+" · "+kfmt(o.per),i===0?"":i===1?"comm":"ghost")).join("");
     case "bidAccepted":return ibtn(id,"ok","Åbn forhandling · "+kfmt(a.fee),"",shortWhy(a.fee))+
       ibtn(id,"die","Lad det løbe ud","ghost");
     case "bidCounter":return ibtn(id,"accept","Tag imod "+kfmt(a.ask),"",shortWhy(a.ask))+
@@ -5214,9 +5424,13 @@ function viewClub(){
     }).join("")||'<div class="newsline">Eneejer. Kongeriget er dit — uden loft og uden undskyldninger.</div>'}
     ${G.owners.length?`<div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Køb én medejer ud pr. sæson. Tillid sænker prisen; en tabende klub er billigst.</div>`:""}</div>`:"")
   +(tab==="board"?`<div class="card"><div class="kick" style="margin-bottom:4px">Partnere & stab</div>
-    ${G.sponsor?`<div class="rowline"><span>${G.sponsor.n} <small>· hovedsponsor · ${G.sponsor.seasonsLeft} sæson${G.sponsor.seasonsLeft===1?"":"er"} igen${G.sponsor.demand?" · "+G.sponsor.demand:""}</small></span><span class="amt num">${kfmt(G.sponsor.per)}/U</span></div>
-    <div class="rowline"><span>Sponsorbonus <small>· hør deres 'store idé'</small></span><button class="abtn comm" onclick="sponsorBoost()" ${G.sponsorBoost?"disabled style='opacity:.4'":""}>▶ +${kfmt(BAL.sponsor.boost)} <span style="font-size:8px">AD</span></button></div>`
-    :`<div class="rowline"><span>Ingen hovedsponsor <small>· trøjen er nøgen — tilbud lander i indbakken</small></span><span class="amt num" style="color:var(--muted)">£0/W</span></div>`}
+    ${sponsorSlotKeys().map(k=>{
+      const sl=BAL.sponsor.slots[k],d=G.sponsors?G.sponsors[k]:null;
+      if(d)return `<div class="rowline"><span>${d.n} <small>· ${sl.n.toLowerCase()} · ${d.seasonsLeft} sæson${d.seasonsLeft===1?"":"er"} igen${(d.triggers||[]).length?" · bonus: "+(d.triggers||[]).map(t=>SPONSOR_TRIGGERS[t].kort).join("+"):""}${d.demand?" · "+d.demand:""}</small></span><span class="amt num">${kfmt(d.per)}/U</span></div>`;
+      return `<div class="rowline"><span style="color:var(--muted)">${sl.n} <small>· ${sponsorSlotOpen(k)?"frit — nogen ringer før eller siden":"ingen køber så langt nede i pyramiden"}</small></span><span class="amt num" style="color:var(--muted)">—</span></div>`;
+    }).join("")}
+    <div class="rowline"><span>Sponsorindtægt i alt <small>· fire slots</small></span><span class="amt num">${kfmt(sponsorIncome())}/U</span></div>
+    ${mainSponsor()?`<div class="rowline"><span>Sponsorbonus <small>· hør deres 'store idé'</small></span><button class="abtn comm" onclick="sponsorBoost()" ${G.sponsorBoost?"disabled style='opacity:.4'":""}>▶ +${kfmt(BAL.sponsor.boost)} <span style="font-size:8px">AD</span></button></div>`:""}
     <div class="rowline"><span>${G.coach.n} <small>· gaffer · ${G.coach.style}</small></span></div>
     <div class="statchips" style="margin-top:2px"><span class="sc">TAC <b>${G.coach.tac}</b></span><span class="sc">MAN <b>${G.coach.man}</b></span><span class="sc">DEV <b>${G.coach.dev}</b></span><span class="sc">OVR <b>${coachOvr(G.coach)}</b></span></div>
     ${(G.loans||[]).length?`<div class="rowline"><span>Banklån <small>· ${G.loans.length} åbne, ${loansOwed()>0?kfmt(loansOwed())+" skyldes stadig":""}</small></span><span class="amt num" style="color:#E07A6A">−${kfmt((G.loans||[]).reduce((a,l)=>a+l.perMD,0))}/kamp</span></div>`:""}
@@ -5969,19 +6183,37 @@ function renderModal(){
   if(modal.type==="sponsorOffer"){
     const d=G.sponsorDue;
     if(!d)return "";
-    const card=(o,i)=>`<div class="card">
-      <div class="rowline"><span><b>${o.n}</b> <small>· ${o.seasonsLeft} sæson${o.seasonsLeft===1?"":"er"}</small></span><span class="amt num">${kfmt(o.per)}/kamp</span></div>
-      <div class="rowline"><span style="font-weight:500;color:var(--muted);font-size:11.5px">${o.character||"They want their name on the shirt."}</span></div>
-      <div class="rowline"><span>${o.demand?`<b style="color:var(--comm)">Betingelser:</b> ${o.demand}`:"<b>Ingen betingelser.</b> Intet med småt, ingen overraskelser."}</span></div>
-      <div class="rowline" style="border-bottom:none"><span>Værdi over hele aftalen</span><span class="amt num">~${kfmt(o.per*G.rounds*o.seasonsLeft)}</span></div>
-      <button class="abtn${i?" comm":""}" onclick="sponsorPick(${i})">Giv hånd · ${kfmt(o.per)}/kamp</button></div>`;
+    const sl=BAL.sponsor.slots[d.slot]||BAL.sponsor.slots.main;
+    /* B3: kortet skal vise HELE stigen, ikke bare prisen. Grundbetaling,
+       bonusserne hver for sig, og de to summer der afgoer valget:
+       hvad du faar hvis intet lykkes, og hvad du faar hvis alt gør. */
+    const card=(o,i)=>{
+      const floor=o.per*G.rounds*o.seasonsLeft;
+      const ceil=floor+(o.triggers||[]).reduce((a,t)=>a+sponsorBonusAmount(o,t),0)*o.seasonsLeft;
+      return `<div class="card">
+      <div class="rowline"><span><b>${o.n}</b> <small>· ${o.shapeLabel} · ${o.seasonsLeft} sæson${o.seasonsLeft===1?"":"er"}</small></span><span class="amt num">${kfmt(o.per)}/kamp</span></div>
+      <div class="rowline"><span style="font-weight:500;color:var(--muted);font-size:11.5px">${o.character||"De vil have deres navn på trøjen."}</span></div>
+      ${(o.triggers||[]).length
+        ? (o.triggers||[]).map(t=>`<div class="rowline"><span style="color:var(--comm)">▸ ${SPONSOR_TRIGGERS[t].txt}</span><span class="amt num" style="color:var(--comm)">+${kfmt(sponsorBonusAmount(o,t))}</span></div>`).join("")
+        : `<div class="rowline"><span><b>Ingen bonus.</b> Den samme check hver kampdag.</span></div>`}
+      ${o.demand?`<div class="rowline"><span><b style="color:#E07A6A">Krav:</b> ${o.demand}</span></div>`:""}
+      <div class="rowline"><span>Hvis intet lykkes</span><span class="amt num">${kfmt(floor)}</span></div>
+      <div class="rowline" style="border-bottom:none"><span>Hvis alt lykkes</span><span class="amt num" style="color:var(--acc)">${kfmt(ceil)}</span></div>
+      <button class="abtn${i===1?" comm":i===2?" ghost":""}" onclick="sponsorPick(${i})">Giv hånd · ${o.shapeLabel}</button></div>`;
+    };
+    const boldNote=(G.objectiveBold||0)>0
+      ? `<p><b>Du lovede bestyrelsen mere end de forventede.</b> Sponsorerne har hørt det, og bonusserne er ${pct((sponsorBoldFactor()-1))} større på grund af det. To udbetalinger hænger nu på samme sæson.</p>` : "";
     return `<div class="overlay"><div class="sheet">
-      <div class="kick">Kommerciel afdeling${d.renewal?" · aftalen udløber":""}</div>
-      <h2>${d.renewal?"To tilbud på bordet":"Din første sponsor"}</h2>
+      <div class="kick">Kommerciel afdeling · ${sl.n}${d.renewal?" · aftalen udløber":""}</div>
+      <h2>${d.renewal?"Tre tilbud på bordet":d.slot==="main"?"Din første sponsor":sl.n+" er til salg"}</h2>
       <p>${d.renewal
-        ?"Den gamle aftale udløber i aften. To kuverter kom ind — én sikker og lang, én rig og betinget."
-        :"Trøjen er nøgen, formand, og den kommercielle afdeling har endelig fundet to der vil ændre på det."}</p>
-      ${card(d.offers[0],0)}${card(d.offers[1],1)}
+        ?"Den gamle aftale udløber i aften. Tre kuverter kom ind, og de vil tre forskellige ting."
+        :d.slot==="main"
+          ?"Trøjen er nøgen, formand. Tre firmaer vil ændre på det — men de tilbyder ikke det samme."
+          :"Der er kommet bud på "+sl.n.toLowerCase()+" — "+sl.txt.toLowerCase()+"."}</p>
+      <p style="color:var(--muted);font-size:11.5px">Den sikre betaler mest, når intet går din vej. Den dristige betaler lavt og lægger resten på, om <b>du</b> leverer. Det er en indsats på din egen ambition.</p>
+      ${boldNote}
+      ${d.offers.map((o,i)=>card(o,i)).join("")}
       <button class="abtn ghost" onclick="sponsorLater()">Beslut senere — læg det i indbakken</button>
     </div></div>`;
   }
