@@ -491,6 +491,33 @@ const BAL={
   // A fax nobody answers used to hang forever, and the player stayed flagged
   // BID PENDING for the rest of the career. Bids now have a shelf life.
   bids:{replyMD:2},
+  /* ---------- C3: prisen paa en kontrakt er ikke fast ----------
+     Mads: "Trivsel, spilletid, rolle, klubbens retning og hvor laenge han har
+     vaeret her skal flytte, hvad han accepterer -- i BEGGE retninger. Er han
+     glad og faar han det han vil have, accepterer han mindre."
+     Hver linje herunder er en multiplikator paa hans lønkrav, og hver af dem
+     har BEGGE fortegn. Under 1 = han vil noejes med mindre. */
+  contract:{
+    /* Trivsel. Et menneske der har det godt er billigere end et der ikke har. */
+    happyAt:70, happyMult:0.93,
+    unhappyAt:35, unhappyMult:1.12,
+    /* Spilletid. Har du spillet ham, er han rolig; har han siddet paa baenken,
+       koster det -- uanset hvad han hedder. */
+    playedShare:0.55, playedMult:0.95,
+    benchShare:0.20, benchMult:1.10,
+    /* Rollen du LOVEDE sidst. Har du holdt et noeglespiller-loefte, betaler det
+       sig her; har du brudt det, er det dyrt at love igen. */
+    keptKeyMult:0.94, brokeKeyMult:1.16,
+    /* Klubbens retning. Man skriver gerne under i en klub der stiger. */
+    promotedMult:0.94, relegatedMult:1.08,
+    /* Hvor laenge han har vaeret her. En mand med fem aar i klubben vil ikke
+       vaere den daarligst betalte i omklaedningsrummet -- men han vil ogsaa
+       hellere blive end flytte. */
+    longAt:4, longMult:0.95,
+    /* Og loftet paa hele herligheden, saa fem uheldige forhold ikke fordobler
+       et loenkrav. */
+    minMult:0.72, maxMult:1.45
+  },
   /* ---------- C1: buddet paa din spiller er et MARKED, ikke en besked ----------
      Mads: "Man skal kunne se interessen og hvem den er fra. Der skal vaere flere
      niveauer af interesse, og man skal kunne raekke ud til de andre klubber for
@@ -1128,6 +1155,11 @@ function loadGame(){
      sellOffer-beskeder UDEN others/calls/log/clubIdx -- og tilbudssiden ville
      laese undefined og tegne "NaN" i stedet for en beslutning. Feltet
      offerId kan ogsaa pege paa en besked der ikke er der laengere. */
+  /* C3: hvor laenge han har vaeret her. En karriere fra foer C3 har ingen
+     p.since; den anslaas af hans kampe for klubben, saa en femaars-veteran ikke
+     pludselig forhandler som en nysigneret. */
+  for(const p of (G.squad||[]))
+    if(!Number.isFinite(p.since))p.since=Math.max(0,G.season-Math.min(6,Math.floor((p.capps||0)/20)));
   if(!Number.isFinite(G.offerId))G.offerId=null;
   /* C2: deadline day var en modal (som aldrig blev gemt) og er nu en side med
      tilstand i G.dl. En gammel gemmefil har intet G.dl, og en gemmefil skrevet
@@ -1762,7 +1794,7 @@ function newGame(name,hue,mode){
     sponsors:{main:null,shirt:null,drinks:null,ground:null},sponsorOffered:false,sponsorDue:null,
     coach:{...pick(COACHES)},
     fanMood:60,objectivePos:8,objectiveBold:0,pendingMatch:null,gafferPatience:BAL.orders.startPatience,lastOrder:null,
-    squad:posPlan.map(p=>genPlayer(p,R(42,58),G_DIV_WAGE(3))),
+    squad:posPlan.map(p=>{const q=genPlayer(p,R(42,58),G_DIV_WAGE(3));q.since=-R(0,4);return q;}),
     market:[],freeAgents:[],scoutPending:0,scoutUsed:false,sponsorBoost:false,
     wageCap:BAL.wages.cap,bids:[],callbacks:[],lastXI:[],
     captain:null,captSuggested:false,talkCooldown:0,soldTo:[],agentRel:{},
@@ -2075,6 +2107,8 @@ function playerValuation(p){
   v*=(p.valNoise||1);                        // hidden spread, fixed at generation
   return Math.max(1000,Math.round(v/1000)*1000);
 }
+/* C3: en spiller foedes uden tid i klubben; den saettes naar han skriver under
+   (negoFinish) eller, for arvetruppen, af newGame's efterbehandling nedenfor. */
 function genPlayer(pos,base,wmult){
   const att=clamp(base+ (pos==="FW"?R(2,8):pos==="MF"?R(-2,4):R(-10,-2)),30,90);
   const def=clamp(base+ (pos==="GK"||pos==="DF"?R(2,8):pos==="MF"?R(-2,4):R(-10,-2)),30,90);
@@ -2094,7 +2128,11 @@ function genPlayer(pos,base,wmult){
     traits:[...new Set(traits)],gem:false,inj:0,susp:0,sg:0,sapps:0,smotm:0,load:0,
     conf:R(42,60),capps:0,promiseMD:null,years:R(1,3),from:null,fromIdx:-1,
     desperation:1,heist:false,valNoise:1+(Math.random()*2-1)*BAL.market.noise,
-    listed:false,reqDone:false,renewLockMD:-99};
+    listed:false,reqDone:false,renewLockMD:-99,
+    /* C3: hvor laenge han har vaeret HER. Saettes fra foedslen, saa feltet ikke
+       foerst opstaar ved en indlaesning -- gem/indlaes skal vaere tabsfri.
+       negoFinish saetter den forfra naar han skriver under hos dig. */
+    since:(typeof G!=="undefined"&&G&&Number.isFinite(G.season))?G.season:0};
   p.value=playerValuation(p);
   return p;
 }
@@ -4699,6 +4737,41 @@ function resolveBids(){
 }
 /* Prices a hypothetical set of terms — lets the sheet show what each contract
    length and each promised role would cost, without a second formula to drift. */
+/* C3: hvor mange saesoner han har vaeret her. Sat naar han skriver under;
+   for en karriere fra foer C3 anslaas den af hans kampe for klubben. */
+function tenureOf(p){
+  if(!p)return 0;
+  if(!Number.isFinite(p.since))return Math.min(6,Math.floor((p.capps||0)/20));
+  return Math.max(0,G.season-p.since);
+}
+/* C3: de fem ting Mads naevnte, hver som en navngiven multiplikator med BEGGE
+   fortegn. Egen funktion, saa hver del kan MAALES udefra frem for at blive
+   regnet efter i en test -- og saa arket kan vise praecis de samme ord. */
+function contractContext(p,role){
+  const C=BAL.contract,parts=[];
+  const add=(label,mult)=>{if(mult!==1)parts.push({label,mult});};
+  // trivsel
+  if(p.conf>=C.happyAt)add("Han har det godt her",C.happyMult);
+  else if(p.conf<=C.unhappyAt)add("Han er ikke glad",C.unhappyMult);
+  // spilletid: hvad han FIK sidste saeson
+  const share=G.rounds?(p.sapps||0)/G.rounds:0;
+  if(share>=C.playedShare)add("Du har spillet ham",C.playedMult);
+  else if(share<=C.benchShare)add("Han har siddet paa baenken",C.benchMult);
+  // rollen du lovede sidst
+  if(p.role==="key"){
+    if(share>=BAL.role.keyShare)add("Du holdt noeglespiller-loeftet",C.keptKeyMult);
+    else add("Du lovede noeglespiller og spillede ham ikke",C.brokeKeyMult);
+  }
+  // klubbens retning
+  const last=(G.history||[])[G.history.length-1];
+  if(last&&last.promoted)add("Klubben rykkede op",C.promotedMult);
+  else if(last&&last.relegated)add("Klubben rykkede ned",C.relegatedMult);
+  // hvor laenge han har vaeret her
+  const yrs=tenureOf(p);
+  if(yrs>=C.longAt)add(yrs+" aar i klubben",C.longMult);
+  const total=clamp(parts.reduce((m,x)=>m*x.mult,1),C.minMult,C.maxMult);
+  return {parts,total,tenure:yrs,share};
+}
 function wageDemandFor(years,role){
   const n=nego;
   let power=1.05;
@@ -4708,13 +4781,85 @@ function wageDemandFor(years,role){
     if(n.p.sg>=10||n.p.smotm>=4)power*=1.2;             // big season = bigger number
     if(n.p.age>=31)power*=0.85;                          // he knows the legs are going
   }
-  return Math.round(n.p.wage*ROLES[role].f*YEARF[years]*power/100)*100;
+  /* C3: og saa de fem menneskelige forhold. Kun paa en FORLAENGELSE -- en
+     spiller du ikke har haft endnu, har hverken trivsel, spilletid eller aar
+     hos DIG at forhandle med. */
+  const ctx=n.renewal?contractContext(n.p,role).total:1;
+  return Math.round(n.p.wage*ROLES[role].f*YEARF[years]*power*ctx/100)*100;
 }
 function wageDemand(){return wageDemandFor(nego.years,nego.role);}
 /* The poker rule (GDD): round one is blind. His number only becomes visible
    once he has countered — or immediately on a renewal, where he already knows
    exactly what he is worth to you. */
-function demandVisible(){return !!nego.renewal||nego.cround>=1;}
+/* C3 laaser poker-princippet fast for BEGGE slags forhandling. Foer var en
+   forlaengelse en undtagelse ("han ved allerede praecis hvad han er vaerd for
+   dig"), men C3 kraever at han aabner med en HOLDNING og ikke et tal -- og saa
+   kan tallet ikke staa i arket ved siden af holdningen. Foerste runde er blind. */
+function demandVisible(){return nego.cround>=1;}
+/* ---------- C3: han laegger ud med en HOLDNING, ikke et tal ----------
+   Mads' eksempel: "Jeg har spillet her i fem aar. Jeg vil ikke vaere den
+   daarligst betalte i omklaedningsrummet." Linjen vaelges af den staerkeste ting
+   i HANS situation, saa aabningen fortaeller hvad forhandlingen handler om --
+   uden at afsloere prisen. Poker-princippet er intakt: der staar ikke et tal. */
+function contractOpening(p){
+  const ctx=contractContext(p,p.role||"rot");
+  const last=p.name.split(" ")[1];
+  const wageRank=[...G.squad].sort((a,b)=>b.wage-a.wage).findIndex(x=>x.id===p.id)+1;
+  const lowPaid=wageRank>Math.ceil(G.squad.length*0.6);
+  /* Raekkefoelgen ER prioriteringen: det der praeger ham mest, siger han foerst. */
+  if(p.years<=1&&p.age<=30)
+    return "\"Lad os vaere praktiske, formand. Han kan gaa gratis til sommer. Det er ikke en trussel, det er en kalender.\"";
+  if(ctx.tenure>=BAL.contract.longAt&&lowPaid)
+    return "\"Han har spillet her i "+ctx.tenure+" aar. Han vil ikke vaere den daarligst betalte i omklaedningsrummet -- det er hele hans aerinde, og han har ikke sagt et tal.\"";
+  if(p.role==="key"&&ctx.share<BAL.role.keyShare)
+    return "\""+last+" blev lovet at vaere noeglespiller. Han har set kampene fra baenken. Vi taler ikke om penge foerst -- vi taler om, hvad du mener med det ord.\"";
+  if(p.conf<=BAL.contract.unhappyAt)
+    return "\"Jeg skal vaere aerlig: han er ikke glad. Han vil vide om der er en plan, eller om han skal finde en et andet sted.\"";
+  if(p.sg>=10||p.smotm>=4)
+    return "\""+p.sg+" maal i saesonen, formand. Vi behoever ikke tale om, hvad det er vaerd -- du saa kampene.\"";
+  if(p.conf>=BAL.contract.happyAt)
+    return "\"Han er glad her. Det betyder noget for ham, og det betyder noget for tallet -- hvis du behandler ham ordentligt.\"";
+  if(p.age>=31)
+    return "\"Han ved godt hvor han er i sin karriere. Han vil bare ikke behandles som om han er faerdig, for det er han ikke.\"";
+  if(ctx.tenure>=BAL.contract.longAt)
+    return "\""+ctx.tenure+" aar herinde. Han vil blive. Det gør ikke samtalen gratis, men det gør den kortere.\"";
+  return "\"Han vil gerne blive. Lad os finde ud af paa hvilke vilkaar -- du laegger ud.\"";
+}
+/* C3: hvert modbud faar en replik der flytter sig med hans humoer. Afstanden
+   afgoer indholdet; trivslen afgoer tonen. Og den PEGER paa en vej videre --
+   "giv mig et aar mere" -- frem for kun at gentage tallet. */
+function contractReply(n,demand){
+  const gap=(demand-n.wageOffer)/Math.max(1,demand);
+  const warm=n.p.conf>=BAL.contract.happyAt;
+  const cold=n.p.conf<=BAL.contract.unhappyAt;
+  /* Hvilken skrue ville lukke hullet billigst? Det er den han beder om. */
+  let lever=null;
+  if(gap>0){
+    const now=wageDemandFor(n.years,n.role);
+    const longer=n.years<4?wageDemandFor(n.years+1,n.role):null;
+    const rot=n.role!=="rot"?wageDemandFor(n.years,"rot"):null;
+    const key=n.role!=="key"?wageDemandFor(n.years,"key"):null;
+    if(longer!==null&&longer<now&&longer<=n.wageOffer*1.04)lever="Giv mig et aar mere, saa skriver jeg.";
+    else if(key!==null&&key<now&&key<=n.wageOffer*1.04)lever="Kald ham noeglespiller, og tallet falder af sig selv.";
+    else if(longer!==null&&longer<now)lever="Bind ham et aar laengere, og vi er taettere paa.";
+    else if(rot!==null&&rot<now)lever="Eller lov ham mindre -- rotation er billigere, hvis du kan leve med det.";
+  }
+  /* Baandene foelger MEKANIKKEN, ikke maven: negoSubmit accepterer ved 97 % af
+     kravet (91 % paa et sidste bud) og gaar fra bordet under 75 %. Den
+     spilbare afstand er derfor ca. 3-25 %, og baandene deler den op. Foerste
+     udgave satte "det er taet" ved 3 %, hvor handlen allerede ER accepteret --
+     saa Mads' egen eksempelreplik kunne aldrig vises. Vagten fandt det. */
+  if(gap<=0.08)
+    return (warm?"\"Det er taet, og han vil gerne blive. ":"\"Det er taet. ")+(lever||"Et lille skub, og han skriver.")+"\"";
+  if(gap<=0.16)
+    return (cold?"\"Vi er ikke langt fra hinanden, men han er ikke i humoer til at gøre dig en tjeneste. "
+      :warm?"\"Vi er ikke langt fra hinanden, og han vil helst blive. ":"\"Vi er ikke langt fra hinanden. ")+(lever||"Find de sidste par hundrede.")+"\"";
+  if(gap<=0.26)
+    return (cold?"\"Det er ikke i naerheden, og han begynder at se sig omkring. "
+      :"\"Det er ikke i naerheden endnu. ")+(lever||"Der skal mere paa bordet.")+"\"";
+  return (cold?"\"Nu er det ikke laengere en forhandling, formand. Nu er det en fornaermelse.\""
+    :"\"Det er ikke i naerheden af noget. Kom tilbage naar du er alvorlig.\"");
+}
 function startRenewal(id){
   const p=byId(id);if(!p)return;
   if(G.md<p.renewLockMD){modal={type:"info",title:"\"Ikke endnu.\"",body:"Forhandlingerne med "+p.name.split(" ")[1]+" brød sammen for nylig. Begge sider blev enige om at vende tilbage — om "+(p.renewLockMD-G.md)+" kampdage."};render();return;}
@@ -4722,7 +4867,8 @@ function startRenewal(id){
   nego={p,agent,agentKey:agent.key,ix:-1,freeAgent:true,renewal:true,round:0,cround:0,years:2,role:p.role||"rot",finalUsed:false,
         maxRounds:3+(agent.extraRound||0),giveIn:agent.giveIn,
         wageOffer:Math.round(p.wage/100)*100,stage:"contract",
-        line:pick(agent.open).split(".")[0]+". \"Renewal talks, is it? "+(p.years<=1?"He can walk for FREE next summer, chairman. We both know what that does to the number.":p.age>=31?"He's no spring chicken and he knows it. Be fair, he'll sign.":"He's happy here. Happy still has a price.")+"\""};}
+        /* C3: han aabner med en HOLDNING, ikke et tal. */
+        line:pick(agent.open).split(".")[0]+". "+contractOpening(p)};}
   modal={type:"nego"};render();
 }
 function roleRefused(){
@@ -4797,7 +4943,10 @@ function negoSubmit(finalOffer){
       n.dead=true;
       if(!n.renewal)negoCollapse();
     }else{
-      n.line=pick(n.agent.counter)+" (On those terms he wants ~"+kfmt(demand)+"/w)";
+      /* C3: replikken flytter sig med hans humoer og peger paa en vej videre.
+         Tallet staar i arket, ikke i replikken -- en agent siger "det er taet",
+         ikke "han vil have 4.350". */
+      n.line=contractReply(n,demand);
     }
   }
   render();
@@ -4900,6 +5049,7 @@ function negoFinish(){
     G.balance-=due;
     if(t)recordDeal(p,p.from||"the selling club",t);
     p.wage=n.wageOffer;p.years=n.years;p.role=n.role;p.pendingBid=false;
+    p.since=G.season;           // C3: han begynder sin tid i klubben nu
     bumpAgentRel(n.agentKey);   // pakke T3: a completed, fair deal earns his goodwill next time
     G.squad.push(p);
     if(n.freeAgent)G.freeAgents.splice(n.ix,1);
@@ -6332,10 +6482,20 @@ function renderModal(){
           <button onclick="nego.wageOffer+=500;render()" title="+${kfmt(500)}">››</button></div>
         <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £50 · ‹‹ ›› = £500</div>
         ${(()=>{
-          if(!seen)return `<div class="why"><b>Han har ikke nævnt sit tal.</b> Kontraktlængde og den rolle du lover flytter det begge — læg et bud, så siger hans agent hvor langt du er fra.</div>`;
+          /* C3: han har lagt ud med en holdning. Her staar HVORFOR prisen er
+             som den er -- de samme fem forhold koden regner med, med ord og
+             fortegn. Selve tallet er stadig skjult i foerste runde. */
+          const ctx=n.renewal?contractContext(n.p,n.role):null;
+          const why=ctx&&ctx.parts.length
+            ? `<div class="card" style="margin-top:10px"><div class="kick" style="margin-bottom:4px">Hvad der flytter hans tal</div>
+                ${ctx.parts.map(x=>`<div class="rowline"><span style="font-size:11.5px">${x.label}</span><span class="amt num" style="color:${x.mult<1?"var(--acc)":"#E07A6A"}">${x.mult<1?"−":"+"}${Math.round(Math.abs(1-x.mult)*100)}%</span></div>`).join("")}
+                <div class="rowline" style="border-bottom:none"><span><b>I alt</b></span><span class="amt num"><b>${ctx.total<1?"−":"+"}${Math.round(Math.abs(1-ctx.total)*100)}%</b></span></div>
+                <div class="kick" style="font-size:9px;margin-top:6px;text-transform:none;letter-spacing:.2px">Er han glad og får han det han vil have, accepterer han mindre. Det går også den anden vej.</div></div>`
+            : "";
+          if(!seen)return why+`<div class="why"><b>Han har ikke nævnt et tal.</b> Han lagde ud med en holdning — og kontraktlængde og den rolle du lover flytter begge prisen. Læg et bud, så siger hans agent hvor langt du er fra.</div>`;
           const d=wageDemand();
           const short=d-n.wageOffer;
-          return `<div class="why"><b>På ${n.years} år som ${ROLES[n.role].n.toLowerCase()}</b> forventer han <b class="num">~${kfmt(d)}/u</b>.
+          return why+`<div class="why"><b>På ${n.years} år som ${ROLES[n.role].n.toLowerCase()}</b> forventer han <b class="num">~${kfmt(d)}/u</b>.
             ${short<=Math.round(d*0.03)?`Dine <b class="num">${kfmt(n.wageOffer)}</b> burde gøre det.`
               :`Dine <b class="num">${kfmt(n.wageOffer)}</b> er cirka <b class="num">${kfmt(short)}</b> for lidt — eller skru på vilkårene ovenfor.`}</div>`;
         })()}
