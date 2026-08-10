@@ -1552,7 +1552,16 @@ const COACHES=[
    delt nested objekt ville ligge to steder i G). SPONSORS er flade felter nu
    (stuntet udgik i R1c), men kopien beholdes som choke point. */
 const sponsorDef=n=>SPONSORS.find(x=>x.n===n);
-const sponsorCopy=o=>({...o});
+/* B3: kopien skal vaere DYB nok. {...o} deler `triggers`-arrayet, og saa laa
+   samme array to steder i G paa det oejeblik en aftale baade stod i et slot og
+   i en ubesvaret indbakkebesked -- G skal vaere et TRAE, og assertSerialisable
+   fandt det ved 40 seeds x 20 saesoner (ikke ved 10 x 5). Det er praecis derfor
+   den store koersel findes. */
+const sponsorCopy=o=>{
+  const c={...o};
+  if(Array.isArray(o.triggers))c.triggers=o.triggers.slice();
+  return c;
+};
 /* ---------- B3: fire sponsorslots ----------
    G.sponsor (et enkelt objekt) blev G.sponsors -- et kort med fire slots, som
    G.stands og G.fac. mainSponsor() er hovedsponsoren; sponsorIncome() er
