@@ -294,10 +294,15 @@ const BAL={
      løber HVER kampdag facaden er åben. En lukket facilitet koster intet og gør
      intet; genåbning tager byggedage. Overinvestering skal kunne mærkes. */
   fac:{
-    maxLvl:3,
-    eff:[0,1,1.6,2],          // effekt-multiplikator pr. niveau
-    lvlCost:[0,1,0.9,1.2],    // pris for NÆSTE niveau × basisprisen
-    driftRate:0.001           // drift pr. kampdag pr. niveau = basispris × dette — forsigtig start; kan hæves med data
+    /* 10 niveauer (Mads 10/8). Trappen er lagt så niveau 1-3 svarer til den
+       gamle balance (1 / 1.5 / 2), og resten er sen-spillets pengedræn:
+       effekten flader ud mod ×4, mens prisen vokser geometrisk — at maxe én
+       facilitet koster ~32× basisprisen, og alle ni ≈ £8M. Premier-kassen
+       har fået noget at bruge livet på. */
+    maxLvl:10,
+    eff:[0,1,1.5,2,2.4,2.75,3.05,3.3,3.55,3.8,4],   // effekt-multiplikator pr. niveau — aftagende
+    costGrowth:1.3,           // pris for niveau n = basispris × dette^(n-1)
+    driftRate:0.001           // drift pr. kampdag pr. niveau = basispris × dette
   },
   seasonTix:{
     share:0.25,              // of the crowd you can actually draw
@@ -2149,7 +2154,7 @@ function matchIncidents(match){ // red cards & injuries with consequences
       const scale=F.injuryScale*(facLvl("clinic")?F.clinicScale:1);
       const risk=(facLvl("clinic")?F.injClinic:F.injBase)*(1+(100-freshOf(p))/100*scale)*(1+(match.order==="win"?BAL.orders.winInjury:0));
       if(Math.random()<risk){
-        p.inj=Math.max(1,R(2,4)-BAL.fresh.clinicInjDays*facLvl("clinic"));   // B2: hvert niveau kapper en kampdag
+        p.inj=Math.max(1,R(2,4)-Math.round(BAL.fresh.clinicInjDays*facEff("clinic")));   // B2: følger eff-kurven — gulvet er altid 1 kampdag
         out.push({m:R(10,80),keep:true,txt:"Injury: "+p.name.split(" ")[1]+" pulls up — out "+p.inj+" matchday"+(p.inj===1?"":"s")+
           (freshOf(p)<F.bandUsed?" (he was running on empty)":"")+"."});
       }
@@ -3076,7 +3081,7 @@ function finishSeason(o){
          praecis ingenting. Nu koeber den et hurtigere aar -- men kun for en
          dreng der faktisk har spillet, saa den ikke bare er en dyrere maade at
          parkere nogen paa baenken. */
-      dev=Math.round((R(1,3)+facLvl("training")+(G.coach.dev>=60?1:0)+proDevBonus(p))*(0.35+0.65*playF));   // B2: +1 pr. niveau
+      dev=Math.round((R(1,3)+Math.round(facEff("training"))+(G.coach.dev>=60?1:0)+proDevBonus(p))*(0.35+0.65*playF));   // B2: følger eff-kurven (maks +4), ikke det rå niveau
     }else dev=(p.age<30?R(-1,1):-R(1,3));
     p.att=clamp(p.att+dev,25,95);p.def=clamp(p.def+dev,25,95);
     p.phy=clamp(p.phy+(p.age>=30?-R(1,3):dev),25,95);
@@ -4347,8 +4352,8 @@ function facBlockedBy(key){
   if(G.stands[need.stand]>=need.lvl)return null;
   return STANDS[need.stand].n;
 }
-/* B2: prisen for NÆSTE niveau — basisprisen skaleret med niveau-trappen. */
-function facNextCost(key){return Math.round(FACS[key].cost*BAL.fac.lvlCost[(G.fac[key]||0)+1]/500)*500;}
+/* B2: prisen for NÆSTE niveau — geometrisk trappe: niveau n koster base×growth^(n-1). */
+function facNextCost(key){return Math.round(FACS[key].cost*Math.pow(BAL.fac.costGrowth,G.fac[key]||0)/500)*500;}
 function facDriftOf(key){return Math.round(FACS[key].cost*BAL.fac.driftRate);}
 function buildFac(key){
   const f=FACS[key];
@@ -4963,7 +4968,7 @@ function viewClub(){
   <div class="card"><div class="kick" style="margin-bottom:4px">Faciliteter <span style="font-size:9px">· niveauer koster drift hver kampdag — luk ned i trange tider</span></div>
     ${Object.entries(FACS).map(([k,f])=>{
       const lvl=G.fac[k]||0,down=G.facDown&&G.facDown[k];
-      const dots="●".repeat(lvl)+"○".repeat(BAL.fac.maxLvl-lvl);
+      const dots=lvl+"/"+BAL.fac.maxLvl;   // 10 niveauer: tallet læses bedre end ti prikker
       const busy=G.facBuild&&G.facBuild.key===k;
       let right="";
       if(busy)right=`<span class="cn num" style="color:var(--comm);font-size:11px">${G.facBuild.remain} KD${G.facBuild.reopen?" · genåbner":""}</span>`;
