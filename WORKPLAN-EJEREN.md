@@ -16,15 +16,37 @@
 
 Ejer-lagets tilbud (kunst, bil, bolig — `WORKPLAN-MOGUL.md`-materialet) prissættes i dag uafhængigt af spillerens situation. Resultatet er en butik, man kigger på i tyve sæsoner uden at kunne handle i den, og et første indtryk af ejer-laget som noget, der ikke er til dig.
 
-Tilbuddene skal skaleres til, hvad du faktisk har — eller låses op i trin, så det tidlige ejer-lag har noget på hylderne, du kan nå.
+**Valgt: lås op i trin efter formue.** Butikken viser kun det, du er i nærheden af at kunne købe, og nye kategorier åbner når formuen vokser. Det tidlige ejer-lag har billige, små ting på hylderne — og det, du ikke kan nå, kan du **se** er der, så det bliver et mål frem for en hån.
 
-## E2. Startkapital
+Bevidst valgt fra: priser der skalerer med formuen. Et maleri, der koster 5 % af din formue uanset om du har tusind eller ti millioner, er ikke et maleri — det er en skatteprocent.
+
+## E2. Startkapital — balancepinden mellem kontrol og kapital
 
 **Mads' ord:** *"Vi skal have løst hele den udfordring. Man skal have startkapital, så man kan lidt helt fra start."*
 
-Roden under E1: ejeren starter uden personlige penge, så hele ejer-laget er tomt indtil et udbytte falder. Der skal være **startkapital**, så man kan gøre lidt fra dag ét.
+**Og hans egen løsning (10/8), som er bedre end de tre muligheder der blev stillet op:**
 
-Bemærk sammenhængen med onboardingen efter R6: introen starter nu med **dig** — navn, portræt, baggrund — før klubben får navn. Startkapitalen hører naturligt til dér, og baggrundsvalget kunne bestemme, hvor meget man kommer med.
+> *"Kunne man lave det sådan, at spillet starter med at man får en balancepind, hvor man kan styre hvor stor en andel af klubben man ejer (fra 51% til 100%). Hvis man ejer 100% har man ingen penge til at starte med, men man kan få penge ved at sætte sin ejerandel ned fra start."*
+
+Et trin i onboardingen — naturligt efter R6, hvor introen nu starter med **dig** før klubben får navn. Pinden går fra **51 % til 100 %**, og prisen pr. procent følger `clubValuation()`. Ejer du alt, har du intet; sælger du ned, får du kontanter.
+
+**Hele maskineriet findes:** `G.myShare`, medejerne med personligheder og humør, `clubValuation()` fra pakke 4.
+
+### Hvorfor dette er den vigtigste af de fire
+
+**Det lukker `DECISIONS-NEEDED.md` punkt 10.** Punktet har stået åbent med *"trin 4 er fatalt fra start, fordi du kun ejer 51 %"*: fortyndingstrappen fra nat 4 antog en luft over 50 %-grænsen, spilleren ikke havde. **Med balancepinden køber han selv den luft.**
+
+| Start | Kontanter | Fortyndingsluft |
+|---|---|---|
+| 100 % | ingen | fire-fem redningsrunder |
+| 51 % | mest muligt | **én** redning fra at miste klubben |
+
+Det gør femtrins-trappen levende fra sæson 1 frem for teoretisk, og det giver et ægte strategisk valg med en pris i begge ender. Og det gør formuen fra B1 læsbar med det samme: pinden flytter andel og kontanter i modsat retning, så tallene *betyder* noget fra første skærm.
+
+### Åbne spørgsmål
+
+1. **Hvem køber de andele, du sælger fra start?** Medejerne findes som karakterer med personlighed og humør. Får man tildelt dem, vælger man imellem dem, eller er de bare "byens folk" indtil de får ansigt? Sælger man ned til 51 %, sidder man fra dag ét med en bestyrelse, der ejer 49 % — og deres personligheder betyder så noget med det samme.
+2. **Kan man sælge yderligere ned senere?** Er pinden kun i onboardingen, eller er den en permanent kapitalkilde? Kan man sælge ned midt i en krise, er det en femte vej ud af økonomitrappen — og den skal i så fald forenes med trin 4, som handler om præcis det.
 
 ## E3. Ejeren må ikke misse de store begivenheder
 
@@ -32,7 +54,11 @@ Bemærk sammenhængen med onboardingen efter R6: introen starter nu med **dig** 
 
 Dette er et **strukturelt hul, som M2.5's todelte interface selv skabte:** kan man sidde i ejer-laget, kan man sidde der mens klubben har brug for en beslutning. Transfervinduet åbner og lukker, deadline day kommer og går, sæsonen starter — og ejeren ser det ikke.
 
-Ejer-laget skal have sin egen besked-kanal for de store ting. Vinduer, deadline day, sæsonstart, budgetmøde, bud på dine spillere.
+**Valgt: ejer-laget får sin egen røde tråd.** Et fast felt, der altid siger, hvad der venter i klubben: *"Transfervinduet lukker om 2 kampdage"* · *"Deadline day i morgen"* · *"Bud på Hobbs venter svar"*. Du kan ignorere det, men du kan ikke **ikke** se det.
+
+Bevidst valgt fra: modaler der stopper dig. Spillet har rigeligt med modaler, man skal klikke væk, og ejer-lagets ro er hele pointen med det.
+
+Kilderne findes allerede: `windowOpen()` kender vinduerne, `G.md` kender deadline day, og indbakken kender de ubesvarede beslutninger.
 
 ## E4. Klubbens økonomi deles i to: pengekasse og lønbudget
 
@@ -42,7 +68,9 @@ To potter: **pengekassen** (køb, byggeri, faciliteter) og **lønbudgettet** (hv
 
 Det er en ægte formandsbeslutning, og den findes halvt allerede: `G.wageCap` er der, og `BAL.wages.capOnPromotion` flytter den ved oprykning. Det nye er, at loftet bliver **noget man selv skubber på**, mod pengekassen.
 
-**Åbent designspørgsmål:** hvad koster det at flytte skyderen? Kan man flytte frit, er de to potter i praksis én pot med to etiketter — og så er der ingen beslutning. Begrænsningen er det, der gør den til en.
+**Valgt: fra penge til løn er billigt, den anden vej dyrt.** Du kan altid love mere i løn — men at tage lønkroner **tilbage** betyder, at nogen skal væk, og det koster.
+
+Asymmetrien er den ærlige: **en lønforpligtelse er skrevet under, en transferkasse er bare penge.** Og den gør skyderen til noget, man skubber med omtanke, i stedet for frem og tilbage efter behov. Uden den ville de to potter være én pot med to etiketter — og så var der ingen beslutning.
 
 ---
 
