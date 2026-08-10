@@ -450,6 +450,23 @@ const BAL={
   bids:{replyMD:2},
   /* D1: indbakkens loft. Var en bar 18 inde i msg(). */
   inbox:{cap:18},
+  /* D3: "Det usexede basale" var EN knap til £15.000 med EN virkning. Nu er
+     det tre huse med hver sin pris og sin karakter -- men den SAMLEDE virkning
+     er uaendret: andelene herunder summer til 1 paa hver akse, saa totalerne
+     bliver ved med at bo i demand.basics, matchday.basics og mood.basicsOpens.
+     Derfor kan virkningen ikke ganges op ved et uheld, og harness'en faelder
+     hvis en andel skrider. Karakteren ligger i FORDELINGEN:
+       parkering  -- byen kan komme frem (mest efterspoergsel)
+       toiletter  -- den klassiske klage (mest humoer)
+       lys        -- aftenkampe, og saa virker kiosken og pubben (mest pr. hoved) */
+  basics:{
+    split:{
+      parking:{cost:0.3333, demand:0.50, head:0.25, mood:0.25},
+      toilets:{cost:0.2667, demand:0.20, head:0.25, mood:0.50},
+      lights: {cost:0.4000, demand:0.30, head:0.50, mood:0.25}
+    },
+    total:15000            // det gamle basics.cost, fordelt af cost-andelene
+  },
   /* Nat 4, pakke 24. ROLES var kun en pris: key x0,90, rot x1,00, pro x1,18 --
      og p.role gjorde INTET efter underskriften. QA maalte konsekvensen (afsnit
      7b): "Key player" er baade billigst OG den eneste rolle en ambitioes
@@ -943,11 +960,27 @@ function loadGame(){
      og hver facilitet vaere "lukket" ved indlaesning; uden facBuild.to ville et
      byggeri der var i gang faerdiggoere til niveau NaN. */
   if(!G.facOff||typeof G.facOff!=="object")G.facOff={};
+  /* D3: "det usexede basale" blev delt i parkering, toiletter og lys. Den der
+     har betalt de £15.000 har betalt for alle tre -- saa niveauet flyttes over
+     paa alle tre, og en eventuel nedlukning foelger med. Uden det her ville en
+     karriere miste sin efterspoergsel, sit humoer og sin omsaetning pr. hoved
+     paa en indlaesning, uden at nogen havde trykket paa noget.
+     Skal koere FOER oprydningen nedenfor, som sletter felter der ikke er i FACS. */
+  if(G.fac&&typeof G.fac==="object"&&("basics" in G.fac)){
+    const had=Math.max(0,Math.min(BAL.fac.maxLvl,G.fac.basics|0));
+    const wasOff=!!(G.facOff&&G.facOff.basics);
+    for(const k in BAL.basics.split){
+      if(!Number.isFinite(G.fac[k]))G.fac[k]=had;
+      if(wasOff)G.facOff[k]=1;
+    }
+    delete G.fac.basics;delete G.facOff.basics;
+    if(G.facBuild&&G.facBuild.key==="basics")G.facBuild.key="toilets";   // byggeriet fortsaetter paa det hus klagen handler om
+  }
   if(G.fac&&typeof G.fac==="object"){
     for(const k in FACS)G.fac[k]=Math.max(0,Math.min(BAL.fac.maxLvl,G.fac[k]|0));
     for(const k in G.fac)if(!(k in FACS))delete G.fac[k];
     for(const k in G.facOff)if(!(k in FACS))delete G.facOff[k];
-  }else G.fac={shop:0,pub:0,screen:0,clinic:0,training:0,basics:0,vip:0};
+  }else G.fac={shop:0,pub:0,screen:0,clinic:0,training:0,parking:0,toilets:0,lights:0,vip:0};
   if(G.facBuild&&typeof G.facBuild==="object"){
     if(!Number.isFinite(G.facBuild.to))G.facBuild.to=Math.max(1,(G.fac[G.facBuild.key]|0)+1);
     G.facBuild.reopen=!!G.facBuild.reopen;
@@ -1481,7 +1514,7 @@ function newGame(name,hue,mode){
     season:1,md:0,rounds:26,phase:"season",
     balance:150000,ticket:10,capacity:1500,
     stands:{shed:0,main:1,family:0,away:0},standBuild:null,
-    fac:{shop:0,pub:0,screen:0,clinic:0,training:0,basics:0,vip:0},facOff:{},facBuild:null,
+    fac:{shop:0,pub:0,screen:0,clinic:0,training:0,parking:0,toilets:0,lights:0,vip:0},facOff:{},facBuild:null,
     seasonTix:{price:150,sold:0},bigExtra:2,jerseyFactor:1,jerseyName:null,
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
     myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,sponsorChecked:false,sponsorRiskMD:null,
@@ -1668,13 +1701,28 @@ const STANDS={
  away:{n:"Away End",role:"Gate +"+pct(BAL.matchday.awayEndBigGate)+" pr. etage i store kampe",cap:[0,800,1600]}
 };
 const STANDCOST=[0,70000,150000];
+/* D3: prisen paa et af de tre usexede huse, bygget af totalen og andelen.
+   Erklaeret foer FACS, fordi FACS kalder den i sin egen initialisering. */
+function basicsCost(k){return Math.round(BAL.basics.total*BAL.basics.split[k].cost/500)*500;}
+/* Den fordelte virkning paa en akse. Er alle tre paa niveau 1, giver den
+   PRAECIS 1 -- fordi andelene summer til 1 -- og spillet opfoerer sig som foer
+   D3. Derfor er "fordeles, ikke ganges op" en egenskab ved koden, ikke en
+   hensigt i en kommentar. */
+function basicsFactor(axis){
+  let f=0;
+  for(const k in BAL.basics.split)f+=BAL.basics.split[k][axis]*facYield(k);
+  return f;
+}
 const FACS={
  shop:{n:"Klubshoppen",cost:35000,txt:"+merch- & kampdagsindtægt"},
  pub:{n:"Stadionpubben",cost:30000,txt:"+kampdagsindtægt, +humør"},
  screen:{n:"Storskærmen",cost:25000,txt:"+"+pct(BAL.matchday.bigScreenGate)+" gate i store kampe"},
  clinic:{n:"Klinikken",cost:45000,txt:"kortere, sjældnere skader"},
  training:{n:"Træningsanlægget",cost:55000,txt:"unge udvikler sig hurtigere og restituerer hurtigere"},
- basics:{n:"Det usexede basale",cost:15000,txt:"parkering, toiletter, lys — lille løft i humør & gate"},
+ /* D3: de tre usexede. Priserne BYGGES af BAL.basics -- ingen bare konstanter. */
+ parking:{n:"Parkeringspladsen",cost:basicsCost("parking"),txt:"byen kan komme frem — mest efterspørgsel"},
+ toilets:{n:"Toiletterne",cost:basicsCost("toilets"),txt:"den klage der aldrig går væk — mest humør"},
+ lights:{n:"Lysanlægget",cost:basicsCost("lights"),txt:"aftenkampe — mest omsætning pr. hoved"},
  vip:{n:"VIP-boksene",cost:60000,txt:"+"+kfmt(BAL.matchday.vipFlat)+" pr. hjemmekamp. Fansene kalder det rejemadsbrigaden"}
 };
 /* Pakke 15a: which stands a facility needs before it can be built. The VIP
@@ -2723,7 +2771,7 @@ function updateProtest(){
 }
 function townDemand(){
   const D=BAL.demand;
-  const d=D.base*(1+(3-G.div)*D.perDivision)*(1+G.stands.family*D.familyStand)*(1+D.basics*facYield("basics"));
+  const d=D.base*(1+(3-G.div)*D.perDivision)*(1+G.stands.family*D.familyStand)*(1+D.basics*basicsFactor("demand"));
   // a boycott is a hard ceiling on the town, not a nudge to the mood factor
   return protestLevel()>=3?d*BAL.protest.boycottCap:d;
 }
@@ -2758,7 +2806,7 @@ function gateReceipts(res){
   const bigMult=(res.big?1+BAL.matchday.bigScreenGate*facYield("screen"):1)*(res.big?1+G.stands.away*BAL.matchday.awayEndBigGate:1);
   const gate=Math.round(paying*gatePrice(res.big)*bigMult);
   const M=BAL.matchday;
-  const extras=Math.round(att*(M.kiosk+facYield("shop")*M.shop+facYield("pub")*M.pub+facYield("basics")*M.basics)
+  const extras=Math.round(att*(M.kiosk+facYield("shop")*M.shop+facYield("pub")*M.pub+M.basics*basicsFactor("head"))
         +att*M.merch*G.jerseyFactor*(1+facYield("shop")*M.shopMerchBoost)
         +(facLvl("vip")&&!facBlockedBy("vip")?M.vipFlat*facYield("vip"):0));
   return {att,gate,extras};
@@ -4390,8 +4438,20 @@ const FAC_DETAIL={
  training:{fx:["Spillere under 24: +1 udvikling pr. sæson, skaleret efter spillede kampe",
    "Friskheden falder langsommere: "+BAL.fresh.decay.toFixed(2)+" → "+(BAL.fresh.decay+BAL.fresh.trainingRecovery).toFixed(2)+" pr. kampdag"],
    warn:"Betaler sig over ÅR, ikke uger. En dreng der aldrig spiller får en tredjedel.",md:3},
- basics:{fx:["Fanhumør +"+BAL.mood.basicsOpens+" ved åbning",perHead(BAL.matchday.basics),
-   "Efterspørgsel i byen +"+pct(BAL.demand.basics)+" — et par stykker mere gennem lågen hver uge"],warn:null,md:1},
+ /* D3: tre poster bygget af TOTALERNE gange husets andel. Summen af de tre er
+    stadig praecis de gamle tal, og teksten kan derfor ikke love mere end koden. */
+ parking:{fx:["Efterspørgsel i byen +"+pct(BAL.demand.basics*BAL.basics.split.parking.demand)+" — folk kan komme frem og hjem igen",
+   perHead(BAL.matchday.basics*BAL.basics.split.parking.head),
+   "Fanhumør +"+(BAL.mood.basicsOpens*BAL.basics.split.parking.mood)+" ved åbning"],
+   warn:"Ingen synger om en parkeringsplads. De brokker sig bare, hvis den ikke er der.",md:1},
+ toilets:{fx:["Fanhumør +"+(BAL.mood.basicsOpens*BAL.basics.split.toilets.mood)+" ved åbning — den største af de tre",
+   perHead(BAL.matchday.basics*BAL.basics.split.toilets.head),
+   "Efterspørgsel i byen +"+pct(BAL.demand.basics*BAL.basics.split.toilets.demand)],
+   warn:null,md:1},
+ lights:{fx:[perHead(BAL.matchday.basics*BAL.basics.split.lights.head)+" — aftenkampe, og så bruger folk penge",
+   "Efterspørgsel i byen +"+pct(BAL.demand.basics*BAL.basics.split.lights.demand),
+   "Fanhumør +"+(BAL.mood.basicsOpens*BAL.basics.split.lights.mood)+" ved åbning"],
+   warn:null,md:1},
  vip:{fx:[kfmt(BAL.matchday.vipFlat)+" fast, hver hjemmekamp",
    "Kræver "+STANDS[FAC_REQ.vip.stand].n+" — boksene hænger på den"],
    warn:"The Shed End vil kalde det rejemadsbrigaden. Fanhumør "+BAL.mood.vipOpens+" ved åbning.",md:2}
@@ -4468,11 +4528,17 @@ function finishFac(){
      genindvielse -- ellers kunne man koebe humoer tre gange for samme hus. */
   if(first){
     if(key==="vip")G.fanMood=clamp(G.fanMood+BAL.mood.vipOpens,5,100);
-    if(key==="basics")G.fanMood=clamp(G.fanMood+BAL.mood.basicsOpens,5,100);
     if(key==="pub")G.fanMood=clamp(G.fanMood+BAL.mood.pubOpens,5,100);
+    /* D3: de +4 humoer er FORDELT paa de tre huse. Aabner man alle tre, har man
+       faaet praecis de +4 -- ikke tre gange fire. */
+    if(BAL.basics.split[key])G.fanMood=clamp(G.fanMood+BAL.mood.basicsOpens*BAL.basics.split[key].mood,5,100);
   }
+  const FIRSTWORD={vip:"The boxes gleam. The Shed End mutters about prawn sandwiches. The till doesn't care.",
+    toilets:"Nye toiletter. Ægte jubelscener i køen.",
+    parking:"Der er streger på gruset, og Barry har fået sin egen plads. Byen kan komme frem.",
+    lights:"Lyset er tændt. Man kan spille en tirsdag aften nu — og så virker kiosken hele vejen."};
   msg("Site foreman","SF",FACS[key].n.toUpperCase()+(first?" IS OPEN":" · NIVEAU "+to),
-    first?(key==="vip"?"The boxes gleam. The Shed End mutters about prawn sandwiches. The till doesn't care.":key==="basics"?"New loos. Genuine scenes of celebration in the queue.":"Doors open, town approves, money flows.")
+    first?(FIRSTWORD[key]||"Doors open, town approves, money flows.")
          :"Udbygget til niveau "+to+" af "+BAL.fac.maxLvl+". Driften stiger til "+kfmt(Math.round(facSunk(key)*BAL.fac.upkeepOfBuild))+" pr. kampdag — den kommer, uanset om der er nogen på stadion.",null);
 }
 /* ---------- bookkeeper & sponsor life ---------- */
