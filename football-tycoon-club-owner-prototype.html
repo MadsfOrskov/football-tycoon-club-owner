@@ -264,12 +264,14 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const gbp=n=>"£"+Math.round(n).toLocaleString("en-GB");
 /* A2 (Mads 10/8): beløb over £1M læses i millioner — "£1,02M", aldrig "1018k".
    Dansk decimalkomma i M-laget; k-laget og alt under tusind er uændret. */
-const kfmt=n=>{
+/* Funktionsdeklaration, ikke const-arrow: en top-level const bliver ikke
+   global i harnessens vm, og formatet skal kunne MÅLES udefra (B1). */
+function kfmt(n){
   const a=Math.abs(n),sign=n<0?"−":"";
   if(a>=999500)return sign+"£"+(a/1e6).toFixed(2).replace(/\.?0+$/,"").replace(".",",")+"M";   // 999.6k afrunder OP — aldrig "£1000.0k"
   if(a>=1000)return sign+"£"+(a/1000).toFixed(a%1000===0?0:1)+"k";
   return (n<0?"−":"")+gbp(a);
-};
+}
 function poisson(l){let L=Math.exp(-l),k=0,p=1;do{k++;p*=Math.random();}while(p>L);return k-1;}
 function ord(n){return n+(n===1?"st":n===2?"nd":n===3?"rd":"th");}
 /* user input goes into innerHTML in ~20 places — strip anything that could
@@ -4453,14 +4455,16 @@ function render(){
 /* M2.5: den tynde guld-linje — altid vejen hjem, aldrig i vejen */
 function ownerBar(){
   const o=G.owner||{name:"You"};
-  return `<div class="ownerbar" onclick="exitClub()"><span>‹ ${(o.name||"Dig").split(" ")[0].toUpperCase()}</span><span class="num">${kfmt(G.personalWealth||0)} · uge ${Math.min(G.md+1,G.rounds)} · S${G.season}</span></div>`;
+  // B1: begge DINE tal følger med ind i klubben — kontant (handling) og formue (pejlemærke)
+  return `<div class="ownerbar" onclick="exitClub()"><span>‹ ${(o.name||"Dig").split(" ")[0].toUpperCase()}</span><span class="num">${kfmt(G.personalWealth||0)} kontant · formue ${kfmt(netWorth())} · uge ${Math.min(G.md+1,G.rounds)}</span></div>`;
 }
 function header(){
   if(G.layer!=="club"){
     const o=G.owner||{name:"Formanden",avatar:"🧑‍💼"};
     return `<div class="top gold"><div style="font-size:30px;line-height:1">${o.avatar||"🧑‍💼"}</div>
       <div><h1>${o.name}</h1><div class="sub">${reputationRead().label} · Uge ${Math.min(G.md+1,G.rounds)} · S${G.season}</div></div>
-      <div class="right"><small>Formue</small><b class="num">${kfmt(netWorth())}</b></div>
+      <div class="right"><small>Kontant · det du kan handle for</small><b class="num">${kfmt(G.personalWealth||0)}</b>
+        <small style="margin-top:2px">Formue ${kfmt(netWorth())}</small></div>
       <button class="modebtn" onclick="toggleMode()">${G.mode==="dark"?"☀":"◗"}</button></div>`;
   }
   return `<div class="top">${svgShield(G.badge,true,40)}
