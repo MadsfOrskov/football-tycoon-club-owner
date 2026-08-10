@@ -28,20 +28,39 @@ Bevidst valgt fra: priser der skalerer med formuen. Et maleri, der koster 5 % af
 
 > *"Kunne man lave det sådan, at spillet starter med at man får en balancepind, hvor man kan styre hvor stor en andel af klubben man ejer (fra 51% til 100%). Hvis man ejer 100% har man ingen penge til at starte med, men man kan få penge ved at sætte sin ejerandel ned fra start."*
 
-Et trin i onboardingen — naturligt efter R6, hvor introen nu starter med **dig** før klubben får navn. Pinden går fra **51 % til 100 %**, og prisen pr. procent følger `clubValuation()`. Ejer du alt, har du intet; sælger du ned, får du kontanter.
+Et trin i onboardingen — naturligt efter R6, hvor introen nu starter med **dig** før klubben får navn. Pinden går fra **51 % til 100 %**, og prisen pr. procent følger `clubValuation()`.
 
-**Hele maskineriet findes:** `G.myShare`, medejerne med personligheder og humør, `clubValuation()` fra pakke 4.
+### ⚠️ Det vigtigste at forstå — pengene er DINE, ikke klubbens
 
-### Hvorfor dette er den vigtigste af de fire
+**Mads' præcisering (10/8), efter at det blev misforstået første gang:**
 
-**Det lukker `DECISIONS-NEEDED.md` punkt 10.** Punktet har stået åbent med *"trin 4 er fatalt fra start, fordi du kun ejer 51 %"*: fortyndingstrappen fra nat 4 antog en luft over 50 %-grænsen, spilleren ikke havde. **Med balancepinden køber han selv den luft.**
+> *"Lad os bruge et eksempel omkring en klub der er 1 mio værd. Hvis jeg vælger 51% ejerskab, så vil jeg så have 490.000 som kontanter på **mig — ikke klubben**. Vælger jeg derimod 100% ejerskab, ejer jeg hele klubben og har ingen kontanter. De kontanter er ikke nogen der er i klubben. **Alle skal starte med det samme budget i klubben** — det her handler om hvor mange muligheder man vil have som spiller fra start."*
 
-| Start | Kontanter | Fortyndingsluft |
+| Valg | Klubbens budget | Dine personlige kontanter |
 |---|---|---|
-| 100 % | ingen | fire-fem redningsrunder |
-| 51 % | mest muligt | **én** redning fra at miste klubben |
+| 100 % | **uændret** | £0 |
+| 51 % (klub til £1M) | **uændret** | £490.000 |
 
-Det gør femtrins-trappen levende fra sæson 1 frem for teoretisk, og det giver et ægte strategisk valg med en pris i begge ender. Og det gør formuen fra B1 læsbar med det samme: pinden flytter andel og kontanter i modsat retning, så tallene *betyder* noget fra første skærm.
+**Klubbens økonomi er identisk uanset hvad du vælger.** Det er ikke en startkapital til truppen — det er kapital til **dig som investor.**
+
+### Hvad valget så handler om
+
+**Mads:** *"Tænker man, at man skal gøre sin klub stor og så købe andre klubber — eller vil man købe en masse klubber og vokse antallet i stedet?"*
+
+Det er **på-rampen til imperiet fra minut ét**, og den strategiske akse er:
+
+- **100 %** — én klub, hele vejen. Du har ingen kapital, men du ejer alt, og alt hvad klubben tjener er dit. Den tålmodige rute.
+- **51 %** — kapital nu. Du kan købe dig ind i andre klubber fra sæson 1, men du ejer under halvdelen af din egen, og bestyrelsen ejer resten.
+
+**Hele maskineriet findes:** `G.myShare`, medejerne med personligheder og humør, `clubValuation()` fra pakke 4. Og E2 er dermed også forudsætningen for ejerandele i andre klubber (`ROADMAP.md`) — det er dér, pengene skal bruges.
+
+### Bivirkningen: `DECISIONS-NEEDED.md` punkt 10
+
+Punktet har stået åbent med *"trin 4 er fatalt fra start, fordi du kun ejer 51 %"*: fortyndingstrappen fra nat 4 antog en luft over 50 %-grænsen, spilleren ikke havde.
+
+**Balancepinden gør den luft til et valg.** Starter du på 100 %, har du fire-fem redningsrunder at give af. Starter du på 51 % for at komme i gang som investor, er du **én** redning fra at miste kontrollen over din egen klub. Det gør femtrins-trappen levende fra sæson 1 — og risikoen er nu noget, spilleren selv har valgt, hvilket er hele forskellen mellem en straf og en beslutning.
+
+Og det gør formuen fra B1 læsbar fra første skærm: pinden flytter andel og kontanter i modsat retning, så de to tal betyder noget med det samme.
 
 ### Åbne spørgsmål
 
@@ -71,6 +90,40 @@ Det er en ægte formandsbeslutning, og den findes halvt allerede: `G.wageCap` er
 **Valgt: fra penge til løn er billigt, den anden vej dyrt.** Du kan altid love mere i løn — men at tage lønkroner **tilbage** betyder, at nogen skal væk, og det koster.
 
 Asymmetrien er den ærlige: **en lønforpligtelse er skrevet under, en transferkasse er bare penge.** Og den gør skyderen til noget, man skubber med omtanke, i stedet for frem og tilbage efter behov. Uden den ville de to potter være én pot med to etiketter — og så var der ingen beslutning.
+
+---
+
+---
+
+# E5. Skjult potentiale som en EJER-beslutning
+
+*Besluttet 10/8. Hører hjemme her frem for i Mennesker-natten, fordi Mads' krav gør det til en investeringsmekanik, ikke en trænermekanik.*
+
+Skjult potentiale findes **slet ikke** i koden i dag. GDD kalder det *"hele gambling-spændingen i talentkøb"*, og scoutens "gem" er en billig spiller med tilfældig alder 18-33.
+
+## Kravet: ejer, ikke træner
+
+**Mads' ord:** *"Du skal tænke dine muligheder mere som at man er en ejer/formand. Vi skal derfor væk fra, at man er nede i de små beslutninger (mentor) i en klub, da man forhåbentlig på et tidspunkt ejer 20 klubber. Derfor kan man ikke tage sig af alle de beslutninger, men man skal kunne se et potentiale på en spiller man vil købe (og dem man ejer) og se om det er en investering man gerne vil gøre sig. Der skal så være en masse ting i forhold til træner, faciliteter, division osv som gør at den spiller nogle gange når sit højeste potentiale og andre gange skuffer."*
+
+Det er en vigtig korrektion, og den skalerer: **ejerens greb på en spillers udvikling er strukturelle, ikke daglige.** Du klikker ikke "mentorér ham" — du har bygget et træningsanlæg på niveau 3, ansat en gaffer med DEV 70, og spiller i en division, der udfordrer ham. Derfor virker det også, når du ejer tyve klubber: du sætter miljøet, ikke kalenderen.
+
+Bemærk at mentor-par og træningsfokus blev **fjernet i R1c** som "knapper uden reelle valg". Det var den rigtige retning; dette er hvad der skal stå i stedet.
+
+## Modellen
+
+- Hver ung spiller har et **skjult loft** og et **synligt interval**, som scouting indsnævrer.
+- Om han nærmer sig loftet afgøres af **det miljø, du har bygget**: trænerens `DEV` og stil · træningsanlæggets niveau · klinikken (skader hæmmer vækst) · divisionen han spiller i · truppens niveau omkring ham.
+- **De fleste skuffer.** Med middelmådig træner, intet anlæg og en klub i League Three lander de fleste i den nederste tredjedel. Bygger du miljøet, flytter du **fordelingen** opad — ikke garantien.
+
+## Kalibreringen, som er det svære
+
+**Mads:** *"Du bliver dog nødt til at ramme en balance i forhold til, at man som lille klub godt kan ramme noget godt uden at spilleren rammer sit loft. Køber jeg et talent som en 3. div klub og spilleren bliver 70-75, er det et virkelig godt køb — også selvom han havde potentiale til 90."*
+
+**Skuffelse må ikke føles som fiasko på klubbens eget niveau.** En 19-årig med loft 90, der ender på 73, er et fremragende køb for en League Three-klub — han bærer dig to divisioner op. At han kunne være blevet 90 er ikke dit nederlag; det er en anden klubs gevinst.
+
+Og dér ligger den følelsesmæssige motor, som GDD'en allerede har skrevet halvt: **han når sit loft hos den klub, du solgte ham til.** Legende-væggen lover det ordret — *"Quigley scorede i går for storklubben, du solgte ham til."* Kombineret med pyramiden bliver det spillets bedste tilbagevendende historie: du fandt ham, du fik det bedste ud af ham *for din størrelse*, og en større klub fik hans bedste år.
+
+**Måltal:** andelen af unge der når over 80 % af deres loft skal stige målbart med miljøet (træner-DEV, anlæg, division) og forblive et mindretal i en klub uden dem.
 
 ---
 
