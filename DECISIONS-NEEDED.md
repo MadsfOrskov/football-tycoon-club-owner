@@ -362,3 +362,51 @@ Den anden skrue, hvis League Three skal have luft uden at modellen mister form:
 lad driften **skalere med divisionen** (en shop i Premier koster mere i løn end
 en shop i League Three). Det er B4's tema, og de to bør designes sammen — derfor
 har jeg ikke gjort det på egen hånd.
+
+---
+
+## 15. B4: Premier gik fra dyrest til pengemaskine. Jeg har dæmpet — men ikke helt (nat 7)
+
+Planens balanceadvarsel var præcis rigtig, og den udløste sig selv. Målt på
+**60 seeds × 20 sæsoner, samme seeds før og efter** (netto pr. kampdag):
+
+| division | før B4 | B4 som dikteret (normalpris £34 i Premier) | **B4 dæmpet (£28)** |
+|---|---|---|---|
+| League Three | −£5.279 | −£4.623 | **−£5.019** |
+| League Two | −£4.064 | −£1.195 | **−£1.350** |
+| League One | −£3.902 | +£4.471 | **+£2.867** |
+| **Premier** | **−£8.566** | **+£10.619** | **+£6.907** |
+
+Med din dikterede skala gik Premier fra det dyreste sted i spillet til en
+pengemaskine — nøjagtig den yderlighed du skrev advarslen om. Jeg har dæmpet
+normalprisen i Premier fra £34 til £28, hvilket tager en tredjedel af den.
+
+**Hvorfor jeg ikke dæmpede mere:** du skrev "i Premier £25-60". Normalprisen
+skal ligge mellem gulv og loft — og £25-gulvet er dit. Skal Premier længere ned,
+skal **dit gulv** flyttes, og det er ikke mit valg at træffe. (Min egen invariant
+stoppede mig: den fejler, hvis normalprisen falder under divisionens minimum.)
+
+**Det du skal afgøre:**
+
+1. **Skal toppen være profitabel?** Lige nu er Premier +£6.907 og League Three
+   −£5.019. Det er en pyramide hvor toppen tjener og bunden brænder. Det kan
+   være helt rigtigt (det er sådan rigtig fodbold ser ud), men det er en
+   beslutning, ikke en balancefejl.
+2. **Hvis nej: flyt £25-gulvet ned**, så normalprisen kan komme under det.
+   `BAL.ticket.scale.min[0]` og `.sweet[0]`.
+3. **Eller lad prisen stå og lad omkostningerne stige med divisionen i stedet.**
+   Det er den samme tanke som punkt 14: en fanshop i Premier koster mere i løn
+   end en fanshop i League Three. Så holder din prisskala, og regningen kommer
+   det sted hvor "alting er større" også betyder "alting koster mere".
+   **Det er den jeg ville vælge**, og de to punkter bør designes sammen.
+
+**Hvad B4 IKKE ødelagde:** kurvens form. Elasticiteten er gjort relativ til
+normalprisen, så den samme procent over "normalt" koster den samme andel af
+publikum i alle fire divisioner — og League Three-kolonnen er bit for bit de
+gamle tal (normalpris £10, humørgrænse £16, loft £20/+£8). Skalaen åbner sig
+kun opad; den flytter ikke gulvet. Det er derfor det er **én** skala og ikke to
+multiplikatorer på samme tal.
+
+**Én ting mere, som B4's måling afslørede og som ikke er B4's skyld:**
+administrationer er nu **2,75 pr. karriere** over 20 sæsoner, mod QA's 0,91 på
+koden før i nat. ROADMAP's mål er ~1. Se punkt 16.

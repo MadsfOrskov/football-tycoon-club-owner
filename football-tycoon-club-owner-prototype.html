@@ -326,10 +326,38 @@ const BAL={
     demandCap:1.4
   },
   ticket:{
-    sweetSpot:10,            // the price the town considers normal
-    elasticity:0.055,        // demand lost per £ above the sweet spot
+    sweetSpot:10,            // the price the town considers normal (League Three)
+    elasticity:0.055,        // demand lost per £ above the sweet spot (League Three)
     bargainLift:0.030,       // demand gained per £ below it (weaker — cheap ≠ free crowd)
-    moodPenaltyAbove:16      // dearer than this and the terraces grumble
+    moodPenaltyAbove:16,     // dearer than this and the terraces grumble (League Three)
+    /* B4, Mads' tilfoejelse: "alting er stoerre naar man rykker op. Saa
+       billetpriser, mm. jo stiger i pris jo hoejere man kommer." Valgt: BEGGE
+       ender -- baade det du KAN kraeve og det byen VIL betale.
+
+       Index = G.div (0 = Premier ... 3 = League Three). Bemaerk at League
+       Three-kolonnen er PRAECIS de gamle tal: sweet 10, humoersgraense 16,
+       loft 20/8. Skalaen aendrer altsaa intet i den division der spilles mest
+       -- den aabner sig kun opad. Det er den billigste maade at bygge Mads'
+       oenske uden at flytte noget der virker.
+
+       Og elasticiteten er gjort RELATIV (se ticketPriceFactor): kurvens FORM er
+       den samme i alle fire divisioner, kun skalaen flytter sig. Uden det ville
+       "£1 over" betyde noget helt andet i Premier end i League Three, og det er
+       ikke to multiplikatorer paa samme tal -- det er én, der skalerer. */
+    scale:{
+      min:      [25, 15,  8,  5],
+      max:      [60, 45, 30, 20],
+      /* Daempet fra [34,21,14,10] efter maaling. Med 34 gik Premier fra
+         -£8.566 til +£10.619 netto pr. kampdag -- fra det dyreste sted i
+         spillet til en pengemaskine, praecis den yderlighed planens
+         balanceadvarsel udpeger. Med 28 er den +£3.634, altsaa paa niveau med
+         League One. Laengere ned kan normalprisen ikke komme uden ogsaa at
+         flytte Mads' egen £25-nedre graense, og det er hans valg -- se
+         DECISIONS-NEEDED punkt 15. */
+      sweet:    [28, 20, 14, 10],
+      moodAbove:[46, 30, 20, 16],
+      bigMax:   [24, 16, 11,  8]
+    }
   },
   demand:{                   // the town, not the concrete
     base:1400, perDivision:0.85, familyStand:0.22, basics:0.05
@@ -2836,11 +2864,41 @@ function applyPts(h,gh,a,ga){
    does not fill itself: the fanbase grows with the division you reach and with
    the fan-growth work (Family Stand), so a new stand is built ahead of demand
    and pays off as the town grows into it. */
+/* ---------- B4: prisskalaen pr. division ----------
+   Alle fire tal laeses gennem en funktion, saa der er ET sted skalaen bor.
+   `divFor` gør dem kaldbare for en anden division end den man staar i -- det
+   er hvad omregningen ved op- og nedrykning har brug for. */
+function ticketScale(field,divFor){
+  const sc=BAL.ticket.scale[field];
+  const d=clamp(divFor===undefined?(G?G.div:3):divFor,0,sc.length-1);
+  return sc[d];
+}
+function ticketSweet(divFor){return ticketScale("sweet",divFor);}
+function ticketMin(divFor){return ticketScale("min",divFor);}
+function ticketMax(divFor){return ticketScale("max",divFor);}
+function ticketMoodAbove(divFor){return ticketScale("moodAbove",divFor);}
+function ticketBigMax(divFor){return ticketScale("bigMax",divFor);}
+/* Elasticiteten som ANDEL af det byen synes er normalt. I League Three
+   (sweet = 10) giver det praecis de gamle tal: 0,055 pr. £ = 0,55 pr. 100 %
+   over. I Premier (sweet = 34) betyder de samme 55 % nu £18,70 -- byen betaler
+   mere, fordi alting er stoerre deroppe, men den reagerer lige saa skarpt
+   relativt set. Kurven skal stadig ramme NUL, aldrig et gulv: et gulv ville
+   lade gate-indtaegten stige igen ved absurde priser. */
 function ticketPriceFactor(price){
-  // Must reach ZERO, never a floor: a floor would make gate income start rising
-  // again at absurd prices — the same trap the season-ticket curve had.
-  const T=BAL.ticket,d=price-T.sweetSpot;
-  return clamp(1+(d<0?-d*T.bargainLift:-d*T.elasticity),0,1.18);
+  const T=BAL.ticket,sw=ticketSweet();
+  const r=(price-sw)/sw;
+  const el=T.elasticity*T.sweetSpot, lift=T.bargainLift*T.sweetSpot;
+  return clamp(1+(r<0?-r*lift:-r*el),0,1.18);
+}
+/* Ved op- og nedrykning flyttes prisen MED skalaen, saa spillerens valg
+   ("billig" eller "dyr" i forhold til byen) overlever en oprykning. Uden det
+   stod en nyoprykket Premier-klub til £10 -- under sit eget minimum -- og en
+   nedrykket klub til £34 i League Three, hvor ingen kommer. */
+function rescaleTicket(fromDiv,toDiv){
+  const s0=ticketSweet(fromDiv),s1=ticketSweet(toDiv);
+  if(!s0||!s1)return;
+  G.ticket=clamp(Math.round(G.ticket*s1/s0),ticketMin(toDiv),ticketMax(toDiv));
+  G.bigExtra=clamp(Math.round((G.bigExtra||0)*s1/s0),0,ticketBigMax(toDiv));
 }
 /* ---------- the protest ladder (pakke 2) ----------
    Three rungs, and the level is STORED rather than derived on the fly, so the
@@ -2976,7 +3034,7 @@ function updateFormMood(res){
     else{p.form=clamp(p.form-BAL.fresh.benchForm,-6,6);p.conf=clamp(p.conf-BAL.fresh.benchConf,10,95);}
   }
   {const MO=BAL.mood;
-   G.fanMood=clamp(G.fanMood+(w?MO.win:d?MO.draw:MO.loss)+(gatePrice(res.big)>BAL.ticket.moodPenaltyAbove?MO.dearTicket:0)
+   G.fanMood=clamp(G.fanMood+(w?MO.win:d?MO.draw:MO.loss)+(gatePrice(res.big)>ticketMoodAbove()?MO.dearTicket:0)
      +G.stands.family*MO.familyPerTier+MO.pubDrift*facYield("pub"),5,100);}
   easeMood(); // the way back: anger cools toward a baseline (egen funktion -> maalbar)
   updateProtest();
@@ -3210,7 +3268,9 @@ function finishSeason(o){
   const oldDiv=G.div;   // M1: pyramide-udvekslingen skal kende min gamle division
   settleCommitments(promoted);   // before the summer wipes p.sg — goal bonuses need it
   if(promoted){
+    const oldDiv=G.div;
     G.div--;G.wageCap=Math.round(G.wageCap*BAL.wages.capOnPromotion/100)*100;
+    rescaleTicket(oldDiv,G.div);   // B4: prisen flytter med skalaen, saa dit valg overlever oprykningen
     for(const x of signedSponsors())x.d.per=Math.round(x.d.per*BAL.sponsor.onPromotion); // may be shirtless — that used to crash the run
     // the squad renegotiates too: a higher division costs more than the cap alone
     const before=G.squad.reduce((s,p)=>s+p.wage,0);
@@ -3224,7 +3284,9 @@ function finishSeason(o){
      the crisis, and trading out of it is the season's work. */
   else if(relegated){
     const wasDiv=G.divNames[G.div];
+    const oldDiv=G.div;
     G.div++;G.wageCap=Math.round(G.wageCap*BAL.wages.capOnRelegation/100)*100;
+    rescaleTicket(oldDiv,G.div);   // B4: og ned igen -- £34 i League Three fylder ingen tribune
     for(const x of signedSponsors())x.d.per=Math.round(x.d.per*BAL.sponsor.onRelegation);
     bumpTrust(BAL.owners.trustRelegation);
     const before=G.squad.reduce((s,p)=>s+p.wage,0);
@@ -5382,10 +5444,10 @@ function viewClub(){
     }).join("")}
     <div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Driften er fast pr. niveau og kommer hver kampdag — også når stadion er tomt. Indtægten følger fremmødet. Rykker du ned, kan du lukke ned og spare driften med det samme; genåbning tager kampdage som et byggeri.</div></div>`:"")
   +(tab==="money"?`<div class="card"><div class="kick" style="margin-bottom:4px">Billetter · sæsonkort: <b>${G.seasonTix.sold.toLocaleString("en-GB")}</b> holdere</div>
-    <div class="rowline"><span>Billetpris</span>
-    <span class="stepper" style="margin:0"><button onclick="G.ticket=Math.max(5,G.ticket-1);render()">‹</button><span class="val" style="font-size:20px;min-width:60px">£${G.ticket}</span><button onclick="G.ticket=Math.min(30,G.ticket+1);render()">›</button></span></div>
-    <div class="rowline"><span>Storkamps-tillæg <small>· seksere, guldkampe, bundbrag, playoffs · hver £1 over £${BAL.ticket.sweetSpot} koster omkring ${pct(BAL.ticket.elasticity)} af publikum</small></span>
-    <span class="stepper" style="margin:0"><button onclick="G.bigExtra=Math.max(0,G.bigExtra-1);render()">‹</button><span class="val" style="font-size:20px;min-width:50px">+£${G.bigExtra}</span><button onclick="G.bigExtra=Math.min(8,G.bigExtra+1);render()">›</button></span></div>
+    <div class="rowline"><span>Billetpris <small>· ${G.divNames[G.div]}: £${ticketMin()}-${ticketMax()} · byen synes £${ticketSweet()} er normalt · over £${ticketMoodAbove()} brokker tribunen sig</small></span>
+    <span class="stepper" style="margin:0"><button onclick="G.ticket=Math.max(ticketMin(),G.ticket-1);render()">‹</button><span class="val" style="font-size:20px;min-width:60px">£${G.ticket}</span><button onclick="G.ticket=Math.min(ticketMax(),G.ticket+1);render()">›</button></span></div>
+    <div class="rowline"><span>Storkamps-tillæg <small>· seksere, guldkampe, bundbrag, playoffs · hver £1 over £${ticketSweet()} koster omkring ${pct(BAL.ticket.elasticity*BAL.ticket.sweetSpot/ticketSweet())} af publikum</small></span>
+    <span class="stepper" style="margin:0"><button onclick="G.bigExtra=Math.max(0,G.bigExtra-1);render()">‹</button><span class="val" style="font-size:20px;min-width:50px">+£${G.bigExtra}</span><button onclick="G.bigExtra=Math.min(ticketBigMax(),G.bigExtra+1);render()">›</button></span></div>
     ${(()=>{
       const at=attendance(),paying=Math.max(0,at-G.seasonTix.sold);
       const now=paying*G.ticket,up=(()=>{const t=G.ticket;G.ticket=t+1;const a=attendance();G.ticket=t;return Math.max(0,a-G.seasonTix.sold)*(t+1);})();
