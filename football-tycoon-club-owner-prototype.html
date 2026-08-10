@@ -4795,7 +4795,34 @@ function wageDemand(){return wageDemandFor(nego.years,nego.role);}
    forlaengelse en undtagelse ("han ved allerede praecis hvad han er vaerd for
    dig"), men C3 kraever at han aabner med en HOLDNING og ikke et tal -- og saa
    kan tallet ikke staa i arket ved siden af holdningen. Foerste runde er blind. */
-function demandVisible(){return nego.cround>=1;}
+/* C4: for en FRI AGENT vises tallet aldrig. Mads valgte "retningen, ikke
+   tallet": man ved HVAD der er galt og i hvilken retning, men ikke hvor meget
+   der mangler. Det bevarer poker-princippet og gør andet bud til en informeret
+   gamble frem for et gaet. For alle andre er reglen som foer: blind i runde 1. */
+function demandVisible(){
+  if(nego.freeAgent&&!nego.renewal)return false;
+  return nego.cround>=1;
+}
+/* C4: hvad han siger i stedet for tallet. HVAD der er galt, og i hvilken
+   retning -- aldrig hvor meget. Bygget af de samme tre skruer spilleren har. */
+function freeAgentDirection(n,demand){
+  const bits=[];
+  const short=demand-n.wageOffer;
+  if(short>0)bits.push(short>demand*0.2?"Det er ikke i naerheden af nok":"Det er for lidt");
+  /* Aar: ville en LAENGERE aftale bringe kravet under buddet? Saa er det aar
+     han mangler, ikke penge -- og det er den oplysning der er vaerd at have. */
+  let yearsHelp=false;
+  for(let y=n.years+1;y<=4;y++)if(wageDemandFor(y,n.role)<=n.wageOffer){yearsHelp=true;break;}
+  if(yearsHelp)bits.push("og jeg vil have mere end "+n.years+" aar");
+  else if(short>0&&n.years<4&&wageDemandFor(n.years+1,n.role)<demand)bits.push("og et aar mere ville hjaelpe");
+  /* Rolle: ville et andet loefte gøre det? */
+  let roleHelp=null;
+  for(const k of Object.keys(ROLES))
+    if(k!==n.role&&wageDemandFor(n.years,k)<=n.wageOffer){roleHelp=ROLES[k].n;break;}
+  if(roleHelp)bits.push("eller sig hvad han skal vaere: "+roleHelp.toLowerCase()+" ville gøre det");
+  if(!bits.length)return "\"Vi er ikke uenige om noget vaesentligt. Laeg det paa bordet igen.\"";
+  return "\""+bits.join(" — ")+".\"";
+}
 /* ---------- C3: han laegger ud med en HOLDNING, ikke et tal ----------
    Mads' eksempel: "Jeg har spillet her i fem aar. Jeg vil ikke vaere den
    daarligst betalte i omklaedningsrummet." Linjen vaelges af den staerkeste ting
@@ -4939,14 +4966,20 @@ function negoSubmit(finalOffer){
     if(n.wageOffer>=threshold){
       n.line=pick(n.agent.accept);n.doneDeal=true;
     }else if(finalOffer||n.cround>=(n.maxRounds||3)||n.wageOffer<demand*0.75){
-      n.line=finalOffer?"\"Take it or leave it? He leaves it. Good day.\"":(n.renewal?"\"We'll talk again another time, chairman. The door stays open. Barely.\"":pick(n.agent.walk));
+      n.line=finalOffer?"\"Take it or leave it? He leaves it. Good day.\""
+        :n.renewal?"\"We'll talk again another time, chairman. The door stays open. Barely.\""
+        /* C4: en fri agent gaar ikke sin vej -- han gaar hjem og venter. */
+        :n.freeAgent?"\"Saadan bliver det ikke i dag. Men han er stadig fri, og du ved nu hvad der skal aendres. Ring naar du har regnet paa det.\""
+        :pick(n.agent.walk);
       n.dead=true;
       if(!n.renewal)negoCollapse();
     }else{
       /* C3: replikken flytter sig med hans humoer og peger paa en vej videre.
          Tallet staar i arket, ikke i replikken -- en agent siger "det er taet",
-         ikke "han vil have 4.350". */
-      n.line=contractReply(n,demand);
+         ikke "han vil have 4.350".
+         C4: for en fri agent staar tallet INGEN steder. Saa er replikken den
+         eneste information der findes, og den skal baere retningen. */
+      n.line=(n.freeAgent&&!n.renewal)?freeAgentDirection(n,demand):contractReply(n,demand);
     }
   }
   render();
@@ -5021,7 +5054,12 @@ function negoCollapse(){
   const n=nego;
   // inbox deals just die — but the bid flag has to die with them
   if(n.fromInbox){if(n.p)n.p.pendingBid=false;return;}
-  if(n.freeAgent){G.freeAgents.splice(n.ix,1);return;}
+  /* C4: en fri agent FORSVINDER IKKE. Mads: "Han forsvinder ikke; afslaget er
+     det, der gør naeste bud muligt." Foer blev han slettet af G.freeAgents ved
+     et sammenbrud, og saa var den information man netop havde koebt vaerdiloes.
+     Nu bliver han staaende, og det man laerte af afslaget kan bruges. */
+  if(n.freeAgent&&!n.renewal){n.p.faTalks=(n.p.faTalks||0)+1;return;}
+  if(n.freeAgent){return;}
   const p=G.market[n.ix];
   G.market.splice(n.ix,1);
   if(p&&n.stage==="fee"){ // afterlife: agent may call back cheaper
@@ -6492,6 +6530,11 @@ function renderModal(){
                 <div class="rowline" style="border-bottom:none"><span><b>I alt</b></span><span class="amt num"><b>${ctx.total<1?"−":"+"}${Math.round(Math.abs(1-ctx.total)*100)}%</b></span></div>
                 <div class="kick" style="font-size:9px;margin-top:6px;text-transform:none;letter-spacing:.2px">Er han glad og får han det han vil have, accepterer han mindre. Det går også den anden vej.</div></div>`
             : "";
+          if(!seen&&n.freeAgent&&!n.renewal)
+            return why+`<div class="why"><b>Han nævner ikke et tal — han er fri, og det ved han.</b>
+              Du får at vide <b>hvad</b> der er galt og i <b>hvilken</b> retning, ikke hvor meget der mangler.
+              ${n.cround>0?"Læg et nyt bud: afslaget er det, der gør det muligt.":"Læg et bud, så siger hans agent hvad han mangler."}
+              Han forsvinder ikke.</div>`;
           if(!seen)return why+`<div class="why"><b>Han har ikke nævnt et tal.</b> Han lagde ud med en holdning — og kontraktlængde og den rolle du lover flytter begge prisen. Læg et bud, så siger hans agent hvor langt du er fra.</div>`;
           const d=wageDemand();
           const short=d-n.wageOffer;
