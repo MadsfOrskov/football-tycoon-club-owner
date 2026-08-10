@@ -491,6 +491,37 @@ const BAL={
   // A fax nobody answers used to hang forever, and the player stayed flagged
   // BID PENDING for the rest of the career. Bids now have a shelf life.
   bids:{replyMD:2},
+  /* ---------- C1: buddet paa din spiller er et MARKED, ikke en besked ----------
+     Mads: "Man skal kunne se interessen og hvem den er fra. Der skal vaere flere
+     niveauer af interesse, og man skal kunne raekke ud til de andre klubber for
+     at hoere hvor de er og presse paa for et bud."
+     Og prisen for at ringe rundt, som han selv gjorde tosidet: "Spilleren og
+     byen finder ud af det -- og saa skal de klubber der potentielt vil give bud
+     ogsaa opsnappe alt dette, saa man nogle gange faar lidt ekstra ud af det
+     prismaessigt og andre gange vil man se at buddene bliver mindre." */
+  interest:{
+    levels:["Følger ham","Overvejer","Klar til at byde"],
+    extraMin:1, extraMax:3,        // hvor mange andre klubber der kigger
+    callMax:3,                     // hvor mange gange du kan ringe rundt pr. bud
+    /* Det siver. Han foeler sig til salg, og byen hoerer det. */
+    leakConf:-7, leakMood:-3,
+    /* Har du OFFENTLIGT sagt at han ikke skulle saelges (afvist et bud paa ham
+       i denne saeson), koster det dobbelt. */
+    declaredMult:2,
+    /* Markedet reagerer i BEGGE retninger. Hvilken vej afhaenger af hans vaerdi
+       og form MOD din kassestilling: er han eftertragtet og du ikke presset,
+       driver konkurrencen buddene op; lugter de at du SKAL saelge, falder de. */
+    upBump:1.14, downBump:0.88,
+    /* Sandsynligheden for at det gaar op: 0,5 + eftertragtethed - noed. */
+    pUpBase:0.5, pUpMin:0.12, pUpMax:0.88,
+    /* Naar det gaar godt kan en af de andre klubber traede frem som ny byder. */
+    rivalStepChance:0.45,
+    /* Hvornaar klubben "skal" saelge -- kassen under dette taeller som noed. */
+    needCash:40000,
+    /* Hvad en klub kan baere, som et multiplum af en spiller paa deres eget
+       niveau. Bygget af BAL.market.ovrExp, saa pungen foelger priskurven. */
+    purseOfPlayer:1.6
+  },
   /* D1: indbakkens loft. Var en bar 18 inde i msg(). */
   inbox:{cap:18},
   /* D2: alderskurven. GDD linje 195, ordret: "udvikling til ~24, peak 25-29,
@@ -1081,6 +1112,24 @@ function loadGame(){
   }
   if(Array.isArray(G.inbox))for(const m of G.inbox)
     if(m.action&&m.action.kind==="sponsorChoice"&&!m.action.slot)m.action.slot="main";
+  /* C1: buddene baerer nu deres eget marked. En gemmefil fra foer i nat har
+     sellOffer-beskeder UDEN others/calls/log/clubIdx -- og tilbudssiden ville
+     laese undefined og tegne "NaN" i stedet for en beslutning. Feltet
+     offerId kan ogsaa pege paa en besked der ikke er der laengere. */
+  if(!Number.isFinite(G.offerId))G.offerId=null;
+  if(Array.isArray(G.inbox))for(const m of G.inbox){
+    const a=m&&m.action;
+    if(!a||a.kind!=="sellOffer")continue;
+    if(!Array.isArray(a.others))a.others=[];
+    if(!Array.isArray(a.log))a.log=[];
+    if(!Number.isFinite(a.calls))a.calls=0;
+    if(!Number.isFinite(a.opening))a.opening=a.bid;
+    if(!Number.isFinite(a.clubIdx)){
+      const ix=(G.teams||[]).findIndex(t=>t&&t.name===a.club);
+      a.clubIdx=ix>=0?ix:0;
+    }
+  }
+  if(G.offerId!==null&&!(G.inbox||[]).some(m=>m.id===G.offerId))G.offerId=null;
   if(!G.facOff||typeof G.facOff!=="object")G.facOff={};
   /* D3: "det usexede basale" blev delt i parkering, toiletter og lys. Den der
      har betalt de £15.000 har betalt for alle tre -- saa niveauet flyttes over
@@ -1691,7 +1740,7 @@ function newGame(name,hue,mode){
     wageCap:BAL.wages.cap,bids:[],callbacks:[],lastXI:[],
     captain:null,captSuggested:false,talkCooldown:0,soldTo:[],agentRel:{},
     teams:[],me:{pts:0,gd:0,pl:0},fixtures:[],
-    inbox:[],news:[],msgId:1,lastResult:null,deadlineDone:{},playoff:null,
+    inbox:[],news:[],msgId:1,lastResult:null,deadlineDone:{},playoff:null,offerId:null,
     history:[],adCount:0,titles:0
   };
   /* M1: hele pyramiden fødes her — 13 modstandere i min division plus 42 klubber
@@ -3156,8 +3205,9 @@ function postMatchMessages(){
     if(!windowOpen()){p.listed=false;continue;}
     if(Math.random()<0.4&&G.squad.length>13){
       const bid=Math.round(p.value*(0.85+Math.random()*0.35)/1000)*1000;
-      const club=pick(G.teams).name;
-      msg(pick(AGENTS).n,"A","Offer for listed "+p.name.split(" ")[1],club+" bid "+kfmt(bid)+" for "+p.name+" ("+ovr(p)+" ovr). He knows he's on the list — best decide soon.",{kind:"sellOffer",pid:p.id,bid,club});
+      const cix=Math.floor(Math.random()*G.teams.length);
+      const club=(G.teams[cix]||{}).name||"En klub";
+      msg(pick(AGENTS).n,"A","Bud paa "+p.name.split(" ")[1]+" (paa listen)",club+" har budt "+kfmt(bid)+" for "+p.name+" ("+ovr(p)+" ovr). Han ved godt han staar paa listen.",makeSellOffer(p,bid,cix));
     }
   }
   // the unhappy demand a way out (once per season each)
@@ -3176,8 +3226,9 @@ function postMatchMessages(){
     const targets=[...G.squad].sort((a,b)=>ovr(b)-ovr(a)).slice(0,4);
     const p=pick(targets);
     const bid=Math.round(p.value*(0.8+Math.random()*0.5)/1000)*1000;
-    const club=pick(G.teams).name;
-    msg(pick(AGENTS).n,"A","Bid for "+p.name.split(" ")[1],club+" offer "+kfmt(bid)+" for "+p.name+" ("+p.pos+", "+ovr(p)+"). Value "+kfmt(p.value)+".",{kind:"sellOffer",pid:p.id,bid,club});
+    const cix=Math.floor(Math.random()*G.teams.length);
+    const club=(G.teams[cix]||{}).name||"En klub";
+    msg(pick(AGENTS).n,"A","Bud paa "+p.name.split(" ")[1],club+" byder "+kfmt(bid)+" for "+p.name+" ("+p.pos+", "+ovr(p)+"). Vaerdi "+kfmt(p.value)+".",makeSellOffer(p,bid,cix));
   }
   if(Math.random()<0.45)addNews("CLUB",flavourLine());
   // scout report delivery
@@ -4282,6 +4333,151 @@ function dlClose(){modal=null;playMatchday();}
    player hostage (p.pendingBid hides the Quick/Offer buttons). Every route out
    of such a message — answered, expired, deleted, pushed off the end of the
    inbox — MUST release him again, or he is unbuyable for the rest of the game. */
+/* ---------- C1: interessen, og markedet man arbejder ----------
+   Buddet baerer nu sin egen lille verden: hvem der ellers kigger, hvor
+   interesserede de er, hvor mange gange du har ringet rundt, og en log over
+   hvad det kostede. Alt er FLADE felter og tal -- G skal blive et TRAE. */
+function interestLevels(){return BAL.interest.levels.length;}
+/* Hvor eftertragtet er han? 0..1. Overall mod divisionens niveau, form,
+   alder og kontraktlaengde -- det er de fire ting en koebende klub kigger paa. */
+function desirability(p){
+  if(!p)return 0.5;
+  const lvl=clamp((ovr(p)-52)/26,0,1);                 // 52 er bunden af League Three, 78 er Premier-niveau
+  const form=clamp((p.form+6)/12,0,1);
+  const age=p.age<=23?0.9:p.age<=27?1:p.age<=30?0.7:0.35;
+  const yrs=clamp((p.years||1)/3,0.25,1);              // kort kontrakt = billigere, men ogsaa mindre attraktiv at byde paa
+  return clamp(lvl*0.5+form*0.2+age*0.2+yrs*0.1,0,1);
+}
+/* Hvor meget SKAL du saelge? 0..1. Tom kasse, gaeld og brandudsalg lugter
+   klubberne, og saa falder buddene. */
+function sellPressure(){
+  let x=0;
+  if(G.balance<BAL.interest.needCash)x+=0.35*clamp((BAL.interest.needCash-G.balance)/BAL.interest.needCash,0,1)+0.15;
+  if((G.loans||[]).length)x+=0.15;
+  if(G.fireSale)x+=0.4;
+  if(G.balance<0)x+=0.2;
+  return clamp(x,0,1);
+}
+/* Har du offentligt sagt at han ikke skulle saelges? Et afvist bud PAA HAM i
+   denne saeson er praecis den udmelding. Det er den mindst mulige kobling til
+   ROADMAP's "formandens ord" -- hele det system er ikke i min ordre, men
+   loeftet skal kunne koste noget, ellers er dobbeltprisen tom tekst. */
+function declaredKeep(p){return !!(p&&p.keepSaidSeason===G.season);}
+/* Bygger et bud MED sin interesse. Begge steder spillet laver et bud gaar
+   herigennem, saa formen findes ét sted. */
+function makeSellOffer(p,bid,clubIdx){
+  const I=BAL.interest;
+  const others=[];
+  const pool=G.teams.map((t,ix)=>ix).filter(ix=>ix!==clubIdx);
+  const n=Math.min(pool.length,I.extraMin+Math.floor(Math.random()*(I.extraMax-I.extraMin+1)));
+  const des=desirability(p);
+  for(let i=0;i<n;i++){
+    const ix=pool.splice(Math.floor(Math.random()*pool.length),1)[0];
+    /* En eftertragtet spiller har flere klubber laengere fremme i koen. */
+    const lvl=clamp(1+Math.floor(Math.random()*2+des*1.4),1,interestLevels()-1);
+    others.push({idx:ix,lvl});
+  }
+  return {kind:"sellOffer",pid:p.id,bid,club:(G.teams[clubIdx]||{}).name||"En klub",clubIdx,
+    others,demanded:false,calls:0,log:[],opening:bid};
+}
+/* Hvad de andre klubber er vaerd at vide: navn, placering, og hvad de kan baere.
+   Genereres af tabellen, saa den staar der spilleren kan se den. */
+function offerRivals(a){
+  const rows=table();
+  return (a.others||[]).map(o=>{
+    const t=G.teams[o.idx];
+    if(!t)return null;
+    const pos=rows.findIndex(r=>r.i===o.idx+1)+1;
+    return {name:t.name,pos,lvl:o.lvl,label:BAL.interest.levels[o.lvl],
+      pot:Math.round((t.att+t.def)/2)};
+  }).filter(Boolean);
+}
+/* Hvad den bydende klub kan baere. Et skoen bygget af deres styrke og
+   divisionen -- spilleren skal kunne se om der er mere at hente. */
+function clubPurse(t){
+  if(!t)return 0;
+  /* Bygget af den samme kurve som spillerpriserne (ovrExp), saa pungen og
+     priserne bevaeger sig sammen: en klub kan baere ca. purseOfPlayer gange en
+     spiller af sin egen standard. */
+  const lvl=Math.round((t.att+t.def)/2);
+  return Math.round(lvl*lvl*BAL.market.ovrExp*BAL.interest.purseOfPlayer/1000)*1000;
+}
+/* C1: "man skal kunne raekke ud til de andre klubber for at hoere hvor de er og
+   presse paa for et bud." Prisen er TOSIDET, og den anden side er den
+   interessante: markedet reagerer i BEGGE retninger.
+   Et opkald er derfor en risiko, ikke en gratis handling. */
+function offerCallRound(id){
+  const m=G.inbox.find(x=>x.id===id);
+  if(!m||m.done||!m.action||m.action.kind!=="sellOffer")return;
+  const a=m.action,I=BAL.interest,p=byId(a.pid);
+  if(!p){m.done=true;m.body="Han er ikke i truppen laengere.";render();return;}
+  if((a.calls||0)>=I.callMax){render();return;}
+  a.calls=(a.calls||0)+1;
+
+  /* 1) DET SIVER. Han hoerer det, og byen hoerer det. Har du offentligt sagt
+     at han ikke skulle saelges, koster det dobbelt. */
+  const mult=declaredKeep(p)?I.declaredMult:1;
+  const confHit=Math.round(I.leakConf*mult);
+  p.conf=clamp(p.conf+confHit,10,95);
+  /* Publikumsyndling = en af klubbens tre bedste. Saa maerker stemningen det. */
+  const darling=[...G.squad].sort((x,y)=>ovr(y)-ovr(x)).slice(0,3).some(x=>x.id===p.id);
+  let moodHit=0;
+  if(darling){moodHit=Math.round(I.leakMood*mult);G.fanMood=clamp(G.fanMood+moodHit,5,100);}
+  a.log.push("Du ringede rundt. "+nameOf(p.id)+" hørte det inden aftenen"+
+    (mult>1?" — og du havde selv sagt offentligt, at han ikke var til salg, så det sved dobbelt":"")+
+    " (selvtillid "+confHit+(darling?", stemning "+moodHit:"")+").");
+
+  /* 2) MARKEDET REAGERER I BEGGE RETNINGER. */
+  const des=desirability(p),need=sellPressure();
+  const pUp=clamp(I.pUpBase+des-need,I.pUpMin,I.pUpMax);
+  if(Math.random()<pUp){
+    const was=a.bid;
+    a.bid=Math.round(a.bid*I.upBump/1000)*1000;
+    /* En af de andre kan traede frem -- og saa er der en auktion. */
+    let stepped=null;
+    if((a.others||[]).length&&Math.random()<I.rivalStepChance){
+      const cand=a.others.filter(o=>o.lvl<interestLevels()-1);
+      if(cand.length){const o=pick(cand);o.lvl++;stepped=(G.teams[o.idx]||{}).name;}
+    }
+    a.log.push("Konkurrencen gjorde arbejdet: "+a.club+" hævede til "+kfmt(a.bid)+" (var "+kfmt(was)+")."+
+      (stepped?" Og "+stepped+" rykkede frem i køen.":""));
+    addNews("TRANSFER",nameOf(p.id)+" is being shopped around — and the price is going UP.");
+  }else{
+    const was=a.bid;
+    a.bid=Math.max(1000,Math.round(a.bid*I.downBump/1000)*1000);
+    let dropped=null;
+    if((a.others||[]).length){
+      const cand=a.others.filter(o=>o.lvl>0);
+      if(cand.length){const o=pick(cand);o.lvl--;dropped=(G.teams[o.idx]||{}).name;}
+    }
+    a.log.push("De lugtede at du gerne ville af med ham. "+a.club+" sænkede til "+kfmt(a.bid)+" (var "+kfmt(was)+")."+
+      (dropped?" "+dropped+" trak sig et skridt tilbage.":""));
+    addNews("TRANSFER","Word is out that "+nameOf(p.id)+" is available. The offers are getting SMALLER.");
+  }
+  if(a.log.length>6)a.log=a.log.slice(-6);
+  saveGame();render();
+}
+/* C1: siden. Indbakken faar EN knap -- "Se tilbud" -- og hele beslutningen
+   flytter herud, hvor informationen den kraever ogsaa er. */
+function openOffer(id){
+  const m=G.inbox.find(x=>x.id===id);
+  if(!m||!m.action||m.action.kind!=="sellOffer"||m.done){render();return;}
+  G.offerId=id;screen="offer";keepScroll=false;m.unread=false;saveGame();render();
+}
+function closeOffer(){G.offerId=null;screen="inbox";keepScroll=false;saveGame();render();}
+/* Beslutningen selv gaar gennem handleAction, saa salgslogikken ikke findes to
+   steder. Bagefter er der ikke mere at se paa siden. */
+function offerDecide(choice){
+  const m=G.inbox.find(x=>x.id===G.offerId);
+  if(!m||!m.action){closeOffer();return;}
+  const p=byId(m.action.pid);
+  /* "Afvis" ER en offentlig udmelding: han er ikke til salg. Det er den, der
+     gør dobbeltprisen paa at ringe rundt til noget virkeligt. */
+  if(choice==="reject"&&p)p.keepSaidSeason=G.season;
+  handleAction(m,choice);
+  if(m.done){G.offerId=null;screen="inbox";keepScroll=false;}
+  saveGame();render();
+}
 const BID_KINDS=["bidAccepted","bidCounter","bidWar"];
 function clearPendingBid(pid){const ix=marketById(pid);if(ix>=0)G.market[ix].pendingBid=false;}
 function releaseMsg(m){
@@ -5009,6 +5205,7 @@ function render(){
   if(screen==="empire")html+=viewEmpire();
   if(screen==="books")html+=viewBooks();
   if(screen==="inbox")html+=viewInbox();
+  if(screen==="offer")html+=viewOffer();
   if(screen==="squad")html+=viewSquad();
   if(screen==="market")html+=viewMarket();
   if(screen==="club")html+=viewClub();
@@ -5081,7 +5278,11 @@ function navbar(){
   }
   const u=unreadCount();
   const t=[["club","Klub"],["squad","Trup"],["market","Marked"],["table","Tabel"],["inbox","Indbakke"]];
-  return '<nav>'+t.map(([k,l])=>`<button class="${screen===k?'on':''}" onclick="go('${k}')">${l}${k==='inbox'&&u?`<span class="badge num">${u}</span>`:''}</button>`).join("")+'</nav>';
+  /* C1/C2: tilbudssiden og deadline day er egne skaerme uden egen fane -- man
+     kommer dertil fra indbakken og fra kampdagen. Indbakkefanen markeres som
+     aktiv, saa navbaren ikke ser tom ud, og vejen tilbage er en knap paa siden. */
+  const navOn=screen==="offer"?"inbox":screen;
+  return '<nav>'+t.map(([k,l])=>`<button class="${navOn===k?'on':''}" onclick="go('${k}')">${l}${k==='inbox'&&u?`<span class="badge num">${u}</span>`:''}</button>`).join("")+'</nav>';
 }
 function go(s){screen=s;if(s==="inbox")G.inbox.forEach(m=>m.unread=false);keepScroll=false;saveGame();render();}
 /* ---------- M2.5: de to lag — du GÅR IND i klubben og hjem igen ----------
@@ -5297,8 +5498,9 @@ function shortWhy(amount){return G.balance<amount?"Kun "+kfmt(Math.max(0,G.balan
 function inboxActions(m){
   const a=m.action,id=m.id;
   switch(a.kind){
-    case "sellOffer":return ibtn(id,"accept","Tag imod "+kfmt(a.bid),"")+
-      (a.demanded?"":ibtn(id,"demand","Kræv mere","comm"))+ibtn(id,"reject","Afvis","ghost");
+    /* C1: indbakken faar EN knap. Beslutningen -- spilleren, klubben, de andre
+       interesserede, forhandlingen -- hoerer paa en side, ikke i en raekke. */
+    case "sellOffer":return `<button class="abtn" data-act="actMsg:see" onclick="openOffer(${id})">Se tilbud · ${kfmt(a.bid)}</button>`;
     /* B3: tre tilbud -> tre knapper. Var to, og et tredje tilbud uden knap
        ville vaere praecis pakke 0's blindgyde igen. */
     case "sponsorChoice":return (a.offers||[]).map((o,i)=>
@@ -5313,6 +5515,100 @@ function inboxActions(m){
     case "transferReq":return ibtn(id,"list","Sæt ham til salg","comm")+ibtn(id,"no","Afvis","ghost");
   }
   return "";
+}
+/* ---------- C1: tilbudssiden ----------
+   Mads: "Siden skal vise: spilleren (form, alder, kontrakt, hvad han betyder
+   for truppen) · den bydende klub (division, placering, hvad de har raad til) ·
+   de andre interesserede · og forhandlingen."
+   "Jeg vil gerne have den her del af spillet til at vaere omfattende og virkelig
+   fed! Saa der maa gerne vaere mange muligheder -- det skal bare vaere
+   struktureret godt." Derfor fire kort i fast raekkefoelge. */
+function viewOffer(){
+  const m=G.inbox.find(x=>x.id===G.offerId);
+  if(!m||!m.action||m.action.kind!=="sellOffer")
+    return `<div class="card"><div class="newsline">Det tilbud findes ikke længere.</div>
+      <button class="abtn ghost" onclick="closeOffer()">‹ Tilbage til indbakken</button></div>`;
+  const a=m.action,p=byId(a.pid);
+  if(!p)return `<div class="card"><div class="newsline">Han er ikke i truppen længere.</div>
+    <button class="abtn ghost" onclick="closeOffer()">‹ Tilbage til indbakken</button></div>`;
+  const I=BAL.interest;
+  const t=G.teams[a.clubIdx];
+  const rows=table();
+  const theirPos=t?rows.findIndex(r=>r.i===a.clubIdx+1)+1:0;
+  const purse=clubPurse(t);
+  const rivals=offerRivals(a);
+  const left=a.expires?a.expires-G.md:null;
+  const vs=a.bid-p.value;
+  const line=(l,v,cls)=>`<div class="rowline"><span>${l}</span><span class="amt num"${cls?` style="color:${cls}"`:""}>${v}</span></div>`;
+
+  /* Hvad han betyder for truppen -- den information beslutningen kraever, og som
+     en indbakkeraekke aldrig kunne baere. */
+  const samePos=G.squad.filter(x=>x.pos===p.pos).sort((x,y)=>ovr(y)-ovr(x));
+  const rankPos=samePos.findIndex(x=>x.id===p.id)+1;
+  const isCaptain=G.captain===p.id;
+  const top3=[...G.squad].sort((x,y)=>ovr(y)-ovr(x)).slice(0,3).some(x=>x.id===p.id);
+  const cover=samePos.length-1;
+  const means=[];
+  if(isCaptain)means.push("Han er anfører.");
+  if(rankPos===1)means.push("Bedste "+p.pos+" i truppen"+(cover?" — der er "+cover+" bag ham":" og den ENESTE"));
+  else means.push(rankPos+". bedste "+p.pos+" af "+samePos.length);
+  if(top3)means.push("En af klubbens tre bedste — byen kender hans navn.");
+  if(G.squad.length<=14)means.push("Truppen er tynd ("+G.squad.length+"); gafferen blokerer salg ved 13.");
+  if((p.years||1)<=1)means.push("Sidste kontraktår — til sommer kan han gå gratis.");
+
+  const declared=declaredKeep(p);
+  const callsLeft=Math.max(0,I.callMax-(a.calls||0));
+  const des=desirability(p),need=sellPressure();
+
+  return `<div class="card">
+    <div class="kick" style="margin-bottom:4px">Tilbud på din spiller${left!==null?" · "+(left<=0?"de vil have svar i dag":left===1?"svar inden næste kampdag":"svar inden for "+left+" kampdage"):""}</div>
+    <div class="rowline" style="border-bottom:none"><span style="font-size:19px"><b>${safeName(p.name)}</b> <small>· ${p.pos} · ${p.age} år · OVR ${ovr(p)}</small></span>
+      <span class="amt num" style="font-size:19px">${kfmt(a.bid)}</span></div>
+    ${line("Hans værdi",kfmt(p.value))}
+    ${line(vs>=0?"Buddet er OVER hans værdi":"Buddet er UNDER hans værdi",(vs>=0?"+":"−")+kfmt(Math.abs(vs)),vs>=0?"var(--acc)":"#E07A6A")}
+    ${a.bid!==a.opening?line("Åbningsbud",kfmt(a.opening)):""}
+  </div>
+
+  <div class="card"><div class="kick" style="margin-bottom:4px">Manden</div>
+    <div class="statchips"><span class="sc">ATT <b>${p.att}</b></span><span class="sc">DEF <b>${p.def}</b></span><span class="sc">PHY <b>${p.phy}</b></span>
+      <span class="sc">FORM <b>${p.form>0?"+":""}${p.form}</b></span><span class="sc">SELVTILLID <b>${p.conf}</b></span></div>
+    ${line("Kontrakt",(p.years||1)+" år"+((p.years||1)<=1?" — sidste":""))}
+    ${line("Løn",kfmt(p.wage)+"/u")}
+    <div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">${means.join(" ")}</div>
+  </div>
+
+  <div class="card"><div class="kick" style="margin-bottom:4px">Den bydende klub</div>
+    <div class="rowline"><span><b>${t?safeName(t.name):safeName(a.club)}</b> <small>· ${G.divNames[G.div]}${theirPos?" · "+ord(theirPos)+" i tabellen":""}</small></span></div>
+    ${line("Hvad de kan bære","~"+kfmt(purse))}
+    ${line("De har budt",kfmt(a.bid)+" ("+Math.round(100*a.bid/Math.max(1,purse))+"% af det)")}
+    <div class="kick" style="font-size:9px;margin-top:6px;text-transform:none;letter-spacing:.2px">${a.bid<purse*0.6?"Der er mere i dem, hvis nogen presser dem.":a.bid>purse*0.9?"Det er tæt på alt hvad de har. Der er ikke meget mere at hente.":"Et rimeligt bud efter deres forhold."}</div>
+  </div>
+
+  <div class="card"><div class="kick" style="margin-bottom:4px">De andre interesserede</div>
+    ${rivals.length?rivals.sort((x,y)=>y.lvl-x.lvl).map(r=>
+      `<div class="rowline"><span>${safeName(r.name)} <small>· ${r.pos?ord(r.pos)+" i tabellen":""}</small></span>
+        <span class="sc" style="color:${r.lvl>=2?"var(--acc)":r.lvl===1?"var(--comm)":"var(--muted)"}">${r.label}</span></div>`).join("")
+      :`<div class="newsline">Ingen andre har ringet. ${a.club} er alene om ham — og det ved de.</div>`}
+    <div class="rowline" style="border-bottom:none;padding-top:8px"><span style="font-size:11.5px">Ring rundt og pres på for et bud <small>· ${callsLeft} af ${I.callMax} tilbage</small></span>
+      ${callsLeft?`<button class="abtn comm" style="padding:6px 10px;font-size:10.5px" onclick="offerCallRound(${m.id})">Ring rundt</button>`
+        :`<span class="num" style="color:var(--muted);font-size:11px">ikke mere at ringe efter</span>`}</div>
+    <div class="kick" style="font-size:9px;margin-top:6px;text-transform:none;letter-spacing:.2px">
+      Det koster to gange. <b>Han finder ud af det</b> — selvtillid ned, og er han publikumsyndling, falder stemningen${declared?`. <b style="color:#E07A6A">Og du har selv sagt offentligt, at han ikke var til salg: det koster ${I.declaredMult}× så meget</b>`:""}.
+      <b>Og markedet reagerer i begge retninger:</b> er han eftertragtet og du ikke presset, driver konkurrencen buddene op — lugter de, at du <i>skal</i> sælge, falder de.
+      Lige nu: eftertragtethed ${Math.round(des*100)}%, dit behov for at sælge ${Math.round(need*100)}%.
+    </div>
+  </div>
+
+  ${(a.log||[]).length?`<div class="card"><div class="kick" style="margin-bottom:4px">Hvad der er sket</div>
+    ${a.log.map(l=>`<div class="newsline">${l}</div>`).join("")}</div>`:""}
+
+  <div class="card"><div class="kick" style="margin-bottom:4px">Forhandlingen</div>
+    <button class="glowbtn" onclick="offerDecide('accept')">Tag imod ${kfmt(a.bid)}</button>
+    ${a.demanded?`<div class="kick" style="font-size:9px;text-transform:none">Du har allerede krævet mere én gang. Det gør man ikke to gange.</div>`
+      :`<button class="abtn comm" onclick="offerDecide('demand')">Kræv mere — de kan gå fra det</button>`}
+    <button class="abtn ghost" onclick="offerDecide('reject')">Afvis · sig offentligt at han ikke er til salg</button>
+    <button class="abtn ghost" onclick="closeOffer()">‹ Beslut senere</button>
+  </div>`;
 }
 function viewInbox(){
   if(!G.inbox.length)return '<div class="card"><div class="newsline">Tom. Selv Barry er stille. Nyd det, mens det varer.</div></div>';
