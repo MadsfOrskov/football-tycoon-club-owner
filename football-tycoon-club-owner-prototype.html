@@ -262,7 +262,14 @@ const R=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
 const pick=a=>a[Math.floor(Math.random()*a.length)];
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const gbp=n=>"£"+Math.round(n).toLocaleString("en-GB");
-const kfmt=n=>Math.abs(n)>=1000?"£"+(n/1000).toFixed(n%1000===0?0:1)+"k":gbp(n);
+/* A2 (Mads 10/8): beløb over £1M læses i millioner — "£1,02M", aldrig "1018k".
+   Dansk decimalkomma i M-laget; k-laget og alt under tusind er uændret. */
+const kfmt=n=>{
+  const a=Math.abs(n),sign=n<0?"−":"";
+  if(a>=999500)return sign+"£"+(a/1e6).toFixed(2).replace(/\.?0+$/,"").replace(".",",")+"M";   // 999.6k afrunder OP — aldrig "£1000.0k"
+  if(a>=1000)return sign+"£"+(a/1000).toFixed(a%1000===0?0:1)+"k";
+  return (n<0?"−":"")+gbp(a);
+};
 function poisson(l){let L=Math.exp(-l),k=0,p=1;do{k++;p*=Math.random();}while(p>L);return k-1;}
 function ord(n){return n+(n===1?"st":n===2?"nd":n===3?"rd":"th");}
 /* user input goes into innerHTML in ~20 places — strip anything that could
@@ -4456,7 +4463,7 @@ function toggleMode(){G.mode=G.mode==="dark"?"light":"dark";applyTheme(G.hue,G.m
 function navbar(){
   if(G.layer!=="club"){
     const bell=deskDoorbell().length;
-    const t=[["home","Kontor"],["empire","Imperium"],["books","Bøger"]];
+    const t=[["home","Kontor"],["empire","Imperium"],["books","Økonomi"]];   // A1: "Bøger" → "Økonomi" (nøglen består)
     return '<nav class="gold">'+t.map(([k,l])=>`<button class="${screen===k?'on':''}" onclick="go('${k}')">${l}${k==='home'&&bell?`<span class="badge num">${bell}</span>`:''}</button>`).join("")+'</nav>';
   }
   const u=unreadCount();
@@ -4465,7 +4472,7 @@ function navbar(){
 }
 function go(s){screen=s;if(s==="inbox")G.inbox.forEach(m=>m.unread=false);keepScroll=false;saveGame();render();}
 /* ---------- M2.5: de to lag — du GÅR IND i klubben og hjem igen ----------
-   Ejer-laget (guld) er dit: Kontor · Imperium · Bøger. Klublaget (klubbens
+   Ejer-laget (guld) er dit: Kontor · Imperium · Økonomi. Klublaget (klubbens
    farve) er klubbens: Klub · Trup · Marked · Tabel · Indbakke — og findes kun
    når du er gået ind. Tilstedeværelsen er implicit: du ER hvor du gik ind. */
 function enterClub(toScreen){G.layer="club";screen=toScreen||"club";keepScroll=false;saveGame();render();}
@@ -4906,7 +4913,7 @@ function viewClub(){
       <div class="rowline" style="border-bottom:none"><span style="font-size:20px" class="num"><b>${kfmt(V.total)}</b></span>
         <span class="amt">${arrow} ${prev?(dir>0?"+":"")+Math.round(dir*100)+"% siden S"+prev.s:"første sæson"}</span></div>
       ${line("Aktiver · trup, stadion, grunden",V.assets)}
-      ${line("Indtjening · bøgernes form, sponsor, TV",V.earnings)}
+      ${line("Indtjening · økonomiens form, sponsor, TV",V.earnings)}
       ${line("Brand · byen, divisionen, meritterne",V.brand)}
       ${line("Gæld · lån, overtræk, ar",V.debt,true)}
       <div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Sejre, byggeri og overskud løfter værdien; nedrykning, gæld og underskud sænker den.</div></div>`;
@@ -5492,7 +5499,7 @@ function renderModal(){
   if(modal.type==="dividend"){
     const m=modal,mine=Math.round((m.amount||0)*G.myShare/100),others=(m.amount||0)-mine;
     return `<div class="overlay"><div class="sheet">
-      <div class="biglabel">Sæsonens afslutning · bøgerne</div>
+      <div class="biglabel">Sæsonens afslutning · økonomien</div>
       <h2>${m.majority?"Udbyttet — dit valg":"Bestyrelsen tager sit"}</h2>
       <div class="card">
         <div class="rowline"><span>Klubbens kasse</span><span class="amt num">${kfmt(m.cash)}</span></div>
