@@ -2126,8 +2126,16 @@ function matchIncidents(match){ // red cards & injuries with consequences
 }
 
 /* ---------- matchday flow ---------- */
+/* D1 (Mads 10/8): indbakken renses ved kampdagsskiftet. Alt uden en LEVENDE
+   knap er læst færdig og ryger — medmindre spilleren selv har sat nålen i.
+   Beskeder der venter på svar bliver ALTID; det er invariant-beskyttet. */
+function sweepInbox(){
+  G.inbox=G.inbox.filter(m=>(m.action&&!m.done)||m.keep);
+}
+function toggleKeep(id){const m=G.inbox.find(x=>x.id===id);if(m){m.keep=!m.keep;render();}}
 function playMatchday(){
   if(G.phase!=="season"||G.md>=G.rounds)return;
+  sweepInbox();   // D1: ugens post er læst — kun levende beslutninger og nålede beskeder består
   const dKey=G.md===5?"summer":G.md===14?"winter":null;
   if(dKey&&!G.deadlineDone[dKey]){G.deadlineDone[dKey]=true;openDeadline(dKey);return;}
   const round=G.fixtures[G.md];
@@ -2911,6 +2919,7 @@ function relegationSpot(pos,rows){
   return pos>rows-RG.spots;
 }
 function playPlayoff(){
+  sweepInbox();   // D1: en playoff-aften er også et kampdagsskifte
   const semi=G.phase==="playoff_semi";
   const opp=semi?G.playoff.oppSemi:G.playoff.finalOpp;
   const match=buildMatch(opp.i,semi,true,semi?"PLAYOFF SEMI-FINAL":"PLAYOFF FINAL · WEMBLEY FIELDS");
@@ -4699,7 +4708,7 @@ function inboxActions(m){
   return "";
 }
 function viewInbox(){
-  if(!G.inbox.length)return '<div class="card"><div class="newsline">Tom. Selv Barry er stille. Nyd det, mens det varer.</div></div>';
+  if(!G.inbox.length)return '<div class="card"><div class="newsline">Tom. Selv Barry er stille. Nyd det, mens det varer.</div><div class="kick" style="font-size:9px;margin-top:6px;text-transform:none">Læst post uden en ventende beslutning ryddes ved hvert kampdagsskifte — sæt en nål 📌 i det, der skal blive.</div></div>';
   return '<div class="card">'+G.inbox.map(m=>{
     let act="";
     if(m.action&&!m.done){
@@ -4712,6 +4721,7 @@ function viewInbox(){
     }
     return `<div class="irow"><div class="iav ${m.av==='R'||m.av==='GM'||m.av==='SF'?'g':''}">${m.av}</div>
       <div class="t">${m.title}<small>${m.from} — ${m.body}</small>${act}</div>${m.unread?'<div class="unread"></div>':''}
+      <button class="sellb" style="padding:3px 8px;flex-shrink:0;${m.keep?"color:var(--comm);border-color:rgba(243,179,60,.5)":"opacity:.6"}" onclick="toggleKeep(${m.id})" title="${m.keep?"Nålen sidder i — beskeden overlever kampdagsskiftet":"Sæt en nål i — ellers ryddes læst post ved næste kampdag"}">📌</button>
       <button class="sellb" style="padding:3px 9px;flex-shrink:0" onclick="delMsg(${m.id})" title="Slet">✕</button></div>`;
   }).join("")+'</div>';
 }
