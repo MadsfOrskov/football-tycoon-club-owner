@@ -493,6 +493,24 @@ const BAL={
   bids:{replyMD:2},
   /* D1: indbakkens loft. Var en bar 18 inde i msg(). */
   inbox:{cap:18},
+  /* D2: alderskurven. GDD linje 195, ordret: "udvikling til ~24, peak 25-29,
+     gradvist fald fra ~31 (Fysik falder foerst -- den aeldende playmaker kan
+     stadig noget, men ikke hver 3. dag)."
+     QA fandt i august at faldet i dag starter ved 30 for ALLE TRE attributter
+     med SAMME rate. Begge fejl rettes her:
+       - evnerne (ATT/DEF) falder fra 31, ikke 30
+       - fysikken falder fra 30, altsaa et aar FOER -- og cirka dobbelt saa
+         hurtigt, saa den aeldende playmaker beholder sit spil og mister sine ben
+     Faldet accelererer med alderen (rampPerYear), saa 36 er ikke som 31. */
+  age:{
+    peakLo:25, peakHi:29,
+    phyFrom:30, skillFrom:31,
+    phyStep:0.95, skillStep:0.45,
+    rampPerYear:0.18, maxStep:5,
+    /* Advarslen kommer FOER faldet. Kun spillere der krydser en taerskel ved
+       naeste saesonskift, hoejst en pr. kampdag, hoejst en pr. spiller pr. saeson. */
+    warnChance:0.30, warnFromAge:29
+  },
   /* D3: "Det usexede basale" var EN knap til £15.000 med EN virkning. Nu er
      det tre huse med hver sin pris og sin karakter -- men den SAMLEDE virkning
      er uaendret: andelene herunder summer til 1 paa hver akse, saa totalerne
@@ -2871,6 +2889,82 @@ function applyPts(h,gh,a,ga){
    Alle fire tal laeses gennem en funktion, saa der er ET sted skalaen bor.
    `divFor` gør dem kaldbare for en anden division end den man staar i -- det
    er hvad omregningen ved op- og nedrykning har brug for. */
+/* D2: et aar aeldre. Trukket ud af saesonskiftets loekke i egen funktion, saa
+   kurven kan maales udefra -- og saa harness'en kan TAELLE kaldene og dermed
+   se om spillet stadig bruger den. (En vagt der kalder funktionen ved navn
+   beviser at funktionen virker, ikke at den er koblet paa; QA's N2.) */
+function agePlayer(p){
+  p.age++;
+  let dev;
+  if(p.age<24){
+    const playF=Math.min(1,p.sapps/12); // benched kids stall
+    /* Pakke 24: "Prospect" koster 18 % mere end Rotation og gav indtil nu
+       praecis ingenting. Nu koeber den et hurtigere aar -- men kun for en
+       dreng der faktisk har spillet, saa den ikke bare er en dyrere maade at
+       parkere nogen paa baenken. */
+    dev=Math.round((R(1,3)+(BAL.fac.devBonus[facLvl("training")]||0)+(G.coach.dev>=60?1:0)+proDevBonus(p))*(0.35+0.65*playF));
+  }else dev=(p.age<BAL.age.skillFrom?R(-1,1):-ageDecline(p.age,BAL.age.skillFrom,BAL.age.skillStep));
+  p.att=clamp(p.att+dev,25,95);p.def=clamp(p.def+dev,25,95);
+  /* Fysikken har sin egen, tidligere og stejlere kurve. Under phyFrom
+     foelger den evnerne (en dreng bliver ogsaa staerkere). */
+  p.phy=clamp(p.phy+(p.age>=BAL.age.phyFrom?-ageDecline(p.age,BAL.age.phyFrom,BAL.age.phyStep):dev),25,95);
+  /* Pakke T2: growth respects the hidden ceiling. A boy grows TOWARD pot, never
+     past it — so two players with identical visible stats but different pots
+     develop into different men. Shave the top attribute until overall sits at
+     or below the ceiling; dev is small, so this trims at most a point or two. */
+  if(BAL.talent.devToCeiling&&p.pot!==undefined){
+    let guard=0;
+    while(ovr(p)>p.pot&&guard++<30){
+      const hi=p.att>=p.def&&p.att>=p.phy?"att":p.def>=p.phy?"def":"phy";
+      p[hi]=Math.max(25,p[hi]-1);
+    }
+  }
+}
+/* D2: hvor mange point en attribut mister i aar. Faldet vokser med alderen,
+   saa 36 ikke er som 31 -- og fysikken faar en stejlere step, saa den falder
+   FOERST og haardest. Erklaeret som funktion, ikke arrow-const, saa harness'en
+   kan kalde den: en formel der ikke kan kaldes udefra kan kun verificeres ved
+   at laese kilden. */
+function ageDecline(age,from,step){
+  if(age<from)return 0;
+  const mean=step+(age-from)*BAL.age.rampPerYear;
+  const lo=Math.floor(mean),hi=Math.ceil(mean+0.5);
+  return clamp(R(lo,Math.max(lo,hi)),0,BAL.age.maxStep);
+}
+/* D2's anden halvdel: mennesker omkring dig naevner det FOER regnskabet gør.
+   Saa bliver det en beslutning -- saelg nu, eller behold ham for laenge --
+   frem for en overraskelse ved saesonskiftet. Gafferen taler om den han ser
+   til traening; scouten om den han har set nok af andre steder. */
+const AGE_WARN=[
+  p=>"Han er "+p.age+". Jeg ser det paa tredjedagen -- han er der stadig, men han er der senere.",
+  p=>"Han er "+p.age+" nu. To gode aar i sig, hvis du er heldig. Ét, hvis vi spiller ham hver uge.",
+  p=>"Benene gaar foer hovedet, formand. "+p.name.split(" ")[1]+" laeser stadig spillet bedre end nogen anden herinde. Han naar bare ikke derhen.",
+  p=>"Jeg vil ikke sige han er faerdig. Jeg siger, at hvis nogen tilbyder penge for ham i sommer, saa hoer efter."
+];
+function ageWarnings(){
+  if(!G.squad||G.phase!=="season")return;
+  const A=BAL.age;
+  if(Math.random()>=A.warnChance)return;
+  /* Der er praecis TO oejeblikke hvor advarslen er en oplysning og ikke stoej:
+     aaret foer benene gaar, og aaret foer spillet gaar. En spiller faar derfor
+     hoejst to i hele sin tid i klubben -- ikke en om aaret, resten af hans
+     karriere. `ageWarned` er hvor langt vi er naaet, ikke et ja/nej, og den
+     nulstilles ikke om sommeren. */
+  const tier=p=>p.age+1>=A.skillFrom?2:p.age+1>=A.phyFrom?1:0;
+  const due=G.squad.filter(p=>tier(p)>(p.ageWarned||0)&&p.age>=A.warnFromAge);
+  if(!due.length)return;
+  const p=pick(due);
+  const t=tier(p);
+  p.ageWarned=t;
+  const gaffer=Math.random()<0.5;
+  const who=gaffer?G.coach.n:"Chief scout";
+  const av=gaffer?"GM":"SF";
+  const soon=t>=2;
+  msg(who,av,nameOf(p.id)+" · "+p.age+" aar",
+    pick(AGE_WARN)(p)+" "+(soon
+      ?"Til sommer falder baade benene og spillet. Det er nu, han er vaerd noget."
+      :"Til sommer er det benene der gaar foerst. Spillet bliver."),null);
+}
 function ticketScale(field,divFor){
   const sc=BAL.ticket.scale[field];
   const d=clamp(divFor===undefined?(G?G.div:3):divFor,0,sc.length-1);
@@ -3007,6 +3101,7 @@ function settleFinances(res){
   if(G.periodMD>=BAL.clock.reportMD)bookkeeperReport();
   sponsorLifeEvents();
   sponsorSlotKnock();     // B3: de tre andre slots banker paa af sig selv
+  ageWarnings();          // D2: gafferen og scouten naevner alderen FOER faldet
   // first sponsor offers arrive after MD 1 — as a decision you cannot walk past
   /* B3: det foerste sponsortilbud gaar nu gennem den SAMME generator som alle
      andre -- foer var det to haandskrevne kort med bare beloeb (£2.800/£4.200),
@@ -3324,31 +3419,9 @@ function finishSeason(o){
   if(leavers.length)msg("Ledger (bookkeeper)","L","GONE FOR NOTHING","Contracts expired, no renewals signed: "+leavers.join(" · ")+". Value walked out the door with its boots under its arm.",null);
   // aging & development — matches played fuel young growth
   for(const p of G.squad){
-    p.age++;
-    let dev;
-    if(p.age<24){
-      const playF=Math.min(1,p.sapps/12); // benched kids stall
-      /* Pakke 24: "Prospect" koster 18 % mere end Rotation og gav indtil nu
-         praecis ingenting. Nu koeber den et hurtigere aar -- men kun for en
-         dreng der faktisk har spillet, saa den ikke bare er en dyrere maade at
-         parkere nogen paa baenken. */
-      dev=Math.round((R(1,3)+(BAL.fac.devBonus[facLvl("training")]||0)+(G.coach.dev>=60?1:0)+proDevBonus(p))*(0.35+0.65*playF));
-    }else dev=(p.age<30?R(-1,1):-R(1,3));
-    p.att=clamp(p.att+dev,25,95);p.def=clamp(p.def+dev,25,95);
-    p.phy=clamp(p.phy+(p.age>=30?-R(1,3):dev),25,95);
-    /* Pakke T2: growth respects the hidden ceiling. A boy grows TOWARD pot, never
-       past it — so two players with identical visible stats but different pots
-       develop into different men. Shave the top attribute until overall sits at
-       or below the ceiling; dev is small, so this trims at most a point or two. */
-    if(BAL.talent.devToCeiling&&p.pot!==undefined){
-      let guard=0;
-      while(ovr(p)>p.pot&&guard++<30){
-        const hi=p.att>=p.def&&p.att>=p.phy?"att":p.def>=p.phy?"def":"phy";
-        p[hi]=Math.max(25,p[hi]-1);
-      }
-    }
+    agePlayer(p);
     p.value=playerValuation(p);   // pakke T1: the one living valuation, squad and market alike
-    p.form=0;p.sg=0;p.sapps=0;p.smotm=0;p.inj=0;p.susp=0;p.promiseMD=null;p.load=0;p.roleWarned=false; // a summer is a summer
+    p.form=0;p.sg=0;p.sapps=0;p.smotm=0;p.inj=0;p.susp=0;p.promiseMD=null;p.load=0;p.roleWarned=false; // a summer is a summer (p.ageWarned bevidst IKKE: D2's to advarsler gaelder karrieren)
     p.conf=clamp(p.conf*0.6+20,10,95); // confidence regresses toward the mean over summer
   }
   applyRetirements();
