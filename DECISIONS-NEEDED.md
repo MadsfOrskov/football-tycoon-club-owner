@@ -308,3 +308,57 @@ Står `£1,02M` og `£276,028` på samme skærm — og det gør de, fx på Økon
 Ændringen er ét sted: `mnum()` lige over `kfmt()` i prototypen. Sig til, så retter
 jeg den på et minut. Jeg har **ikke** rørt k-grenens punktum, for den har stået
 sådan siden pakke 1 og harness'ens `kOf()` spejler den.
+
+---
+
+## 14. B2's drift gør League Three ~4× strammere — er det prisen du vil betale? (nat 7)
+
+B2 er bygget som du dikterede: driften er **fast pr. niveau**, indtægten følger
+fremmødet, og nedlukning er en ægte nødbremse. Modellen virker præcis som
+beskrevet — målt på spillets egen `gateReceipts()` + `facUpkeep()`:
+
+| shop+pub+basics, netto pr. hjemmekampdag | niveau 1 | niveau 3 |
+|---|---|---|
+| fuld klub (kap 7.800 · 7.439 tilskuere) | +£18.723 | **+£32.918** |
+| arveklubben (kap 1.500 · 916 tilskuere) | +£1.697 | **−£3.017** |
+
+Overinvestering **er** en fejl man kan lave. Det er den ønskede figur.
+
+**Men prisen rammer den division der spilles mest.** Netto pr. kampdag i
+League Three, 10 seeds × 5 sæsoner:
+
+| | netto/kampdag i League Three | efter en nedrykning |
+|---|---|---|
+| før B2 | **−£835** | −£432 |
+| kun niveauer, drift = 0 | −£1.780 | −£5.028 |
+| kun drift, loft = niveau 1 | −£2.562 | −£3.495 |
+| **B2 som bygget** | **−£3.356** | **−£6.502** |
+
+Altså cirka **halvdelen fra den faste drift** og **halvdelen fra at der nu altid
+er et næste niveau at købe** — botten geninvesterer, hvor den før var færdig.
+Begge halvdele er tilsigtede virkninger af B2.
+
+**Tre ting, ærligt:**
+
+1. **Alle måltal i `Claude.md` holder stadig.** Netto sæson 1 −£1.842 (mål ±£2k),
+   indtjening sæson 1 £145k (mål £100-260k), trup 16,7/14,7, administrationer 0,
+   store kampe 4,5, oprykninger 7/10 i sæson 1.
+2. **Tallet er et loft for smerten, ikke smerten.** Botten bruger nødbremsen
+   dårligt — den lukker kun ned med 30 % sandsynlighed når kassen er *under nul*,
+   og genåbner ved £120k. En spiller der lukker ned, når han rykker ned, får et
+   markant bedre tal end −£6.502. Jeg kan ikke måle en spiller.
+3. **Det trækker samme vej som QA's advarsel.** QA (§6) målte at aktivt spil
+   allerede straffes: `sane` −£149/kampdag mod `lazy` +£7.123. B2's drift betales
+   kun af den, der bygger. Det gør forskellen større, ikke mindre.
+
+**Skruen er én linje:** `BAL.fac.upkeepOfBuild` (0,011 nu). Jeg målte 0,009 og
+0,007 også. Bemærk at de **ikke** hjalp på League Three (−£3.334 og −£3.604 —
+billigere drift fik botten til at bygge mere), og at 0,007 gør niveau 3 i
+arveklubben til −£85, altså praktisk taget gratis: så forsvinder hele pointen om
+at man kan overinvestere. **0,011 er det tal hvor din model er tydeligst.** Jeg
+har ikke tunet det væk, men du skal kende regningen.
+
+Den anden skrue, hvis League Three skal have luft uden at modellen mister form:
+lad driften **skalere med divisionen** (en shop i Premier koster mere i løn end
+en shop i League Three). Det er B4's tema, og de to bør designes sammen — derfor
+har jeg ikke gjort det på egen hånd.

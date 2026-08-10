@@ -286,6 +286,26 @@ const BAL={
     merch:0.45, shopMerchBoost:0.5, vipFlat:3000,
     bigScreenGate:0.10, awayEndBigGate:0.06
   },
+  /* B2: faciliteter er niveauer, ikke koeb. Driften er FAST pr. niveau;
+     indtaegten foelger fremmoedet, fordi den bygger paa £ pr. tilskuer. Derfor
+     er en niveau-3 shop i en tom klub ren udgift og i en fyldt klub guld --
+     og derfor kan man investere for meget. */
+  fac:{
+    maxLvl:3,
+    costStep:2.4,       // niveau n koster niveau 1's pris x costStep^(n-1)
+    /* To kurver, fordi de to slags faciliteter ikke er samme slags tal.
+       yield ganger PENGE (shop, pub, storskaerm, det basale, VIP);
+       rate ganger EVNER (klinik, traening) og er bevidst flad, fordi 2,2x
+       faerre skader ville vaere staerkere end noget andet i spillet. */
+    yield:[0,1,1.60,2.00],
+    rate:[0,1,1.35,1.60],
+    devBonus:[0,1,1,2],  // traeningsanlaeggets +udvikling pr. niveau (heltal)
+    injFloor:0.55,       // klinikken kan hoejst skaere risikoen til denne andel af injClinic
+    /* Drift pr. kampdag = denne andel af det beloeb der er bygget for. Fast:
+       den falder ikke fordi stadionet er tomt. Det er den der goer nedlukning
+       til en aegte noedbremse. */
+    upkeepOfBuild:0.011
+  },
   seasonTix:{
     share:0.25,              // of the crowd you can actually draw
     discount:0.8,            // "fair" price = ticket × home games × this
@@ -917,6 +937,22 @@ function loadGame(){
   if(!Array.isArray(G.loans))G.loans=G.loan?[{perMD:G.loan.perMD,left:G.loan.left,took:BAL.bank.loanCash,rate:BAL.bank.rateBase,kind:"crisis"}]:[];
   delete G.loan;
   if(!Array.isArray(G.valHistory))G.valHistory=[];
+  /* B2: G.fac gik fra flag til niveauer. Et gammelt flag er praecis niveau 1 --
+     0/1 er allerede gyldige niveauer, saa der er intet at omregne; det der
+     mangler, er de to nye felter. Uden facOff ville facLvl() laese undefined
+     og hver facilitet vaere "lukket" ved indlaesning; uden facBuild.to ville et
+     byggeri der var i gang faerdiggoere til niveau NaN. */
+  if(!G.facOff||typeof G.facOff!=="object")G.facOff={};
+  if(G.fac&&typeof G.fac==="object"){
+    for(const k in FACS)G.fac[k]=Math.max(0,Math.min(BAL.fac.maxLvl,G.fac[k]|0));
+    for(const k in G.fac)if(!(k in FACS))delete G.fac[k];
+    for(const k in G.facOff)if(!(k in FACS))delete G.facOff[k];
+  }else G.fac={shop:0,pub:0,screen:0,clinic:0,training:0,basics:0,vip:0};
+  if(G.facBuild&&typeof G.facBuild==="object"){
+    if(!Number.isFinite(G.facBuild.to))G.facBuild.to=Math.max(1,(G.fac[G.facBuild.key]|0)+1);
+    G.facBuild.reopen=!!G.facBuild.reopen;
+    if(!(G.facBuild.key in FACS))G.facBuild=null;   // et byggeri paa en facilitet der ikke findes laengere
+  }
   if(!Number.isFinite(G.netEwma))G.netEwma=0;
   if(!Number.isFinite(G.trust))G.trust=BAL.owners.trustStart;
   if(!Number.isFinite(G.admins))G.admins=0;
@@ -1445,7 +1481,7 @@ function newGame(name,hue,mode){
     season:1,md:0,rounds:26,phase:"season",
     balance:150000,ticket:10,capacity:1500,
     stands:{shed:0,main:1,family:0,away:0},standBuild:null,
-    fac:{shop:0,pub:0,screen:0,clinic:0,training:0,basics:0,vip:0},facBuild:null,
+    fac:{shop:0,pub:0,screen:0,clinic:0,training:0,basics:0,vip:0},facOff:{},facBuild:null,
     seasonTix:{price:150,sold:0},bigExtra:2,jerseyFactor:1,jerseyName:null,
     owners:[{n:"Sid Trencher",role:"butcher",share:24},{n:"J. Whitmore",role:"solicitor",share:15},{n:"Marjorie Cobb",role:"pie magnate",share:10}],
     myShare:51,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:false,sponsorChecked:false,sponsorRiskMD:null,
@@ -1645,6 +1681,43 @@ const FACS={
    boxes have always been DRAWN hanging off the Main Stand; now they are gated
    on it too, so the code and the picture say the same thing. */
 const FAC_REQ={vip:{stand:"main",lvl:1}};
+/* ---------- B2: faciliteter som niveauer ----------
+   G.fac[k] var 0/1; nu er det 0..BAL.fac.maxLvl. G.facOff[k] er nedlukning:
+   niveauet BEHOLDES (du ejer stadig murstenene, og de taeller stadig som
+   aktiv i klubvaerdien), men driften falder vaek med det samme og alle
+   virkninger gaar til nul. Genaabning koster kampdage som et byggeri.
+
+   HELE spillet laeser facLvl() -- aldrig G.fac[k] direkte. Det er det ene
+   sted nedlukningen findes, og derfor det ene sted den kan glemmes. */
+function facLvl(k){
+  if(!G||!G.fac)return 0;
+  if(G.facOff&&G.facOff[k])return 0;
+  return Math.max(0,Math.min(BAL.fac.maxLvl,G.fac[k]|0));
+}
+function facOwned(k){return G&&G.fac?Math.max(0,Math.min(BAL.fac.maxLvl,G.fac[k]|0)):0;}
+function facClosed(k){return !!(G&&G.facOff&&G.facOff[k]&&facOwned(k)>0);}
+/* Pengekurven og evnekurven. Laeser altid det EFFEKTIVE niveau, saa en lukket
+   facilitet bidrager med praecis nul uden at hvert kaldested skal huske det. */
+function facYield(k){return BAL.fac.yield[facLvl(k)]||0;}
+function facRate(k){return BAL.fac.rate[facLvl(k)]||0;}
+/* Prisen for at gaa fra niveau lvl-1 til lvl. Bygget af FACS[k].cost, saa
+   niveau 1 koster praecis hvad faciliteten kostede foer B2. */
+function facStepCost(k,lvl){
+  if(lvl<1||lvl>BAL.fac.maxLvl)return 0;
+  return Math.round(FACS[k].cost*Math.pow(BAL.fac.costStep,lvl-1)/500)*500;
+}
+/* Hvad der er sunket i faciliteten indtil nu -- grundlaget for driften. */
+function facSunk(k){let s=0;for(let l=1;l<=facOwned(k);l++)s+=facStepCost(k,l);return s;}
+/* Driften pr. kampdag. FAST: den kender ikke fremmoedet. Lukkede faciliteter
+   koster nul -- det er hele pointen med knappen. */
+function facUpkeep(){
+  let s=0;
+  for(const k in FACS)if(!facClosed(k))s+=facSunk(k)*BAL.fac.upkeepOfBuild;
+  return Math.round(s);
+}
+/* Genaabningstiden er niveau 1's byggetid: noedbremsen maa kunne trykkes,
+   men ikke slippes samme uge. */
+function facReopenMD(k){return FAC_DETAIL[k].md;}
 function recalcCapacity(){
   G.capacity=Object.entries(G.stands).reduce((s,[k,l])=>s+STANDS[k].cap[l],0);
 }
@@ -1658,7 +1731,7 @@ function divPrize(n){return Math.round(n*(1+(3-G.div)*BAL.prize.perDivision)/100
 function valuationParts(){
   const V=BAL.val,rounds=G.rounds||16;
   const squad=G.squad.reduce((s,p)=>s+p.value,0);
-  const facs=Object.keys(FACS).filter(k=>G.fac[k]).length;
+  const facs=Object.keys(FACS).reduce((n,k)=>n+facOwned(k),0);
   const assets=squad+G.capacity*V.perSeat+facs*V.perFacility+V.freehold;
 
   const sponsorV=G.sponsor?G.sponsor.per*rounds*Math.max(0,G.sponsor.seasonsLeft||0)*V.sponsorWeight:0;
@@ -1886,7 +1959,7 @@ function loadCost(p){
   if(p.traits.includes("grafter"))c+=F.grafterCost;
   return Math.max(0.1,c);
 }
-function loadDecay(){return BAL.fresh.decay+(G.fac.training?BAL.fresh.trainingRecovery:0);}
+function loadDecay(){return BAL.fresh.decay+BAL.fresh.trainingRecovery*facRate("training");}
 /* Tired legs give less of themselves — most of it physical, some of it touch. */
 function phyMult(p){
   const F=BAL.fresh;
@@ -2114,10 +2187,11 @@ function matchIncidents(match){ // red cards & injuries with consequences
   {
     const F=BAL.fresh,p=pick(xiList());
     if(p){
-      const scale=F.injuryScale*(G.fac.clinic?F.clinicScale:1);
-      const risk=(G.fac.clinic?F.injClinic:F.injBase)*(1+(100-freshOf(p))/100*scale)*(1+(match.order==="win"?BAL.orders.winInjury:0));
+      const cr=facRate("clinic");
+      const scale=F.injuryScale*(cr?F.clinicScale:1);
+      const risk=Math.max(F.injClinic*BAL.fac.injFloor,F.injBase+(F.injClinic-F.injBase)*cr)*(1+(100-freshOf(p))/100*scale)*(1+(match.order==="win"?BAL.orders.winInjury:0));
       if(Math.random()<risk){
-        p.inj=Math.max(1,R(2,4)-(G.fac.clinic?BAL.fresh.clinicInjDays:0));
+        p.inj=Math.max(1,R(2,4)-(facLvl("clinic")?BAL.fresh.clinicInjDays:0));
         out.push({m:R(10,80),keep:true,txt:"Injury: "+p.name.split(" ")[1]+" pulls up — out "+p.inj+" matchday"+(p.inj===1?"":"s")+
           (freshOf(p)<F.bandUsed?" (he was running on empty)":"")+"."});
       }
@@ -2649,7 +2723,7 @@ function updateProtest(){
 }
 function townDemand(){
   const D=BAL.demand;
-  const d=D.base*(1+(3-G.div)*D.perDivision)*(1+G.stands.family*D.familyStand)*(1+(G.fac.basics?D.basics:0));
+  const d=D.base*(1+(3-G.div)*D.perDivision)*(1+G.stands.family*D.familyStand)*(1+D.basics*facYield("basics"));
   // a boycott is a hard ceiling on the town, not a nudge to the mood factor
   return protestLevel()>=3?d*BAL.protest.boycottCap:d;
 }
@@ -2681,12 +2755,12 @@ function gateReceipts(res){
   if(!res.home)return {att:0,gate:0,extras:0};
   const att=Math.max(attendance(res.big),G.seasonTix.sold);
   const paying=Math.max(0,att-G.seasonTix.sold);
-  const bigMult=(res.big&&G.fac.screen?1+BAL.matchday.bigScreenGate:1)*(res.big?1+G.stands.away*BAL.matchday.awayEndBigGate:1);
+  const bigMult=(res.big?1+BAL.matchday.bigScreenGate*facYield("screen"):1)*(res.big?1+G.stands.away*BAL.matchday.awayEndBigGate:1);
   const gate=Math.round(paying*gatePrice(res.big)*bigMult);
   const M=BAL.matchday;
-  const extras=Math.round(att*(M.kiosk+G.fac.shop*M.shop+G.fac.pub*M.pub+(G.fac.basics?M.basics:0))
-        +att*M.merch*G.jerseyFactor*(1+G.fac.shop*M.shopMerchBoost)
-        +(G.fac.vip&&!facBlockedBy("vip")?M.vipFlat:0));
+  const extras=Math.round(att*(M.kiosk+facYield("shop")*M.shop+facYield("pub")*M.pub+facYield("basics")*M.basics)
+        +att*M.merch*G.jerseyFactor*(1+facYield("shop")*M.shopMerchBoost)
+        +(facLvl("vip")&&!facBlockedBy("vip")?M.vipFlat*facYield("vip"):0));
   return {att,gate,extras};
 }
 function settleFinances(res){
@@ -2705,7 +2779,11 @@ function settleFinances(res){
     if(done.length)addNews("CLUB",done.length===1?"A bank loan is paid off. The manager sends a card.":done.length+" bank loans paid off. The account can breathe.");
   }
   res.gate=gate+extras;res.wages=wages;
-  const net=(G.sponsor?G.sponsor.per:0)+tvMoney()+gate+extras-wages-loanPay;
+  /* B2: driften af faciliteterne. Fast pr. niveau, hver kampdag, hjemme som
+     ude -- en fanshop koster ogsaa noget den uge holdet spiller i Grimsby.
+     Lukkede faciliteter koster nul; det er noedbremsen. */
+  const upkeep=facUpkeep();res.upkeep=upkeep;
+  const net=(G.sponsor?G.sponsor.per:0)+tvMoney()+gate+extras-wages-loanPay-upkeep;
   G.balance+=net;G.lastNet=net;      // "kassen + ugentligt netto altid synligt" (GDD)
   /* Rolling earnings for the valuation. G.periodNet is no good for this — it
      resets every sixth matchday, so a club's earning power would appear to
@@ -2746,7 +2824,7 @@ function updateFormMood(res){
   }
   {const MO=BAL.mood;
    G.fanMood=clamp(G.fanMood+(w?MO.win:d?MO.draw:MO.loss)+(gatePrice(res.big)>BAL.ticket.moodPenaltyAbove?MO.dearTicket:0)
-     +G.stands.family*MO.familyPerTier+(G.fac.pub?MO.pubDrift:0),5,100);}
+     +G.stands.family*MO.familyPerTier+MO.pubDrift*facYield("pub"),5,100);}
   easeMood(); // the way back: anger cools toward a baseline (egen funktion -> maalbar)
   updateProtest();
   if(G.talkCooldown>0)G.talkCooldown--;
@@ -3035,7 +3113,7 @@ function finishSeason(o){
          praecis ingenting. Nu koeber den et hurtigere aar -- men kun for en
          dreng der faktisk har spillet, saa den ikke bare er en dyrere maade at
          parkere nogen paa baenken. */
-      dev=Math.round((R(1,3)+(G.fac.training?1:0)+(G.coach.dev>=60?1:0)+proDevBonus(p))*(0.35+0.65*playF));
+      dev=Math.round((R(1,3)+(BAL.fac.devBonus[facLvl("training")]||0)+(G.coach.dev>=60?1:0)+proDevBonus(p))*(0.35+0.65*playF));
     }else dev=(p.age<30?R(-1,1):-R(1,3));
     p.att=clamp(p.att+dev,25,95);p.def=clamp(p.def+dev,25,95);
     p.phy=clamp(p.phy+(p.age>=30?-R(1,3):dev),25,95);
@@ -4335,27 +4413,67 @@ function buildFac(key){
   const blocker=facBlockedBy(key);
   if(blocker){modal={type:"info",title:"Ingen steder at sætte dem",
     body:f.n+" hænger på "+blocker+". Byg den først — boksene skal have noget at kigge ud over."};render();return;}
-  if(G.fac[key]){modal={type:"info",title:"Allerede bygget",body:f.n+" er oppe at køre."};render();return;}
+  if(facClosed(key)){modal={type:"info",title:"Den er lukket ned",body:f.n+" står slukket. Genåbn den, før du bygger videre på den."};render();return;}
+  if(facOwned(key)>=BAL.fac.maxLvl){modal={type:"info",title:"Niveau "+BAL.fac.maxLvl+" er toppen",body:f.n+" kan ikke blive større. Byen har også en grænse."};render();return;}
   if(G.facBuild){modal={type:"info",title:"Ét lille byggeri ad gangen",body:"Det lokale firma er i gang med "+FACS[G.facBuild.key].n+". De deler heller ikke sjak."};render();return;}
-  modal={type:"facConfirm",key};render();
+  modal={type:"facConfirm",key,to:facOwned(key)+1};render();
 }
 function facConfirm(){
-  const key=modal.key;const f=FACS[key];
+  const key=modal.key;const f=FACS[key];const to=modal.to||facOwned(key)+1;
   const blocker=facBlockedBy(key);
   if(blocker){modal={type:"info",title:"Ingen steder at sætte dem",body:f.n+" kræver "+blocker+" først."};render();return;}
-  if(G.balance<f.cost){modal={type:"info",title:"Ikke penge nok",body:f.n+" koster "+kfmt(f.cost)+"."};render();return;}
-  G.balance-=f.cost;
-  G.facBuild={key,remain:FAC_DETAIL[key].md};
-  addNews("CLUB","Work begins on "+f.n+". Ready in "+FAC_DETAIL[key].md+" matchday"+(FAC_DETAIL[key].md>1?"s":"")+".");
+  if(to>BAL.fac.maxLvl||to!==facOwned(key)+1){modal=null;render();return;}
+  const cost=facStepCost(key,to);
+  if(G.balance<cost){modal={type:"info",title:"Ikke penge nok",body:f.n+" niveau "+to+" koster "+kfmt(cost)+"."};render();return;}
+  G.balance-=cost;
+  G.facBuild={key,remain:FAC_DETAIL[key].md,to,reopen:false};
+  addNews("CLUB","Work begins on "+f.n+" (level "+to+"). Ready in "+FAC_DETAIL[key].md+" matchday"+(FAC_DETAIL[key].md>1?"s":"")+".");
   modal=null;render();
 }
+/* B2, noedbremsen. Mads: "Det er en fed feature, at man kan 'lukke ned' for
+   noget i en periode, hvis klubben skulle rykke ned og man dermed har faerre
+   penge." Nedlukningen virker STRAKS -- ellers er den ingen noedbremse.
+   Genaabningen tager kampdage som et byggeri, og bruger den ene byggeplads.
+   Saa kan man overleve en nedrykning, men ikke taende og slukke efter behov. */
+function closeFac(key){
+  if(facOwned(key)<1||facClosed(key)){render();return;}
+  if(!G.facOff)G.facOff={};
+  G.facOff[key]=1;
+  if(G.facBuild&&G.facBuild.key===key)G.facBuild=null;   // et byggeri paa noget slukket er penge ud af vinduet
+  addNews("CLUB",FACS[key].n+" is mothballed. The lights are off and the standing order is cancelled.");
+  msg("Site foreman","SF",FACS[key].n.toUpperCase()+" ER LUKKET NED",
+    "Vi har slukket og laast. Driften på "+kfmt(Math.round(facSunk(key)*BAL.fac.upkeepOfBuild))+" pr. kampdag stopper i dag. Genåbning tager "+facReopenMD(key)+" kampdag"+(facReopenMD(key)>1?"e":"")+" — så tænk over det, inden du beder om nøglerne igen.",null);
+  saveGame();render();
+}
+function reopenFac(key){
+  if(!facClosed(key)){render();return;}
+  if(G.facBuild){modal={type:"info",title:"Ét lille byggeri ad gangen",body:"Det lokale firma er i gang med "+FACS[G.facBuild.key].n+". Genåbning skal også have et sjak."};render();return;}
+  G.facBuild={key,remain:facReopenMD(key),to:facOwned(key),reopen:true};
+  addNews("CLUB",FACS[key].n+" is being reopened. Somebody has to find the keys first.");
+  saveGame();render();
+}
 function finishFac(){
-  const key=G.facBuild.key;
-  G.fac[key]=1;G.facBuild=null;
-  if(key==="vip")G.fanMood=clamp(G.fanMood+BAL.mood.vipOpens,5,100);
-  if(key==="basics")G.fanMood=clamp(G.fanMood+BAL.mood.basicsOpens,5,100);
-  if(key==="pub")G.fanMood=clamp(G.fanMood+BAL.mood.pubOpens,5,100);
-  msg("Site foreman","SF",FACS[key].n.toUpperCase()+" IS OPEN",(key==="vip"?"The boxes gleam. The Shed End mutters about prawn sandwiches. The till doesn't care.":key==="basics"?"New loos. Genuine scenes of celebration in the queue.":"Doors open, town approves, money flows."),null);
+  const b=G.facBuild;const key=b.key;
+  G.facBuild=null;
+  if(b.reopen){
+    if(G.facOff)delete G.facOff[key];
+    msg("Site foreman","SF",FACS[key].n.toUpperCase()+" ER ÅBEN IGEN",
+      "Lyset er tændt, og der lugter kun lidt af sidste sæson. Driften løber igen fra i dag.",null);
+    saveGame();return;
+  }
+  const to=Math.max(1,Math.min(BAL.fac.maxLvl,b.to||1));
+  const first=facOwned(key)<1;
+  G.fac[key]=to;
+  /* Aabningshumoeret gives ved FOERSTE niveau. En udbygning er ikke en
+     genindvielse -- ellers kunne man koebe humoer tre gange for samme hus. */
+  if(first){
+    if(key==="vip")G.fanMood=clamp(G.fanMood+BAL.mood.vipOpens,5,100);
+    if(key==="basics")G.fanMood=clamp(G.fanMood+BAL.mood.basicsOpens,5,100);
+    if(key==="pub")G.fanMood=clamp(G.fanMood+BAL.mood.pubOpens,5,100);
+  }
+  msg("Site foreman","SF",FACS[key].n.toUpperCase()+(first?" IS OPEN":" · NIVEAU "+to),
+    first?(key==="vip"?"The boxes gleam. The Shed End mutters about prawn sandwiches. The till doesn't care.":key==="basics"?"New loos. Genuine scenes of celebration in the queue.":"Doors open, town approves, money flows.")
+         :"Udbygget til niveau "+to+" af "+BAL.fac.maxLvl+". Driften stiger til "+kfmt(Math.round(facSunk(key)*BAL.fac.upkeepOfBuild))+" pr. kampdag — den kommer, uanset om der er nogen på stadion.",null);
 }
 /* ---------- bookkeeper & sponsor life ---------- */
 function bookkeeperReport(){
@@ -4916,9 +5034,25 @@ function viewClub(){
       return `<div class="rowline"><span>${s.n} <small>· niv ${lvl} · ${s.role}</small></span>
         ${lvl>=2?'<span class="sc">MAX</span>':(b?'<span class="sc" style="opacity:.5">…</span>':`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="startStandBuild('${k}')">${lvl===0?"Byg":"Udbyg"} · ${kfmt(STANDCOST[lvl+1])}</button>`)}</div>`;
     }).join("")}</div>
-  <div class="card"><div class="kick" style="margin-bottom:4px">Faciliteter</div>
-    ${Object.entries(FACS).map(([k,f])=>`<div class="rowline"><span>${f.n} <small>· ${f.txt}</small></span>
-      ${G.fac[k]?'<span class="sc" style="color:var(--acc)">✓</span>':(G.facBuild&&G.facBuild.key===k?`<span class="cn num" style="color:var(--comm);font-size:11px">${G.facBuild.remain} KD</span>`:`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="buildFac('${k}')">Se mere…</button>`)}</div>`).join("")}</div>`:"")
+  <div class="card"><div class="kick" style="margin-bottom:4px">Faciliteter <span style="font-size:9px">· niveau 1-${BAL.fac.maxLvl} · drift i alt <b>${kfmt(facUpkeep())}</b> pr. kampdag</span></div>
+    ${Object.entries(FACS).map(([k,f])=>{
+      const lvl=facOwned(k),off=facClosed(k),bld=G.facBuild&&G.facBuild.key===k;
+      const dots=lvl?'<span class="num" style="color:'+(off?"var(--muted)":"var(--acc)")+'">'+"●".repeat(lvl)+"○".repeat(BAL.fac.maxLvl-lvl)+'</span>':"";
+      const run=lvl?kfmt(Math.round(facSunk(k)*BAL.fac.upkeepOfBuild))+"/kd":"";
+      const state=off?`<small style="color:var(--comm)">· LUKKET NED · sparer ${run}</small>`:lvl?`<small>· drift ${run}</small>`:`<small>· ${f.txt}</small>`;
+      /* B2: hver facilitet har hoejst EN knap ad gangen, og den knap er den
+         handling der giver mening i den tilstand. Se pakke 0's blindgyde:
+         en tilstand uden knap er en blindgyde, ogsaa naar den ser fornuftig ud. */
+      let btn;
+      if(bld)btn=`<span class="cn num" style="color:var(--comm);font-size:11px">${G.facBuild.remain} KD${G.facBuild.reopen?" · åbner":""}</span>`;
+      else if(off)btn=`<button class="abtn comm" style="padding:6px 10px;font-size:10.5px" onclick="reopenFac('${k}')">Genåbn · ${facReopenMD(k)} KD</button>`;
+      else if(lvl>=BAL.fac.maxLvl)btn=`<button class="abtn ghost" style="padding:6px 10px;font-size:10.5px" onclick="closeFac('${k}')">Luk ned</button>`;
+      else if(lvl>0)btn=`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="buildFac('${k}')">Niv ${lvl+1} · ${kfmt(facStepCost(k,lvl+1))}</button>`
+        +`<button class="abtn ghost" style="padding:6px 10px;font-size:10.5px" onclick="closeFac('${k}')">Luk ned</button>`;
+      else btn=`<button class="abtn" style="padding:6px 10px;font-size:10.5px" onclick="buildFac('${k}')">Se mere…</button>`;
+      return `<div class="rowline"><span>${f.n} ${dots} ${state}</span>${btn}</div>`;
+    }).join("")}
+    <div class="kick" style="font-size:9px;margin-top:8px;text-transform:none;letter-spacing:.2px">Driften er fast pr. niveau og kommer hver kampdag — også når stadion er tomt. Indtægten følger fremmødet. Rykker du ned, kan du lukke ned og spare driften med det samme; genåbning tager kampdage som et byggeri.</div></div>`:"")
   +(tab==="money"?`<div class="card"><div class="kick" style="margin-bottom:4px">Billetter · sæsonkort: <b>${G.seasonTix.sold.toLocaleString("en-GB")}</b> holdere</div>
     <div class="rowline"><span>Billetpris</span>
     <span class="stepper" style="margin:0"><button onclick="G.ticket=Math.max(5,G.ticket-1);render()">‹</button><span class="val" style="font-size:20px;min-width:60px">£${G.ticket}</span><button onclick="G.ticket=Math.min(30,G.ticket+1);render()">›</button></span></div>
@@ -5702,14 +5836,24 @@ function renderModal(){
   }
   if(modal.type==="facConfirm"){
     const f=FACS[modal.key];const d=FAC_DETAIL[modal.key];
+    const to=modal.to||facOwned(modal.key)+1,cost=facStepCost(modal.key,to);
+    /* B2: begge tal frem, foer der skrives under. Prisen er engangs; driften
+       kommer hver kampdag resten af karrieren, og det er den der kan vaelte
+       en klub der har bygget for stort til sin by. */
+    const runNow=Math.round(facSunk(modal.key)*BAL.fac.upkeepOfBuild);
+    const runAfter=Math.round((facSunk(modal.key)+cost)*BAL.fac.upkeepOfBuild);
+    const scale=BAL.fac.yield[to]/(BAL.fac.yield[1]||1);
     return `<div class="overlay"><div class="sheet">
       <div class="kick">Før du skriver under, formand</div>
-      <h2>${f.n}</h2>
+      <h2>${f.n} · niveau ${to}</h2>
       <div class="card">${d.fx.map(x=>`<div class="rowline"><span>✓ ${x}</span></div>`).join("")}
-        <div class="rowline"><span>Pris</span><span class="amt num">${kfmt(f.cost)}</span></div>
+        ${to>1?`<div class="rowline"><span>Niveau ${to} ganger virkningen</span><span class="num">×${scale.toFixed(2).replace(".",",")}</span></div>`:""}
+        <div class="rowline"><span>Pris</span><span class="amt num">${kfmt(cost)}</span></div>
+        <div class="rowline"><span>Drift pr. kampdag</span><span class="amt num">${runNow?kfmt(runNow)+" → ":""}${kfmt(runAfter)}</span></div>
         <div class="rowline"><span>Byggetid</span><span class="num">${d.md} kampdag${d.md>1?"e":""}</span></div></div>
+      <p><b>Driften er fast.</b> ${kfmt(runAfter)} hver kampdag, uanset om der kommer nogen. Indtægten følger fremmødet — så et niveau du ikke kan fylde, er ren udgift.</p>
       ${d.warn?`<p><b>Formanden på pladsen tilføjer:</b> "${d.warn}"</p>`:""}
-      <button class="glowbtn" onclick="facConfirm()">Byg det · ${kfmt(f.cost)}</button>
+      <button class="glowbtn" onclick="facConfirm()">Byg det · ${kfmt(cost)}</button>
       <button class="abtn ghost" onclick="modal=null;render()">Tænk over det</button>
     </div></div>`;
   }
