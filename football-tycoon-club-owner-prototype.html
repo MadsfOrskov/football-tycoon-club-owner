@@ -311,11 +311,30 @@ const BAL={
     slope:0.62,              // → sells out at ~2.5× fair, cash peaks at ~1.25×
     demandCap:1.4
   },
+  /* PENGETRAPPEN (Mads 10/8): "fuld realisme … en Premier league klub køber en
+     spiller for 5-60 mio pund. Så en stjernespiller for 80-100 mio er ikke
+     urealistisk." League Three er ankeret (uændret start); trapperne herunder
+     ganges på ALT divisionsafhængigt. Værdi og løn har HVER SIN trappe, fordi
+     virkelighedens forhold mellem dem ændrer sig op gennem rækkerne — og TV
+     bærer toppen, som i virkeligheden. Klatringen forbliver mulig: oprykningens
+     TV-spring ER det økonomiske raketbrændstof. */
+  money:{
+    /* Hvert trin er ABSOLUT realistisk (ikke kun forholdet til naborækken):
+       løn L2 ~£3.5k/u · L1 ~£14k/u · PL ~£46k/u i snit. Første udgave havde
+       relative løn-trin mod absolutte TV-trin, og mellemrækkerne druknede i
+       TV-penge (L2-kasser på £15M efter fem sæsoner — målt, rettet). */
+    value:{3:1,2:6,1:30,0:200},    // spillerværdier (PL: alm. køb £5-60M, stjerner £80-100M)
+    wage:{3:1,2:6,1:25,0:80},      // løn — absolut realistisk på hvert trin
+    cash:{3:1,2:6,1:25,0:80},      // bankens beløb, budget-spænd — følger lønmassen
+    prize:{3:1,2:5,1:25,0:120},    // præmier (PL-mesterskab ~£18M)
+    sponsor:{3:1,2:3,1:15,0:150},  // sponsorater (PL-trøje ~£0.5-1M/kamp)
+    price:{3:1,2:1.7,1:2.8,0:5}    // billet/sæsonkort-priser (B4: L3 £5-20 → PL £25-90)
+  },
   ticket:{
-    sweetSpot:10,            // the price the town considers normal
-    elasticity:0.055,        // demand lost per £ above the sweet spot
+    sweetSpot:10,            // the price the town considers normal — × money.price[div]
+    elasticity:0.055,        // demand lost per £ above the sweet spot — ÷ money.price[div]
     bargainLift:0.030,       // demand gained per £ below it (weaker — cheap ≠ free crowd)
-    moodPenaltyAbove:16      // dearer than this and the terraces grumble
+    moodPenaltyAbove:16      // dearer than this and the terraces grumble — × money.price[div]
   },
   demand:{                   // the town, not the concrete
     base:1400, perDivision:0.85, familyStand:0.22,
@@ -330,7 +349,11 @@ const BAL={
        rescaled (ov×30 → ov×13,5). Without it, depth would simply cost £1.7k a
        matchday and push the club into administration for doing the right thing. */
     scale:11.5,              // player wage = ovr × scale × division multiplier
-    cap:10500, capOnPromotion:1.5, capRaise:1.2,
+    /* Pengetrappen: capOnPromotion/capOnRelegation er nu SLACK-faktorer oven på
+       markedsforholdet mellem rækkerne (G_DIV_WAGE-ratioen) — under 1 op (loftet
+       halter efter markedet), over 1 ned (loftet falder langsommere end markedet:
+       klemmen består). Før var de flade 1.5/0.68 mod en flad ×1.8-trappe. */
+    cap:10500, capOnPromotion:0.85, capRaise:1.2,
     freeAgentMult:1.5, promotionRise:1.35, adminCut:0.8,
     /* Pakke 16, the mirrors of the two rungs above. Deliberately NOT the exact
        inverses. Going up multiplies the cap by 1.5 and the payroll by 1.35;
@@ -339,7 +362,7 @@ const BAL={
        division cannot pay, and it is yours to trade, renegotiate or drown in.
        An exact inverse would make going down a free reset, which is the one
        thing it must not be. */
-    capOnRelegation:0.68, relegationDrop:0.82
+    capOnRelegation:1.2, relegationDrop:0.82
   },
   /* Pakke 16. Down is the mirror of up: the bottom `spots` go, and `floorDiv`
      is the floor of the world — you cannot be relegated out of League Three.
@@ -526,7 +549,10 @@ const BAL={
      away income did not move. Geometric, so the ladder has no gap and no jump:
         tv = base x (perDivision^(3-div) - 1)
      League Three is deliberately zero. Nobody televises League Three. */
-  tv:{base:2600, perDivision:2.35},
+  /* Pengetrappen: TV som TABEL — én eksponent kan ikke ramme alle tre trin
+     absolut-realistisk (L2 ~£0.9M/sæson · L1 ~£6M · PL ~£96M). Ingen
+     televiserer League Three. parachute = TV-andel med ned i én sæson. */
+  tv:{perMD:{3:0,2:35000,1:230000,0:3700000}, parachute:0.45},
   /* Nat 4, pakke 23. Banken var EN fast pakke -- £50.000 nu, £5.500/kampdag i
      ti kampdage -- og den fandtes kun inde i krisemodalen naar kassen var under
      crisisAt. Man kunne altsaa kun laane naar man druknede, og aldrig for at
@@ -774,10 +800,10 @@ const BAL={
      udbytte og værdi — at BESØGE den kommer med tilstedeværelses-modellen). */
   stake:{
     stepPct:5, premium:1.15, sellFactor:0.88,
-    valBase:60000, valPerStr:9000, divMult:{0:6,1:3.2,2:1.8,3:1},
+    valBase:60000, valPerStr:9000, divMult:{0:200,1:30,2:6,3:1},   // pengetrappen: følger værditrappen — en PL-klub er ~£140M værd
     pressSwing:0.5,           // value swings ±this around press 50
     divPerSeason:0.055,       // season dividend: this share of club value, scaled by form
-    gateWealth:400000, gateRep:55
+    gateWealth:1000000, gateRep:55   // pengetrappen: kontrol med klub nr. 2 kræver en ægte formue
   },
   ownerLife:{
     every:{min:3, max:6},       // matchdays between owner-life events
@@ -1524,7 +1550,16 @@ function newGame(name,hue,mode){
   msg(G.coach.n.split(" ")[0]+" (gaffer)","GM","The gaffer's first words","\""+G.coach.line+"\"",null);
   addNews("LEAGUE","The "+G.divNames[G.div]+" season kicks off. Twenty-six matchdays. One dream. Several dodgy pitches.");
 }
-function G_DIV_WAGE(div){return {3:1,2:1.8,1:3.2,0:6}[div]||1;}
+function G_DIV_WAGE(div){return BAL.money.wage[div]||1;}   // pengetrappen: løn pr. division
+/* Pengetrappen, UX: et skridt på £1.000 kan ikke nå £60M. Skridtet følger
+   beløbets størrelse — fint nede, groft oppe. Stort skridt = ×10. */
+function stepFor(v){const a=Math.abs(v||0);return a>=20e6?1e6:a>=2e6?100000:a>=200000?10000:1000;}
+function wStepFor(v){const a=Math.abs(v||0);return a>=20000?1000:a>=2000?250:50;}
+/* G kan være null midt i newGame (truppen fødes inde i objekt-literalen) — så
+   er ankeret League Three. */
+function divValueMult(div){const d=div!==undefined?div:(G&&G.div!==undefined?G.div:3);return BAL.money.value[d]||1;}
+function divCashMult(div){const d=div!==undefined?div:(G&&G.div!==undefined?G.div:3);return BAL.money.cash[d]||1;}
+function divPriceMult(div){const d=div!==undefined?div:(G&&G.div!==undefined?G.div:3);return BAL.money.price[d]||1;}
 /* R7: divisionens styrketrappe — lineær + topLift i de to øverste rækker. */
 function divLift(d){return (3-d)*BAL.world.moveAdj+((BAL.world.topLift||{})[d]||0);}
 /* ---------- O1: the owner as a character ----------
@@ -1685,11 +1720,13 @@ function facDriftTotal(){
 function recalcCapacity(){
   G.capacity=Object.entries(G.stands).reduce((s,[k,l])=>s+STANDS[k].cap[l],0);
 }
-function tvMoney(){const T=BAL.tv;return Math.round(T.base*(Math.pow(T.perDivision,3-G.div)-1)/10)*10;}
+/* Pengetrappen: TV bærer toppen som i virkeligheden — oprykningens TV-spring
+   ER klatre-brændstoffet. Tabel, ikke formel: se BAL.tv. */
+function tvMoney(){return BAL.tv.perMD[G.div]||0;}
 /* Erklaeret som funktion, ikke som arrow-const: top-niveau const bliver ikke
    globalt i et vm-script, saa harness ikke kan kalde det -- og en formel der
    ikke kan kaldes udefra kan kun verificeres ved at laese kilden. */
-function divPrize(n){return Math.round(n*(1+(3-G.div)*BAL.prize.perDivision)/1000)*1000;}
+function divPrize(n){return Math.round(n*(BAL.money.prize[G.div]||1)/1000)*1000;}   // pengetrappen
 /* Value = assets + earnings + brand − debt. Four legs, and two of them can be
    negative, so the curve has a direction instead of only a slope. */
 function valuationParts(){
@@ -1760,6 +1797,7 @@ function playerValuation(p){
   v*=contractValueFactor(p.years);           // 1 year left is cheap; 4 is dear
   v*=(p.desperation||1);                     // the skint seller's discount (the heist)
   v*=(p.valNoise||1);                        // hidden spread, fixed at generation
+  v*=divValueMult();                         // pengetrappen: samme spiller er dyrere i en rigere række
   return Math.max(1000,Math.round(v/1000)*1000);
 }
 function genPlayer(pos,base,wmult){
@@ -2653,8 +2691,10 @@ function applyPts(h,gh,a,ga){
 function ticketPriceFactor(price){
   // Must reach ZERO, never a floor: a floor would make gate income start rising
   // again at absurd prices — the same trap the season-ticket curve had.
-  const T=BAL.ticket,d=price-T.sweetSpot;
-  return clamp(1+(d<0?-d*T.bargainLift:-d*T.elasticity),0,1.18);
+  // B4/pengetrappen: byens "normale pris" følger divisionen (L3 £10 → PL £50),
+  // og følsomheden er pr. RELATIV krone — ellers ville +£5 i Premier svide som +£5 i L3.
+  const T=BAL.ticket,pm=divPriceMult(),d=price-T.sweetSpot*pm;
+  return clamp(1+(d<0?-d*T.bargainLift/pm:-d*T.elasticity/pm),0,1.18);
 }
 /* ---------- the protest ladder (pakke 2) ----------
    Three rungs, and the level is STORED rather than derived on the fly, so the
@@ -2750,7 +2790,8 @@ function settleFinances(res){
   // B2: driften er fast pr. åbent niveau og løber HVER kampdag, hjemme som ude
   const drift=facDriftTotal();
   res.drift=drift;
-  const net=(G.sponsor?G.sponsor.per:0)+tvMoney()+gate+extras-wages-loanPay-drift;
+  const chute=(G.parachute&&G.parachute.perMD)||0;   // pengetrappen: faldskærmen efter nedrykning
+  const net=(G.sponsor?G.sponsor.per:0)+tvMoney()+chute+gate+extras-wages-loanPay-drift;
   G.balance+=net;G.lastNet=net;      // "kassen + ugentligt netto altid synligt" (GDD)
   /* Rolling earnings for the valuation. G.periodNet is no good for this — it
      resets every sixth matchday, so a club's earning power would appear to
@@ -2774,7 +2815,7 @@ function settleFinances(res){
   if(G.balance<0&&!G.warnedNeg){G.warnedNeg=true;
     msg("The co-owners","CO","A politely furious letter","\"We note with interest that the club is now technically insolvent. We trust you have a plan. We would love to hear it. Any time. Really.\"",null);}
   if(G.balance>0)G.warnedNeg=false;
-  if(G.balance<BAL.bank.crisisAt&&!G.bankDue)G.bankDue=true;
+  if(G.balance<bankBAL().crisisAt&&!G.bankDue)G.bankDue=true;
 }
 function updateFormMood(res){
   const w=res.gf>res.ga,d=res.gf===res.ga;
@@ -2790,7 +2831,7 @@ function updateFormMood(res){
     else{p.form=clamp(p.form-BAL.fresh.benchForm,-6,6);p.conf=clamp(p.conf-BAL.fresh.benchConf,10,95);}
   }
   {const MO=BAL.mood;
-   G.fanMood=clamp(G.fanMood+(w?MO.win:d?MO.draw:MO.loss)+(gatePrice(res.big)>BAL.ticket.moodPenaltyAbove?MO.dearTicket:0)
+   G.fanMood=clamp(G.fanMood+(w?MO.win:d?MO.draw:MO.loss)+(gatePrice(res.big)>BAL.ticket.moodPenaltyAbove*divPriceMult()?MO.dearTicket:0)
      +G.stands.family*MO.familyPerTier+MO.pubDrift*facEff("pub"),5,100);}
   easeMood(); // the way back: anger cools toward a baseline (egen funktion -> maalbar)
   updateProtest();
@@ -3022,9 +3063,16 @@ function finishSeason(o){
   const promoted=o.promoted&&G.div>0;
   const relegated=!!o.relegated&&G.div<BAL.relegation.floorDiv&&!promoted;
   const oldDiv=G.div;   // M1: pyramide-udvekslingen skal kende min gamle division
+  // Faldskærmen løber i én sæson — den ældes FØR en eventuel ny nedrykning sætter en frisk
+  if(G.parachute){G.parachute.seasons--;if(G.parachute.seasons<=0)G.parachute=null;}
   settleCommitments(promoted);   // before the summer wipes p.sg — goal bonuses need it
   if(promoted){
-    G.div--;G.wageCap=Math.round(G.wageCap*BAL.wages.capOnPromotion/100)*100;
+    G.div--;
+    /* Pengetrappen: loftet følger MARKEDSFORHOLDET mellem rækkerne × en slack-
+       faktor under 1 — den nye række er dyrere end loftet når at vokse, og det
+       ER den oprykkede klubs kendte klemme. */
+    const wr=G_DIV_WAGE(G.div)/G_DIV_WAGE(G.div+1);
+    G.wageCap=Math.round(G.wageCap*wr*BAL.wages.capOnPromotion/100)*100;
     if(G.sponsor)G.sponsor.per=Math.round(G.sponsor.per*BAL.sponsor.onPromotion); // may be shirtless — that used to crash the run
     // the squad renegotiates too: a higher division costs more than the cap alone
     const before=G.squad.reduce((s,p)=>s+p.wage,0);
@@ -3038,7 +3086,17 @@ function finishSeason(o){
      the crisis, and trading out of it is the season's work. */
   else if(relegated){
     const wasDiv=G.divNames[G.div];
-    G.div++;G.wageCap=Math.round(G.wageCap*BAL.wages.capOnRelegation/100)*100;
+    G.div++;
+    // Pengetrappen: spejlet af oprykningen — loftet falder mod den nye rækkes marked,
+    // men LANGSOMMERE end markedet (slack over 1), så lønklemmen er ægte.
+    const wrd=G_DIV_WAGE(G.div)/G_DIV_WAGE(G.div-1);
+    G.wageCap=Math.round(G.wageCap*wrd*BAL.wages.capOnRelegation/100)*100;
+    /* Faldskærmen (pengetrappen): rykker man ud af en TV-række, følger en del af
+       TV-pengene med ned i én sæson — som i virkeligheden, og det der gør
+       nedrykning til en krise man kan HANDLE sig ud af i stedet for en henrettelse. */
+    if(BAL.tv.parachute){const oldTv=BAL.tv.perMD[G.div-1]||0;
+      G.parachute={perMD:Math.round(oldTv*BAL.tv.parachute),seasons:1};
+      if(G.parachute.perMD>0)addNews("CLUB","Faldskærmspenge: "+kfmt(G.parachute.perMD)+" pr. kamp i én sæson følger med ned fra "+wasDiv+".");}
     if(G.sponsor)G.sponsor.per=Math.round(G.sponsor.per*BAL.sponsor.onRelegation);
     bumpTrust(BAL.owners.trustRelegation);
     const before=G.squad.reduce((s,p)=>s+p.wage,0);
@@ -3146,8 +3204,8 @@ function sponsorRenewal(){
   const first=pick(SPONSORS);
   const rest=SPONSORS.filter(s=>s.n!==first.n);          // never two identical cards
   const offers=[sponsorCopy(first),sponsorCopy(pick(rest.length?rest:SPONSORS))];
-  offers[0].per=Math.round(offers[0].per*(1+(3-G.div)*BAL.sponsor.perDivision));offers[0].seasonsLeft=2;offers[0].demand=null;
-  offers[1].per=Math.round(offers[1].per*(1+(3-G.div)*BAL.sponsor.perDivision)*1.35);offers[1].seasonsLeft=1;offers[1].demand="top "+Math.max(4,G.objectivePos-2)+" finish or "+pct(BAL.sponsor.penalty)+" penalty";
+  offers[0].per=Math.round(offers[0].per*(BAL.money.sponsor[G.div]||1));offers[0].seasonsLeft=2;offers[0].demand=null;
+  offers[1].per=Math.round(offers[1].per*(BAL.money.sponsor[G.div]||1)*1.35);offers[1].seasonsLeft=1;offers[1].demand="top "+Math.max(4,G.objectivePos-2)+" finish or "+pct(BAL.sponsor.penalty)+" penalty";
   // shown after the budget meeting, not buried in the inbox
   G.sponsorDue={offers,renewal:true};
 }
@@ -3516,7 +3574,7 @@ function openBankUltimatum(){
      aad en tribune finansieret paa kredit hele noedlinjen: klubben stod i
      krisen uden laanemulighed og fik trin 4 tilbudt 2,7 gange pr. karriere.
      Maalt. Nu er det kun et aabent KRISElaan der lukker doeren. */
-  const canLoan=!(G.loans||[]).some(l=>l.kind==="crisis")&&loanHeadroom()>=BAL.bank.minLoan;
+  const canLoan=!(G.loans||[]).some(l=>l.kind==="crisis")&&loanHeadroom()>=bankBAL().minLoan;
   /* Trin 4 ligger HER, mellem bankens ultimatum og administrationen: naar der
      hverken er en mand at saelge eller et laan at tage, er der stadig et sted
      at hente penge -- medejernes lommer. Prisen er klubben, en skive ad
@@ -3553,7 +3611,9 @@ function loanRate(amount){
      koden gjorde det ikke: en klub med et stadion og en trup er en bank mindre
      bange for. Fortegnet er negativt (mere vaerd = billigere), og bidraget er
      clampet, saa en Premier-klub ikke laaner gratis. */
-  const valDrop=clamp(clubValuation()/1000000*(-B.rateValue),0,B.rateValueCap);
+  // Pengetrappen: værdien normaliseres til L3-ækvivalente millioner — ellers
+  // maxer alle klubber rabatten, og signalet (substans vs. division) dør.
+  const valDrop=clamp(clubValuation()/1000000/divValueMult()*(-B.rateValue),0,B.rateValueCap);
   const r=B.rateBase
     +(G.admins||0)*B.rateAdmin
     +(3-G.div)*B.rateDivision
@@ -3565,8 +3625,16 @@ function loanRate(amount){
 /* Hvad banken vil laane dig oveni det du allerede skylder. Nul betyder nej --
    og det er praecis dét, der goer trin 2 i trappen aegte: banken siger ikke nej
    fordi en variabel er sat, men fordi du allerede skylder for meget. */
+/* Pengetrappen: bankens FASTE beløb følger divisionens pengestrøm — en Premier-
+   klub taler ikke med banken om £10.000. Renterne er procenter og skalerer selv. */
+function bankBAL(){
+  const B=BAL.bank,m=divCashMult();
+  return {...B,crisisAt:Math.round(B.crisisAt*m),loanCash:Math.round(B.loanCash*m),
+    minLoan:Math.round(B.minLoan*m),loanStep:Math.round(B.loanStep*m),
+    maxLoan:Math.round(B.maxLoan*m),adminRelief:Math.round(B.adminRelief*m)};
+}
 function loanHeadroom(){
-  const B=BAL.bank;
+  const B=bankBAL();
   const room=Math.floor((seasonIncome()*B.exposureCap-loansOwed())/B.loanStep)*B.loanStep;
   return clamp(room,0,B.maxLoan);
 }
@@ -3588,12 +3656,12 @@ function takeLoan(amount,termMD,kind){
 }
 function openBank(){
   const room=loanHeadroom();
-  modal={type:"loan",amount:Math.min(room,BAL.bank.loanCash),term:BAL.bank.loanTerm,room};
+  modal={type:"loan",amount:Math.min(room,bankBAL().loanCash),term:BAL.bank.loanTerm,room};
   render();
 }
 function loanConfirm(){
   const m=modal;if(!m||m.type!=="loan")return;
-  if(m.amount<BAL.bank.minLoan||m.amount>m.room){modal=null;render();return;}
+  if(m.amount<bankBAL().minLoan||m.amount>m.room){modal=null;render();return;}
   takeLoan(m.amount,m.term);
   modal=null;render();
 }
@@ -3669,7 +3737,7 @@ function administration(){
   bumpTrust(BAL.owners.trustAdmin);
   G.me.pts=Math.max(0,G.me.pts-BAL.bank.adminPoints);
   G.fanMood=clamp(G.fanMood-10,5,100);
-  G.balance+=BAL.bank.adminRelief; // creditors restructure
+  G.balance+=bankBAL().adminRelief; // creditors restructure
   for(const p of G.squad)p.wage=Math.round(p.wage*BAL.wages.adminCut/10)*10; // renegotiated down
   /* Trin 3 var FOER kun det flade lønnedslag ovenfor. Det er den vedvarende,
      tunede lettelse der holder administration paa ~1 pr. karriere, saa det
@@ -3737,7 +3805,7 @@ function resolveBank(sell){
        og mag -- det er den samme, paa krisens vilkaar. Renten afspejler at
        kassen er i minus, saa den ER dyrere; den er bare ikke en anden regel. */
     const room=loanHeadroom();
-    const amt=Math.max(BAL.bank.minLoan,Math.min(room,BAL.bank.loanCash));
+    const amt=Math.max(bankBAL().minLoan,Math.min(room,bankBAL().loanCash));
     const t=takeLoan(amt,BAL.bank.loanTerm,"crisis");
     if(t)addNews("CLUB","Emergency loan taken at "+pct(t.rate)+". The manager calls it 'sporting'. It is not.");
   }
@@ -4980,9 +5048,9 @@ function viewClub(){
     }).join("")}</div>`:"")
   +(tab==="money"?`<div class="card"><div class="kick" style="margin-bottom:4px">Billetter · sæsonkort: <b>${G.seasonTix.sold.toLocaleString("en-GB")}</b> holdere</div>
     <div class="rowline"><span>Billetpris</span>
-    <span class="stepper" style="margin:0"><button onclick="G.ticket=Math.max(5,G.ticket-1);render()">‹</button><span class="val" style="font-size:20px;min-width:60px">£${G.ticket}</span><button onclick="G.ticket=Math.min(30,G.ticket+1);render()">›</button></span></div>
+    <span class="stepper" style="margin:0"><button onclick="G.ticket=Math.max(Math.round(5*divPriceMult()),G.ticket-Math.max(1,Math.round(divPriceMult())));render()">‹</button><span class="val" style="font-size:20px;min-width:60px">£${G.ticket}</span><button onclick="G.ticket=Math.min(Math.round(30*divPriceMult()),G.ticket+Math.max(1,Math.round(divPriceMult())));render()">›</button></span></div>
     <div class="rowline"><span>Storkamps-tillæg <small>· seksere, guldkampe, bundbrag, playoffs · hver £1 over £${BAL.ticket.sweetSpot} koster omkring ${pct(BAL.ticket.elasticity)} af publikum</small></span>
-    <span class="stepper" style="margin:0"><button onclick="G.bigExtra=Math.max(0,G.bigExtra-1);render()">‹</button><span class="val" style="font-size:20px;min-width:50px">+£${G.bigExtra}</span><button onclick="G.bigExtra=Math.min(8,G.bigExtra+1);render()">›</button></span></div>
+    <span class="stepper" style="margin:0"><button onclick="G.bigExtra=Math.max(0,G.bigExtra-Math.max(1,Math.round(divPriceMult())));render()">‹</button><span class="val" style="font-size:20px;min-width:50px">+£${G.bigExtra}</span><button onclick="G.bigExtra=Math.min(Math.round(8*divPriceMult()),G.bigExtra+Math.max(1,Math.round(divPriceMult())));render()">›</button></span></div>
     ${(()=>{
       const at=attendance(),paying=Math.max(0,at-G.seasonTix.sold);
       const now=paying*G.ticket,up=(()=>{const t=G.ticket;G.ticket=t+1;const a=attendance();G.ticket=t;return Math.max(0,a-G.seasonTix.sold)*(t+1);})();
@@ -5037,7 +5105,7 @@ function viewClub(){
     <div class="statchips" style="margin-top:2px"><span class="sc">TAC <b>${G.coach.tac}</b></span><span class="sc">MAN <b>${G.coach.man}</b></span><span class="sc">DEV <b>${G.coach.dev}</b></span><span class="sc">OVR <b>${coachOvr(G.coach)}</b></span></div>
     ${(G.loans||[]).length?`<div class="rowline"><span>Banklån <small>· ${G.loans.length} åbne, ${loansOwed()>0?kfmt(loansOwed())+" skyldes stadig":""}</small></span><span class="amt num" style="color:#E07A6A">−${kfmt((G.loans||[]).reduce((a,l)=>a+l.perMD,0))}/kamp</span></div>`:""}
     ${G.fireSale?`<div class="rowline" style="border-left:3px solid #E07A6A;padding-left:8px"><span style="color:#E07A6A"><b>Administration · brandudsalg</b> <small>· sælg eller frigiv ${kfmt(Math.max(0,G.fireSale.target-G.fireSale.done))}/uge mere inden for ${G.fireSale.left} kampdag${G.fireSale.left===1?"":"e"}, ellers vælger de</small></span><span class="amt num" style="color:#E07A6A">${kfmt(G.fireSale.done)}/${kfmt(G.fireSale.target)}</span></div>`:""}
-    <div class="rowline"><span>Lån <small>· banken låner op til ${kfmt(loanHeadroom())} til ${pct(loanRate(Math.max(BAL.bank.minLoan,loanHeadroom())))}</small></span>${loanHeadroom()>=BAL.bank.minLoan?`<button class="abtn comm" style="padding:6px 10px;font-size:10.5px" onclick="openBank()">Tal med banken</button>`:`<span class="num" style="color:var(--muted);font-size:11px">ikke mens du skylder så meget</span>`}</div>
+    <div class="rowline"><span>Lån <small>· banken låner op til ${kfmt(loanHeadroom())} til ${pct(loanRate(Math.max(bankBAL().minLoan,loanHeadroom())))}</small></span>${loanHeadroom()>=bankBAL().minLoan?`<button class="abtn comm" style="padding:6px 10px;font-size:10.5px" onclick="openBank()">Tal med banken</button>`:`<span class="num" style="color:var(--muted);font-size:11px">ikke mens du skylder så meget</span>`}</div>
     ${(G.commitments||[]).map(c=>`<div class="rowline"><span>${c.kind==="fee"?"Rate":c.kind==="promo"?"Oprykningsklausul":"Målklausul"} <small>· ${c.name.split(" ")[1]} → ${c.club} · ${c.seasonsLeft} sæson${c.seasonsLeft===1?"":"er"} igen</small></span>
       <span class="amt num" style="color:#E07A6A">−${kfmt(c.amt)}${c.kind==="fee"?"/år":c.kind==="goals"?"/mål":""}</span></div>`).join("")}</div>
   <div class="tifo"><div class="q">${fanQuote()}</div><div class="who">The Shed End · humør ${Math.round(G.fanMood)}/100</div>
@@ -5319,12 +5387,12 @@ function renderModal(){
       body=`<button class="abtn ghost" onclick="negoFinish()">Gå din vej</button>`;
     }else if(n.stage==="fee"){
       body=`<div class="stepper">
-          <button onclick="nego.fee=Math.max(1000,nego.fee-10000);render()" title="−${kfmt(10000)}">‹‹</button>
-          <button onclick="nego.fee=Math.max(1000,nego.fee-1000);render()" title="−${kfmt(1000)}">‹</button>
+          <button onclick="nego.fee=Math.max(1000,nego.fee-stepFor(nego.fee)*10);render()" title="stort skridt ned">‹‹</button>
+          <button onclick="nego.fee=Math.max(1000,nego.fee-stepFor(nego.fee));render()" title="lille skridt ned">‹</button>
           <span class="val num">${kfmt(n.fee)}</span>
-          <button onclick="nego.fee+=1000;render()" title="+${kfmt(1000)}">›</button>
-          <button onclick="nego.fee+=10000;render()" title="+${kfmt(10000)}">››</button></div>
-        <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £1,000 · ‹‹ ›› = £10,000</div>
+          <button onclick="nego.fee+=stepFor(nego.fee);render()" title="lille skridt op">›</button>
+          <button onclick="nego.fee+=stepFor(nego.fee)*10;render()" title="stort skridt op">››</button></div>
+        <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = ${kfmt(stepFor(n.fee))} · ‹‹ ›› = ${kfmt(stepFor(n.fee)*10)}</div>
         <button class="glowbtn" onclick="negoSubmit()">Byd ${kfmt(n.fee)}</button>
         ${!n.finalUsed?`<button class="abtn comm" onclick="negoSubmit(true)">⚡ SIDSTE BUD · ${kfmt(n.fee)} — ja/nej med det samme</button>`:""}
         <button class="abtn ghost" onclick="negoAbort()">Ikke i dag</button>`;
@@ -5338,12 +5406,12 @@ function renderModal(){
         <div class="why" style="font-size:11px"><b>${ROLES[n.role].n}:</b> ${n.role==="key"?`billigst på lønnen, og et stående løfte — start ham i ${pct(BAL.role.keyShare)} af sæsonen, ellers lægger hans agent, hans selvtillid og bestyrelsen alle mærke til det.`:n.role==="pro"?`dyrest på lønnen, og kun for de unge: en dreng under ${BAL.role.proAgeMax} der spiller ${pct(BAL.role.proShare)} af sæsonen udvikler sig et år hurtigere.`:`lover ingenting og kræver ingenting. Prisen for ikke at være bundet af noget.`}</div>
         <div class="kick" style="margin-top:12px">Ugeløn</div>
         <div class="stepper">
-          <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-500);render()" title="−${kfmt(500)}">‹‹</button>
-          <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-50);render()" title="−${kfmt(50)}">‹</button>
+          <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-wStepFor(nego.wageOffer)*10);render()" title="stort skridt ned">‹‹</button>
+          <button onclick="nego.wageOffer=Math.max(100,nego.wageOffer-wStepFor(nego.wageOffer));render()" title="lille skridt ned">‹</button>
           <span class="val num" style="font-size:24px">${kfmt(n.wageOffer)}/u</span>
-          <button onclick="nego.wageOffer+=50;render()" title="+${kfmt(50)}">›</button>
-          <button onclick="nego.wageOffer+=500;render()" title="+${kfmt(500)}">››</button></div>
-        <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £50 · ‹‹ ›› = £500</div>
+          <button onclick="nego.wageOffer+=wStepFor(nego.wageOffer);render()" title="lille skridt op">›</button>
+          <button onclick="nego.wageOffer+=wStepFor(nego.wageOffer)*10;render()" title="stort skridt op">››</button></div>
+        <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = ${kfmt(wStepFor(n.wageOffer))} · ‹‹ ›› = ${kfmt(wStepFor(n.wageOffer)*10)}</div>
         ${(()=>{
           if(!seen)return `<div class="why"><b>Han har ikke nævnt sit tal.</b> Kontraktlængde og den rolle du lover flytter det begge — læg et bud, så siger hans agent hvor langt du er fra.</div>`;
           const d=wageDemand();
@@ -5391,12 +5459,12 @@ function renderModal(){
       <p>${p.pos} · ATT ${p.att} · DEF ${p.def} · PHY ${p.phy} · ${p.age} år · vurderet ~${kfmt(Math.round(p.value*1.15))}</p>
       <p>Billigere end straks-forhandling — men faxen er offentlig. Rivaler kan byde over, og du kan miste ham.</p>
       <div class="stepper">
-        <button onclick="modal.amount=Math.max(1000,modal.amount-10000);render()" title="−${kfmt(10000)}">‹‹</button>
-        <button onclick="modal.amount=Math.max(1000,modal.amount-1000);render()" title="−${kfmt(1000)}">‹</button>
+        <button onclick="modal.amount=Math.max(1000,modal.amount-stepFor(modal.amount)*10);render()" title="stort skridt ned">‹‹</button>
+        <button onclick="modal.amount=Math.max(1000,modal.amount-stepFor(modal.amount));render()" title="lille skridt ned">‹</button>
         <span class="val num">${kfmt(modal.amount)}</span>
-        <button onclick="modal.amount+=1000;render()" title="+${kfmt(1000)}">›</button>
-        <button onclick="modal.amount+=10000;render()" title="+${kfmt(10000)}">››</button></div>
-      <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £1,000 · ‹‹ ›› = £10,000</div>
+        <button onclick="modal.amount+=stepFor(modal.amount);render()" title="lille skridt op">›</button>
+        <button onclick="modal.amount+=stepFor(modal.amount)*10;render()" title="stort skridt op">››</button></div>
+      <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = ${kfmt(stepFor(modal.amount))} · ‹‹ ›› = ${kfmt(stepFor(modal.amount)*10)}</div>
       <button class="glowbtn" onclick="sendFormalBid()">Fax buddet ▸</button>
       <button class="abtn ghost" onclick="modal=null;render()">Ikke i dag</button>
     </div></div>`;
@@ -5452,7 +5520,7 @@ function renderModal(){
            rente banken naevner. Naar rummet er mindre end £50k, eller renten
            ikke er basis, loej knappen om baade beloeb og afdrag. Nu bygges de tre
            tal af de samme kald som selve laanet, saa knappen taler sandt. */
-        const amt=Math.max(BAL.bank.minLoan,Math.min(loanHeadroom(),BAL.bank.loanCash));
+        const amt=Math.max(bankBAL().minLoan,Math.min(loanHeadroom(),bankBAL().loanCash));
         const t=loanTerms(amt,BAL.bank.loanTerm);
         return `<button class="abtn comm" onclick="resolveBank(false)">Nødlån · +${kfmt(amt)} nu, ${kfmt(t.perMD)}/kamp × ${t.term} til ${pct(t.rate)}</button>`;
       })():`<p><b>Lånelinjen er brugt.</b> Ét lån ad gangen, formand.</p>`}
@@ -5473,9 +5541,9 @@ function renderModal(){
       <p>"We have looked at the books, chairman.${(G.admins||0)?" All of them, including the interesting years.":""} Here is what the money costs you."</p>
       <div class="kick" style="margin-top:10px">Hvor meget</div>
       <div class="stepper">
-        <button onclick="modal.amount=Math.max(${BAL.bank.minLoan},modal.amount-${BAL.bank.loanStep});render()">‹</button>
+        <button onclick="modal.amount=Math.max(bankBAL().minLoan,modal.amount-bankBAL().loanStep);render()">‹</button>
         <span class="val num" style="font-size:24px">${kfmt(m.amount)}</span>
-        <button onclick="modal.amount=Math.min(modal.room,modal.amount+${BAL.bank.loanStep});render()">›</button></div>
+        <button onclick="modal.amount=Math.min(modal.room,modal.amount+bankBAL().loanStep);render()">›</button></div>
       <div class="kick" style="margin-top:8px">Over hvor mange kampdage</div>
       <div class="stepper">
         <button onclick="modal.term=Math.max(${BAL.bank.minTermMD},modal.term-1);render()">‹</button>
@@ -5627,9 +5695,9 @@ function renderModal(){
       const pastPeak=est.sold>0&&dearer.cash<=est.cash&&cheaper.cash>est.cash;
       body=`<div class="kick" style="margin-top:10px">Sæsonkortpris · én betaling for hele sæsonen</div>
         <div class="stepper">
-          <button onclick="modal.tixPrice=Math.max(20,modal.tixPrice-10);render()" title="−${gbp(10)}">‹</button>
+          <button onclick="modal.tixPrice=Math.max(Math.round(20*divPriceMult()),modal.tixPrice-Math.round(10*divPriceMult()));render()" title="ned">‹</button>
           <span class="val num" style="font-size:26px">£${m.tixPrice}</span>
-          <button onclick="modal.tixPrice=Math.min(400,modal.tixPrice+10);render()" title="+${gbp(10)}">›</button></div>
+          <button onclick="modal.tixPrice=Math.min(Math.round(400*divPriceMult()),modal.tixPrice+Math.round(10*divPriceMult()));render()" title="op">›</button></div>
         <div class="kick" style="text-align:center;font-size:9px;margin-top:4px">En sæson ved lågen koster ${kfmt(G.ticket*homeGames())} · ${homeGames()} hjemmekampe</div>
         <div class="card" style="margin-top:10px">
           <div class="rowline"><span>Solgte kort <small>· skøn</small></span><span class="amt num">${est.sold.toLocaleString("en-GB")} <small style="color:var(--muted)">af ${Math.min(G.capacity,Math.round(townDemand())).toLocaleString("en-GB")} inden for rækkevidde</small></span></div>
@@ -5749,12 +5817,12 @@ function renderModal(){
       <div class="why">${modal.why}</div>
       <div class="why" style="border-left-color:rgba(224,90,74,.5);background:rgba(224,90,74,.07)">Tre runder. Gå tomhændet — eller fornærm ham — og han tager ikke et møde før <b>sæson ${G.season+BAL.owners.lockSeasons}</b>.</div>
       <div class="stepper">
-        <button onclick="modal.offer=Math.max(5000,modal.offer-25000);render()" title="−${kfmt(25000)}">‹‹</button>
-        <button onclick="modal.offer=Math.max(5000,modal.offer-5000);render()" title="−${kfmt(5000)}">‹</button>
+        <button onclick="modal.offer=Math.max(5000,modal.offer-stepFor(modal.offer)*10);render()" title="stort skridt ned">‹‹</button>
+        <button onclick="modal.offer=Math.max(5000,modal.offer-stepFor(modal.offer));render()" title="lille skridt ned">‹</button>
         <span class="val num">${kfmt(modal.offer)}</span>
-        <button onclick="modal.offer+=5000;render()" title="+${kfmt(5000)}">›</button>
-        <button onclick="modal.offer+=25000;render()" title="+${kfmt(25000)}">››</button></div>
-      <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = £5,000 · ‹‹ ›› = £25,000</div>
+        <button onclick="modal.offer+=stepFor(modal.offer);render()" title="lille skridt op">›</button>
+        <button onclick="modal.offer+=stepFor(modal.offer)*10;render()" title="stort skridt op">››</button></div>
+      <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = ${kfmt(stepFor(modal.offer))} · ‹‹ ›› = ${kfmt(stepFor(modal.offer)*10)}</div>
       <button class="glowbtn" onclick="ownerNegoSubmit()">Byd ${kfmt(modal.offer)}</button>
       <button class="abtn ghost" onclick="modal=null;render()">En anden dag</button>
     </div></div>`;
