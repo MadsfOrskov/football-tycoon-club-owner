@@ -428,6 +428,8 @@ const BAL={
   // A fax nobody answers used to hang forever, and the player stayed flagged
   // BID PENDING for the rest of the career. Bids now have a shelf life.
   bids:{replyMD:2},
+  /* D1: indbakkens loft. Var en bar 18 inde i msg(). */
+  inbox:{cap:18},
   /* Nat 4, pakke 24. ROLES var kun en pris: key x0,90, rot x1,00, pro x1,18 --
      og p.role gjorde INTET efter underskriften. QA maalte konsekvensen (afsnit
      7b): "Key player" er baade billigst OG den eneste rolle en ambitioes
@@ -2381,6 +2383,11 @@ function finalizeMatch(match){
     if(G.md<G.rounds/2&&ga-gf>=BAL.big.revengeMargin&&(!G.revenge||ga-gf>G.revenge.by))
       G.revenge={opp:match.oppIdx,md:G.md,by:ga-gf};
     G.md++;
+    /* D1: ugen er gaaet. Rydningen ligger HER -- i det ene udtryk der flytter
+       kampdagen -- og ikke i nextWeek(), fordi tiden ogsaa flytter sig naar man
+       spiller kampen inde fra klubben. Foer de nye beskeder genereres nedenfor,
+       saa denne uges post aldrig rammes af sin egen rydning. */
+    sweepInbox();
     settleFinances(res);
   }
   // player stats & MOTM
@@ -3814,10 +3821,36 @@ function clearPendingBid(pid){const ix=marketById(pid);if(ix>=0)G.market[ix].pen
 function releaseMsg(m){
   if(m&&m.action&&!m.done&&BID_KINDS.includes(m.action.kind))clearPendingBid(m.action.pid);
 }
+/* D1: en besked der VENTER PAA SVAR er en ubesvaret beslutning. Den maa ikke
+   kunne forsvinde af sig selv -- hverken ved ugerydningen eller naar indbakken
+   loeber over. Det er samme fejlklasse som pakke 0's blindgyde: spilleren
+   mistede hele bud-sporet, fordi beslutningen laa et sted han ikke kunne naa. */
+function msgAwaitsAnswer(m){return !!(m&&m.action&&!m.done);}
 function msg(from,av,title,body,action){
   if(action&&BID_KINDS.includes(action.kind))action.expires=G.md+BAL.bids.replyMD;
-  G.inbox.unshift({id:G.msgId++,from,av,title,body,action,unread:true,done:false});
-  if(G.inbox.length>18)releaseMsg(G.inbox.pop());
+  G.inbox.unshift({id:G.msgId++,from,av,title,body,action,unread:true,done:false,keep:false});
+  /* Loeber den over, ryger den AELDSTE der ikke venter paa svar -- foer stod
+     der bare pop(), og en gammel ubesvaret budbesked kunne skubbes ud bagfra. */
+  while(G.inbox.length>BAL.inbox.cap){
+    let ix=-1;
+    for(let i=G.inbox.length-1;i>=0;i--)if(!msgAwaitsAnswer(G.inbox[i])){ix=i;break;}
+    if(ix<0)break;   // alt venter paa svar: saa vokser indbakken frem for at spise en beslutning
+    releaseMsg(G.inbox[ix]);G.inbox.splice(ix,1);
+  }
+}
+/* D1: rydningen ved kampdagsskifte. Har beskeden ingen knap, er den laest
+   faerdig. Behold-flaget er spillerens egen undtagelse; ubesvarede beslutninger
+   er spillets. Kaldt fra det ENE sted hvor G.md flytter sig. */
+function sweepInbox(){
+  if(!Array.isArray(G.inbox))return 0;
+  const before=G.inbox.length;
+  G.inbox=G.inbox.filter(m=>m.keep||msgAwaitsAnswer(m));
+  return before-G.inbox.length;
+}
+function keepMsg(id){
+  const m=G.inbox.find(x=>x.id===id);
+  if(m)m.keep=!m.keep;
+  saveGame();render();
 }
 /* A bid you never answered is a bid the selling club stops waiting for. This
    both un-sticks the player and gives the bidding war the hurry it needs. */
@@ -4709,10 +4742,15 @@ function viewInbox(){
         act=`<div class="actions">${btns}</div>${clock}`;
       }
     }
+    /* D1: behold-flaget. Vises kun paa de beskeder rydningen kan tage — en
+       besked der venter paa svar bliver staaende under alle omstaendigheder,
+       saa en stjerne paa den ville love noget den ikke afgoer. */
+    const pin=msgAwaitsAnswer(m)?"":`<button class="sellb" style="padding:3px 7px;flex-shrink:0${m.keep?";color:var(--acc)":""}" onclick="keepMsg(${m.id})" title="${m.keep?"Beholdes — tryk for at lade den ryge ved næste kampdag":"Behold ved næste kampdag"}">${m.keep?"★":"☆"}</button>`;
     return `<div class="irow"><div class="iav ${m.av==='R'||m.av==='GM'||m.av==='SF'?'g':''}">${m.av}</div>
       <div class="t">${m.title}<small>${m.from} — ${m.body}</small>${act}</div>${m.unread?'<div class="unread"></div>':''}
-      <button class="sellb" style="padding:3px 9px;flex-shrink:0" onclick="delMsg(${m.id})" title="Slet">✕</button></div>`;
-  }).join("")+'</div>';
+      ${pin}<button class="sellb" style="padding:3px 9px;flex-shrink:0" onclick="delMsg(${m.id})" title="Slet">✕</button></div>`;
+  }).join("")+'</div>'+
+  `<div class="card"><div class="kick" style="font-size:9px;text-transform:none;letter-spacing:.2px">Ved næste kampdag ryddes den post der ikke skal besvares. Alt der venter på dit svar bliver stående — også når det er gammelt. Sæt ☆ på en besked du vil beholde.</div></div>`;
 }
 function actMsg(id,choice){const m=G.inbox.find(x=>x.id===id);if(m)handleAction(m,choice);}
 function delMsg(id){
