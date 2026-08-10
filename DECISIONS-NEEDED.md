@@ -278,3 +278,33 @@ Bemærk at `lazy` — botten der ikke låner, ikke forlanger og ikke bygger — 
 **Det jeg vil advare imod:** jeg brugte en time på at tune pakke 25 mod målinger på **20 seeds × 20 sæsoner**, og tallene svingede 2,75 → 3,40 → 5,10 administrationer på parameterændringer der burde have flyttet lidt. Det var **stikprøvestøj**, ikke signal — 20 karrierer er for få til at tune på, og jeg opdagede det for sent. Alle tal ovenfor er derfor målt på 60 seeds × 20 sæsoner med begge profiler, og de tre mellemregninger er kasseret. **Tun ikke nat 4 på 20 seeds.**
 
 **Den knap jeg tror på, hvis det skal ned:** `loanHeadroom()` skal skalere med `G.netEwma` (punkt 11). Det rammer præcis den klub der låner sig ind i trappen, uden at røre den der låner for at bygge en tribune den kan betale af — og det er den ene af de fire tråde der ikke har en naturlig bremse i dag.
+
+---
+
+## 13. A2: decimaltegnet i millioner er dansk, resten af tallene er en-GB (nat 7)
+
+`WORKPLAN-OEJEBLIKKE.md` A2 dikterer formen ordret: under £1M → `£950k`, derover
+→ `£1,02M`. Jeg har bygget den præcis så, med **dansk decimalkomma**, fordi hele
+fladen er dansk og fordi valget er dit.
+
+**Men det støder mod resten af talformateringen**, og det skal du kende:
+
+| funktion | eksempel | komma betyder |
+|---|---|---|
+| `gbp()` (fulde beløb) | `£276,028` | **tusinder** (en-GB) |
+| `kfmt()` k-grenen | `£12.5k` | punktum er decimal (en-GB) |
+| `kfmt()` M-grenen (ny) | `£1,02M` | **decimal** (dansk) |
+
+Står `£1,02M` og `£276,028` på samme skærm — og det gør de, fx på Økonomi-fanen
+— kan samme tegn læses som to ting. `£1,02M` kan læses som "1020 millioner".
+
+**Jeg har ikke lavet dit valg om.** Alternativerne, hvis du vil flytte det:
+
+1. **Behold som nu** (dansk komma). Konsekvent med prosaen, kolliderer med tallene.
+2. **`£1.02M`** — ét tegn i `mnum()` (fjern `.replace(".",",")`). Konsekvent med
+   `£12.5k` og `£276,028`; mindre dansk.
+3. **`£1,02 mio.`** — utvetydigt dansk, men længere, og toplinjen er smal på en iPhone.
+
+Ændringen er ét sted: `mnum()` lige over `kfmt()` i prototypen. Sig til, så retter
+jeg den på et minut. Jeg har **ikke** rørt k-grenens punktum, for den har stået
+sådan siden pakke 1 og harness'ens `kOf()` spejler den.
