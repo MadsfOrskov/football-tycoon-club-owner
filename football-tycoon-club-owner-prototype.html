@@ -280,7 +280,10 @@ const gbp=n=>"£"+Math.round(n).toLocaleString("en-GB");
    Efterfoelgende nuller klippes: £2,50M -> £2,5M, £45,00M -> £45M. */
 const mnum=v=>v.toFixed(2).replace(/0+$/,"").replace(/\.$/,"").replace(".",",");
 const kfmt=n=>{const a=Math.abs(n);
-  return a>=1e6?"£"+mnum(n/1e6)+"M":a>=1000?"£"+(n/1000).toFixed(n%1000===0?0:1)+"k":gbp(n);};
+  /* Graensen er 999.500, ikke 1.000.000: k-grenen runder til en decimal, saa
+     £999.950 blev "£1000.0k" -- fire cifre foran k, altsaa praecis det A2
+     skulle fjerne. Fanget af A2's egen vagt ved 60 seeds x 20 saesoner. */
+  return a>=1e6-500?"£"+mnum(n/1e6)+"M":a>=1000?"£"+(n/1000).toFixed(n%1000===0?0:1)+"k":gbp(n);};
 function poisson(l){let L=Math.exp(-l),k=0,p=1;do{k++;p*=Math.random();}while(p>L);return k-1;}
 function ord(n){return n+(n===1?"st":n===2?"nd":n===3?"rd":"th");}
 /* user input goes into innerHTML in ~20 places — strip anything that could
