@@ -46,4 +46,5 @@ Dertil fra tidligere på aftenen (samme branch, allerede rapporteret løbende): 
 
 - Hver pakke: `node --check` + 6×4/10×5 grøn før commit; balancefølsomme pakker (R1b/R1c/R4/R7) målt med 20×5 eller 20×12/20×20 `--stats` mod gulvtallene.
 - Gulvtal ved sidste måling: netto S1 −£897 (mål ±£2k) · indtjening S1 £184k (mål £100-260k) · store kampe 4.1 (mål 3-5) · admin 0 · oprykning S1 12/20 · linjer pr. kamp median 8.
-- **Slutgate: 200×20 `--bot=both` KØRER I SKRIVENDE STUND** (0 fejl af de første 32 kørsler). Resultatet indsættes her — og master FF-merges — når den er færdig. Indtil da er master urørt af nattens pakker.
+- **Slutgate: 200×20 `--bot=both` GRØN — 0 fejl af 400 kørsler.** Første gate-forsøg fandt 2/400 falske røde i den nye R7-invariant (støjtolerance på én verdensfødsel); invarianten måler nu over tre fødsler (~5 sigma til begge sider), sabotagen blev efterprøvet igen, og hele gaten kørte forfra — grøn.
+- Slutdivision ved 20 sæsoner efter R7: sane-bot Premier **15 %** (før 37 %), lazy-bot **45 %** (før 59 % i M2.5-gaten). Begge profiler klatrer stadig — de bliver bare ikke længere kronet pr. automatik.
