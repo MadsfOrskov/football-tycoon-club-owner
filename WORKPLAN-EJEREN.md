@@ -2,6 +2,50 @@
 
 *Fire ændringer, dikteret af Mads 10/8 2026 mens `WORKPLAN-OEJEBLIKKE.md` var under opbygning på `nightly/oejeblikke`. **Ikke bygget.** Designspørgsmålene nedenfor er endnu ikke alle besvaret — se markeringerne.*
 
+---
+
+# ⭐ GRUNDPRINCIPPET: DIG og KLUBBEN er to ting
+
+**Mads, 10/8, og det er en arkitektonisk regel frem for en mekanik:**
+
+> *"Klubben er jo ikke gået nedenom og hjem bare fordi du har under 50%. Det der skal ske er, at man skal miste kontrollen med klubben og man kan derfor kun se den på samme måde som med andre klubber, hvor man ejer 5% f.eks. Der kan man stadig få udbytte og opbygge en personlig både formue og kontantbeholdning og dermed på sigt købe sig tilbage i kontrol af enten den klub eller en anden. Det er **MEGA vigtigt**, at du adskiller DIG og KLUBBEN."*
+
+## Der findes kun én relationsmodel
+
+**Dig og en klub, med en procentsats.**
+
+| Din andel | Din rolle |
+|---|---|
+| **over 50 %** | formand — du træffer beslutningerne |
+| **under 50 %** | investor — du modtager udbytte og ser på |
+
+Det er hele forskellen. **Ingen særtilfælde.** At miste flertallet i din første klub skal bruge **præcis samme kodevej** som at eje 5 % af en fremmed klub — for det *er* det samme.
+
+## Hvad det betyder for trin 5
+
+Trin 5 er **ikke** game over, og klubben går ikke under. Du **mister kontrollen**:
+
+- Klubben kører videre under majoritetsejeren. Den kan klare sig godt uden dig — og det er en del af ydmygelsen.
+- **Du modtager stadig udbytte** af din post. R3's udbyttekort er dermed ikke pynt, men den måde en investor tjener.
+- Du bygger videre på **din** formue og **dine** kontanter.
+- Og du kan **købe dig tilbage i kontrol** — af den klub, eller en anden.
+
+Karrieren fortsætter, fordi **du** er kontinuiteten i spillet, ikke klubben. Det er også det egentlige svar på, at spillet er uendeligt: der findes ingen tilstand, hvor der ikke er noget at gøre.
+
+## Konsekvensen for arkitekturen — læs denne før du koder
+
+`G` **er** i dag klubben. Ejerens penge, formue og historik bor inde i klubbens tilstand.
+
+**Adskillelsen af DIG og KLUBBEN er derfor den samme refaktorering som multi-klub** (`ROADMAP.md`, nat 6): `G` skal have en klub-dimension, og ejeren skal ligge uden for den. Det flytter refaktoreringen **frem i køen** — den er ikke længere en senere pakke, men forudsætningen for at trin 5, ejerandele, udbytte og formuen overhovedet kan betyde noget.
+
+Tre ting er allerede på vej i den rigtige retning og skal bruges:
+
+- **M2.5's todelte interface** er UI-udtrykket for adskillelsen. Ejer-laget (guld) er *dig*; klublaget er *klubben*. UI'et er foran modellen.
+- **B1** (`WORKPLAN-OEJEBLIKKE.md`, bygges netop nu) er det første synlige stykke: formue og kontanter som dine tal.
+- **E2's balancepind** er den første beslutning, hvor de to adskiller sig — klubbens budget er uændret, pengene er dine.
+
+---
+
 > ## ⚠️ KOLLISION MED ARBEJDE I FLUGT
 >
 > **E4 (pengekasse mod lønbudget) ændrer, hvad "kontanter" betyder — og `WORKPLAN-OEJEBLIKKE.md` punkt B1 gør netop nu "kontanter" til ét fast tal i toplinjen.** De to skal forenes, ikke bygges oven på hinanden. Læs B1 som den blev bygget, før du rører E4.
