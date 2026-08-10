@@ -4154,7 +4154,17 @@ function rescueOffer(){
      51 % ejer man knap nok halvdelen, og valget er "mist klubben nu med penge
      i kassen" mod "gaa i administration og behold den". Rum til at blive
      fortyndet er noget man KOEBER, ved at koebe medejere ud. */
-  const share=t>=L.rescueTrustFloor?L.rescueShare[0]:L.rescueShare[1];
+  /* QA's N3: skiven kunne vaere STOERRE end det man ejer. Med controlAt = 0
+     (nat 5 flyttede den fra 50) slap en redning igennem paa 1 % ejerskab, og en
+     skive paa 10 % gav myShare = -9. Ejerandelene summerede saa ikke laengere
+     til 100, og aera-skaermen viste en negativ andel. Man kan ikke saelge mere
+     end man har: skiven skaeres til det man ejer, og saa er redningen fatal --
+     hvilket modalen allerede siger og loseControl() allerede haandterer.
+     Skiven skaeres stadig IKKE ned for at holde dig OVER graensen; kun for ikke
+     at saelge noget der ikke findes. */
+  const want=t>=L.rescueTrustFloor?L.rescueShare[0]:L.rescueShare[1];
+  const share=Math.min(G.myShare,want);
+  if(share<=0)return false;
   const standing=clamp(clubValuation()/1000000,0.6,3.5);
   const cash=Math.round(L.rescueCash*share/L.rescueShare[0]*standing/1000)*1000;
   const backer=backers.reduce((a,b)=>b.share>a.share?b:a);
