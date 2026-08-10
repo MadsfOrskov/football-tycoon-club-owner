@@ -44,6 +44,18 @@ nav.gold button.on{color:#E3BE62}
   background:rgba(10,12,16,.92);border-bottom:1px solid rgba(227,190,98,.4);
   padding:6px 16px;font-size:11px;font-weight:800;color:#E3BE62;letter-spacing:.04em;
   position:sticky;top:0;z-index:15;}
+/* B1: de to tal der aldrig maa vaere et klik vaek. Kontanterne er det
+   handlingsanvisende tal (det er dem man koeber klubber for); formuen er
+   pejlemaerket der skal stige. Baade paa ejer-laget og inde i klubben, fordi
+   beslutningen om at koebe tages andre steder end paa Oekonomi-fanen. */
+.wealthbar{display:flex;gap:8px;align-items:stretch;margin:10px 16px 0;cursor:pointer;
+  background:var(--panel);border:1px solid rgba(227,190,98,.30);border-radius:11px;overflow:hidden;}
+.wealthbar>div{flex:1;padding:7px 11px;}
+.wealthbar>div+div{border-left:1px solid rgba(227,190,98,.22);text-align:right;}
+.wealthbar small{display:block;font-size:8.5px;letter-spacing:1.3px;color:var(--muted);font-weight:800;text-transform:uppercase;}
+.wealthbar b{font-family:'BarlowC';font-size:17px;font-weight:900;color:#E3BE62;letter-spacing:.2px;}
+.wealthbar .trend{font-size:8.5px;font-weight:800;letter-spacing:.6px;}
+body.light .wealthbar b{color:#8A6A16;}
 .top h1{font-family:'BarlowC';font-style:italic;font-weight:900;font-size:22px;text-transform:uppercase;line-height:.95;}
 .top .sub{font-size:10px;font-weight:600;color:var(--muted);letter-spacing:1.4px;text-transform:uppercase;margin-top:4px;}
 .top .right{margin-left:auto;text-align:right;}
@@ -4638,7 +4650,7 @@ function render(){
   // M2.5: lagene håndhæves af NAVIGATIONEN (hvilke knapper der findes), ikke af
   // en hård omdirigering her — så kan alt stadig renderes og måles udefra.
   const inClub=G.layer==="club";
-  let html=(inClub?ownerBar():"")+header()+'<div class="content">';
+  let html=(inClub?ownerBar():"")+header()+wealthBar()+'<div class="content">';
   if(screen==="home")html+=viewOwner();
   if(screen==="empire")html+=viewEmpire();
   if(screen==="books")html+=viewBooks();
@@ -4660,14 +4672,45 @@ function render(){
 /* M2.5: den tynde guld-linje — altid vejen hjem, aldrig i vejen */
 function ownerBar(){
   const o=G.owner||{name:"You"};
-  return `<div class="ownerbar" onclick="exitClub()"><span>‹ ${(o.name||"Dig").split(" ")[0].toUpperCase()}</span><span class="num">${kfmt(G.personalWealth||0)} · uge ${Math.min(G.md+1,G.rounds)} · S${G.season}</span></div>`;
+  return `<div class="ownerbar" onclick="exitClub()"><span>‹ ${(o.name||"Dig").split(" ")[0].toUpperCase()}</span><span class="num">uge ${Math.min(G.md+1,G.rounds)} · S${G.season}</span></div>`;
+}
+/* B1. Mads' definition, ordret: "Min formue er jo vaerdien af alle de andele
+   jeg ejer af klubberne relativt til deres vaerdi ... Kontanterne er ogsaa en del
+   af ens samlede formue." netWorth() regnede allerede praecis det; det der
+   manglede, var at de to tal stod et sted man kunne se dem hele tiden.
+   Bivirkning, der er en fordel: fortyndingen bliver synlig. Bliver du udvandet,
+   falder formuen, selvom klubben vokser. */
+function wealthParts(){
+  const own=Math.round(clubValuation()*G.myShare/100);
+  return {cash:G.personalWealth||0,own,stakes:stakesWorth(),total:netWorth()};
+}
+function wealthBar(){
+  const w=wealthParts();
+  const h=G.netWorthHistory||[];
+  const prev=h.length?h[h.length-1].v:null;
+  const d=prev?w.total-prev:0;
+  const trend=prev
+    ? `<span class="trend" style="color:${d>=0?"var(--acc)":"#E07A6A"}"> ${d>=0?"▲":"▼"} ${kfmt(Math.abs(d))} siden S${h[h.length-1].s}</span>`
+    : "";
+  return `<div class="wealthbar" onclick="explainWealth()" title="Hvad tallene betyder">
+    <div><small>Dine kontanter</small><b class="num">${kfmt(w.cash)}</b></div>
+    <div><small>Din formue${trend}</small><b class="num">${kfmt(w.total)}</b></div></div>`;
+}
+function explainWealth(){
+  const w=wealthParts();
+  const line=(l,v)=>`<div class="rowline"><span>${l}</span><span class="amt num">${kfmt(v)}</span></div>`;
+  modal={type:"info",title:"Kontanter og formue",
+    body:`<div class="card">${line("Dine kontanter",w.cash)}${line(G.myShare+"% af "+safeName(G.club)+" ("+kfmt(clubValuation())+")",w.own)}${(G.stakes||[]).length?line("Andele i andre klubber",w.stakes):""}<div class="rowline" style="border-top:1px solid rgba(255,255,255,.12)"><span><b>Formue i alt</b></span><span class="amt num"><b>${kfmt(w.total)}</b></span></div></div>`
+      +`<p><b>Kontanterne</b> er det tal du kan handle med — det er dem der gør det muligt at købe andele i andre klubber. <b>Formuen</b> kan du ikke bruge; den er pejlemærket, der skal stige.</p>`
+      +`<p>Bliver du udvandet — sælger du andele i din egen klub — falder formuen, selvom klubben vokser. Det er meningen: du ejer mindre af noget større.</p>`};
+  render();
 }
 function header(){
   if(G.layer!=="club"){
     const o=G.owner||{name:"Formanden",avatar:"🧑‍💼"};
     return `<div class="top gold"><div style="font-size:30px;line-height:1">${o.avatar||"🧑‍💼"}</div>
       <div><h1>${o.name}</h1><div class="sub">${reputationRead().label} · Uge ${Math.min(G.md+1,G.rounds)} · S${G.season}</div></div>
-      <div class="right"><small>Formue</small><b class="num">${kfmt(netWorth())}</b></div>
+      <div class="right"><small>Omdømme</small><b class="num">${reputationRead().value}</b></div>
       <button class="modebtn" onclick="toggleMode()">${G.mode==="dark"?"☀":"◗"}</button></div>`;
   }
   return `<div class="top">${svgShield(G.badge,true,40)}
