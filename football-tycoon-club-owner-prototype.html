@@ -3701,7 +3701,10 @@ function rescueOffer(){
      51 % ejer man knap nok halvdelen, og valget er "mist klubben nu med penge
      i kassen" mod "gaa i administration og behold den". Rum til at blive
      fortyndet er noget man KOEBER, ved at koebe medejere ud. */
-  const share=t>=L.rescueTrustFloor?L.rescueShare[0]:L.rescueShare[1];
+  /* Skiven kan ikke vaere stoerre end det du EJER: paa 4 % gav en 8 %-skive
+     en negativ ejerandel (fundet af 200x20-gaten). Den sidste redning tager
+     resten — og saa er loseControl-doeren nedenfor den der lukker aeraen. */
+  const share=Math.min(t>=L.rescueTrustFloor?L.rescueShare[0]:L.rescueShare[1],G.myShare);
   const standing=clamp(clubValuation()/1000000,0.6,3.5);
   const cash=Math.round(L.rescueCash*share/L.rescueShare[0]*standing/1000)*1000;
   const backer=backers.reduce((a,b)=>b.share>a.share?b:a);
