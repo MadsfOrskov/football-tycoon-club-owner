@@ -473,6 +473,19 @@ const BAL={
   // A fax nobody answers used to hang forever, and the player stayed flagged
   // BID PENDING for the rest of the career. Bids now have a shelf life.
   bids:{replyMD:2},
+  /* C3 (Mads 10/8): "Prisen er ikke fast. Trivsel, spilletid, rolle, klubbens
+     retning og hvor længe han har været her skal flytte, hvad han accepterer —
+     i BEGGE retninger." Faktorerne ganges på forlængelses-kravet. Spilletid
+     måles først fra kampdag 8 — tre kampe i august beviser ingenting. */
+  renew:{
+    happyAt:70, happyCut:0.92,      // glad og får det han vil have → accepterer mindre
+    unhappyAt:35, unhappyBump:1.12, // mistrives → skal overtales
+    starterShare:0.5, starterBump:1.08,  // bærer holdet og ved det
+    benchShare:0.25, benchCut:0.93,      // vil bare have en aftale
+    shareFromMD:8,
+    promotedCut:0.95, relegatedBump:1.1, // klubbens retning: op = han vil med, ned = han skal købes
+    tenureAt:4, tenureCut:0.95           // klubmand: loyalitet har en (lille) rabat
+  },
   /* C1 (Mads 10/8): "man skal kunne se interessen og hvem den er fra … flere
      niveauer af interesse … række ud til de andre klubber og presse på for et
      bud." Salget er et MARKED man arbejder — og et opkald har en tosidet pris:
@@ -1002,6 +1015,9 @@ function loadGame(){
   for(const p of [...G.squad,...G.market,...G.freeAgents])if(!Number.isFinite(p.load))p.load=0;
   ensureWorld();   // M1: en karriere gemt før pyramiden fandtes får sin verden født her
   if(!G.suitors)G.suitors={};   // C1: gamle karrierer fødes uden interessent-kartotek
+  // C3: anciennitet på gamle karrierer — truppen får en rimelig fortid, resten starter på nul
+  for(const p of G.squad)if(!Number.isFinite(p.tenure))p.tenure=R(1,5);
+  for(const p of [...G.market,...G.freeAgents])if(!Number.isFinite(p.tenure))p.tenure=0;
   // R1b: fonden er væk — penge i en gammel karrieres fond må ALDRIG fordampe
   if(G.fund>0||G.fundBonus>0){G.balance+=Math.round((G.fund||0)+(G.fundBonus||0));
     addNews("CLUB","The stadium fund has been folded back into the club account — every penny, bonus included.");}
@@ -1582,6 +1598,7 @@ function newGame(name,hue,mode){
   G.fixtures=makeFixtures();
   refreshMarket();
   pickCaptain();
+  for(const p of G.squad)p.tenure=R(1,6);   // C3: arvetruppen har en fortid i klubben
   msg("Solicitor Whitmore","JW","Welcome to "+name,"The keys, the debts, and one slightly haunted trophy cabinet are now yours. The co-owners expect a finish of "+ord(G.objectivePos)+" or better. Good luck, chairman.",null);
   msg(G.coach.n.split(" ")[0]+" (gaffer)","GM","The gaffer's first words","\""+G.coach.line+"\"",null);
   addNews("LEAGUE","The "+G.divNames[G.div]+" season kicks off. Twenty-six matchdays. One dream. Several dodgy pitches.");
@@ -1864,7 +1881,7 @@ function genPlayer(pos,base,wmult){
     traits:[...new Set(traits)],gem:false,inj:0,susp:0,sg:0,sapps:0,smotm:0,load:0,
     conf:R(42,60),capps:0,promiseMD:null,years:R(1,3),from:null,fromIdx:-1,
     desperation:1,heist:false,valNoise:1+(Math.random()*2-1)*BAL.market.noise,
-    listed:false,reqDone:false,renewLockMD:-99};
+    listed:false,reqDone:false,renewLockMD:-99,tenure:0};   // C3: anciennitet tæller fra ankomsten
   p.value=playerValuation(p);
   return p;
 }
@@ -3203,6 +3220,7 @@ function finishSeason(o){
     p.value=playerValuation(p);   // pakke T1: the one living valuation, squad and market alike
     p.form=0;p.sg=0;p.sapps=0;p.smotm=0;p.inj=0;p.susp=0;p.promiseMD=null;p.load=0;p.roleWarned=false; // a summer is a summer
     p.conf=clamp(p.conf*0.6+20,10,95); // confidence regresses toward the mean over summer
+    p.tenure=(p.tenure||0)+1;   // C3: endnu et år i klubbens tjeneste
   }
   applyRetirements();
   /* Pakke 16. The dressing room reads the table too. Applied AFTER the summer's
@@ -4135,23 +4153,72 @@ function wageDemandFor(years,role){
     power=n.p.years<=1?1.25:1.08;                       // short contract = his leverage
     if(n.p.sg>=10||n.p.smotm>=4)power*=1.2;             // big season = bigger number
     if(n.p.age>=31)power*=0.85;                          // he knows the legs are going
+    /* C3: prisen læser hans LIV i klubben, begge retninger (BAL.renew) */
+    const RN=BAL.renew;
+    if(n.p.conf>=RN.happyAt)power*=RN.happyCut;
+    else if(n.p.conf<=RN.unhappyAt)power*=RN.unhappyBump;
+    if(G.md>=RN.shareFromMD){
+      const share=(n.p.sapps||0)/Math.max(1,G.md);
+      if(share>=RN.starterShare)power*=RN.starterBump;
+      else if(share<=RN.benchShare)power*=RN.benchCut;
+    }
+    const last=G.history[G.history.length-1];
+    if(last&&last.promoted)power*=RN.promotedCut;
+    else if(last&&last.relegated)power*=RN.relegatedBump;
+    if((n.p.tenure||0)>=RN.tenureAt)power*=RN.tenureCut;
   }
   return Math.round(n.p.wage*ROLES[role].f*YEARF[years]*power/100)*100;
 }
 function wageDemand(){return wageDemandFor(nego.years,nego.role);}
 /* The poker rule (GDD): round one is blind. His number only becomes visible
-   once he has countered — or immediately on a renewal, where he already knows
-   exactly what he is worth to you. */
-function demandVisible(){return !!nego.renewal||nego.cround>=1;}
+   once he has countered. C3: det gælder OGSÅ forlængelser nu — han åbner med
+   en HOLDNING, ikke et tal, og tallet kommer først med hans første modsvar. */
+function demandVisible(){return nego.cround>=1;}
+/* C3: hvad han SIGER når forhandlingen åbner — hans situation, ikke hans tal.
+   Den stærkeste sandhed vinder: frit kort > stor sæson > mistrivsel > bænken >
+   klubmand > medvind. Returnerer {key,txt} så invarianten kan måle valget. */
+function renewalAttitude(p){
+  const RN=BAL.renew;
+  if(p.years<=1)return {key:"freecard",txt:"\"Jeg kan gå GRATIS til sommer, formand. Det ved vi begge to. Så lad os tale ordentligt sammen.\""};
+  if(p.sg>=10||p.smotm>=4)return {key:"bigseason",txt:"\""+(p.sg>=10?p.sg+" mål i denne sæson":"Kåret som banens bedste "+p.smotm+" gange")+". Sæsonen taler for mig — nu skal kontrakten bare følge med.\""};
+  if(p.conf<=RN.unhappyAt)return {key:"unhappy",txt:"\"Som tingene står … jeg ved ikke engang, om jeg VIL blive. Overbevis mig.\""};
+  if(G.md>=RN.shareFromMD&&(p.sapps||0)/Math.max(1,G.md)<=RN.benchShare)return {key:"benched",txt:"\"Jeg ser mest af kampene fra bænken. Giv mig minutter — eller giv mig en god grund til at blive alligevel.\""};
+  if((p.tenure||0)>=RN.tenureAt)return {key:"loyal",txt:"\""+p.tenure+" år har jeg givet det her sted. Jeg vil ikke være den dårligst betalte i omklædningsrummet.\""};
+  const last=G.history[G.history.length-1];
+  if(last&&last.promoted)return {key:"upbeat",txt:"\"Det her er på vej et sted hen, og jeg vil med. Men jeg vil ikke være billig arbejdskraft på rejsen.\""};
+  return {key:"settled",txt:"\"Jeg er glad her, formand. Men glad har stadig en pris — læg noget på bordet.\""};
+}
 function startRenewal(id){
   const p=byId(id);if(!p)return;
   if(G.md<p.renewLockMD){modal={type:"info",title:"\"Ikke endnu.\"",body:"Forhandlingerne med "+p.name.split(" ")[1]+" brød sammen for nylig. Begge sider blev enige om at vende tilbage — om "+(p.renewLockMD-G.md)+" kampdage."};render();return;}
   {const agent=agentOf(p.agentKey);
+  const att=renewalAttitude(p);
   nego={p,agent,agentKey:agent.key,ix:-1,freeAgent:true,renewal:true,round:0,cround:0,years:2,role:p.role||"rot",finalUsed:false,
         maxRounds:3+(agent.extraRound||0),giveIn:agent.giveIn,
-        wageOffer:Math.round(p.wage/100)*100,stage:"contract",
-        line:pick(agent.open).split(".")[0]+". \"Renewal talks, is it? "+(p.years<=1?"He can walk for FREE next summer, chairman. We both know what that does to the number.":p.age>=31?"He's no spring chicken and he knows it. Be fair, he'll sign.":"He's happy here. Happy still has a price.")+"\""};}
+        wageOffer:Math.round(p.wage/100)*100,stage:"contract",attitude:att.key,
+        line:att.txt};}
   modal={type:"nego"};render();
+}
+/* C3: hans svar på et modbud — tonen følger humøret, indholdet følger
+   afstanden, og er et længere åremål nok til at lukke hullet, SIGER han det
+   ("giv mig et år mere, så skriver jeg"). Kun forlængelser — køb taler
+   gennem agenten som altid. */
+function renewalReply(demand){
+  const n=nego,r=n.wageOffer/demand;
+  const mood=n.p.conf>=BAL.renew.happyAt?2:n.p.conf<=BAL.renew.unhappyAt?0:1;
+  let yearHint=null;
+  for(let y=n.years+1;y<=4;y++)if(wageDemandFor(y,n.role)<=n.wageOffer){yearHint=y;break;}
+  if(r>=0.9){
+    if(yearHint)return "\"Det er tæt. Giv mig "+(yearHint-n.years===1?"et år mere":yearHint+" år")+", så skriver jeg.\"";
+    return mood===2?"\"Det er TÆT, formand. En anelse mere, så giver jeg hånd.\""
+      :mood===0?"\"Næsten. Men 'næsten' har aldrig betalt min husleje.\""
+      :"\"Vi er ikke langt fra hinanden. Sidste stykke er dit.\"";
+  }
+  if(r>=0.8)return mood===2?"\"Jeg VIL gerne blive — men ikke for det der. Kom igen.\""
+    :mood===0?"\"Er det sådan, klubben ser på mig? Der er et godt stykke endnu.\""
+    :"\"Der er et stykke endnu, formand. Skru på noget.\"";
+  return mood===0?"\"Det der er ikke et tilbud, det er en fornærmelse. Sidste chance for at mene det alvorligt.\""
+    :"\"Vi er LANGT fra hinanden. Tænk dig om, og prøv igen.\"";
 }
 function roleRefused(){
   const n=nego;
@@ -4225,7 +4292,8 @@ function negoSubmit(finalOffer){
       n.dead=true;
       if(!n.renewal)negoCollapse();
     }else{
-      n.line=pick(n.agent.counter)+" (On those terms he wants ~"+kfmt(demand)+"/w)";
+      // C3: på en forlængelse svarer HAN — tone efter humør, indhold efter afstand
+      n.line=n.renewal?renewalReply(demand):pick(n.agent.counter)+" (On those terms he wants ~"+kfmt(demand)+"/w)";
     }
   }
   render();
@@ -5595,7 +5663,7 @@ function renderModal(){
           <button onclick="nego.wageOffer+=wStepFor(nego.wageOffer)*10;render()" title="stort skridt op">››</button></div>
         <div class="kick" style="text-align:center;margin-top:6px;font-size:9px">‹ › = ${kfmt(wStepFor(n.wageOffer))} · ‹‹ ›› = ${kfmt(wStepFor(n.wageOffer)*10)}</div>
         ${(()=>{
-          if(!seen)return `<div class="why"><b>Han har ikke nævnt sit tal.</b> Kontraktlængde og den rolle du lover flytter det begge — læg et bud, så siger hans agent hvor langt du er fra.</div>`;
+          if(!seen)return `<div class="why"><b>Han har ikke nævnt sit tal${n.renewal?" — kun sin holdning":""}.</b> Kontraktlængde og den rolle du lover flytter det begge — læg et bud, så hører du hvor langt du er fra.</div>`;
           const d=wageDemand();
           const short=d-n.wageOffer;
           return `<div class="why"><b>På ${n.years} år som ${ROLES[n.role].n.toLowerCase()}</b> forventer han <b class="num">~${kfmt(d)}/u</b>.
