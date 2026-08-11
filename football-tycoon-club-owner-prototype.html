@@ -473,6 +473,27 @@ const BAL={
   // A fax nobody answers used to hang forever, and the player stayed flagged
   // BID PENDING for the rest of the career. Bids now have a shelf life.
   bids:{replyMD:2},
+  /* C1 (Mads 10/8): "man skal kunne se interessen og hvem den er fra … flere
+     niveauer af interesse … række ud til de andre klubber og presse på for et
+     bud." Salget er et MARKED man arbejder — og et opkald har en tosidet pris:
+     det siver (spilleren/byen opdager det), og markedet reagerer i BEGGE
+     retninger: konkurrence driver bud op, desperation trykker dem ned. */
+  suitors:{
+    maxList:5,               // højst 5 klubber på interessent-listen
+    callLeakConf:2,          // selvtillid pr. opkald — han føler sig til salg
+    callLeakMood:2,          // fanstemning, hvis han er publikumsyndling
+    publicDouble:2,          // "ikke til salg", sagt offentligt — dobbelt pris at bryde
+    soldAfterWordMood:5,     // ... og sælger du ham ALLIGEVEL: byens ekstraregning
+    eagerBump:1.15,          // stærk position: konkurrencen lægger oveni
+    desperateCut:0.85,       // de kan lugte at du SKAL sælge
+    desperateAt:0,           // kassen under dette (×divCash) = desperat sælger
+    strongAt:150000,         // kassen over dette (×divCash) = stærk position
+    callBidChance:0.5,       // opkald til en "klar" klub → bud
+    callUpChance:0.55,       // ellers: interessen rykker et niveau op …
+    callWalkChance:0.3,      // … eller han er væk (du virkede for ivrig)
+    higherDivPremium:0.12,   // en klub fra en højere division byder over — pr. division
+    refreshMD:5              // interessen genberegnes efter N kampdage
+  },
   /* Nat 4, pakke 24. ROLES var kun en pris: key x0,90, rot x1,00, pro x1,18 --
      og p.role gjorde INTET efter underskriften. QA maalte konsekvensen (afsnit
      7b): "Key player" er baade billigst OG den eneste rolle en ambitioes
@@ -976,6 +997,7 @@ function loadGame(){
   if(!Number.isFinite(G.protest))G.protest=protestFor(G.fanMood,0);
   for(const p of [...G.squad,...G.market,...G.freeAgents])if(!Number.isFinite(p.load))p.load=0;
   ensureWorld();   // M1: en karriere gemt før pyramiden fandtes får sin verden født her
+  if(!G.suitors)G.suitors={};   // C1: gamle karrierer fødes uden interessent-kartotek
   // R1b: fonden er væk — penge i en gammel karrieres fond må ALDRIG fordampe
   if(G.fund>0||G.fundBonus>0){G.balance+=Math.round((G.fund||0)+(G.fundBonus||0));
     addNews("CLUB","The stadium fund has been folded back into the club account — every penny, bonus included.");}
@@ -1528,7 +1550,7 @@ function newGame(name,hue,mode){
     fanMood:60,objectivePos:8,objectiveBold:0,pendingMatch:null,gafferPatience:BAL.orders.startPatience,lastOrder:null,
     squad:posPlan.map(p=>genPlayer(p,R(42,58),G_DIV_WAGE(3))),
     market:[],freeAgents:[],scoutPending:0,scoutUsed:false,sponsorBoost:false,
-    wageCap:BAL.wages.cap,bids:[],callbacks:[],lastXI:[],
+    wageCap:BAL.wages.cap,bids:[],callbacks:[],lastXI:[],suitors:{},
     captain:null,captSuggested:false,talkCooldown:0,soldTo:[],agentRel:{},
     teams:[],me:{pts:0,gd:0,pl:0},fixtures:[],
     inbox:[],news:[],msgId:1,lastResult:null,deadlineDone:{},playoff:null,
@@ -3209,6 +3231,7 @@ function finishSeason(o){
   // pakke T3: goodwill cools a little each summer — a relationship is kept up, not banked once
   if(G.agentRel)for(const k in G.agentRel)G.agentRel[k]=Math.max(0,G.agentRel[k]-BAL.agents.relDecay);
   G.bids=[];G.callbacks=[];G.midwayDone=false;G.sponsorChecked=false;G.sponsorRiskMD=null;G.capRaiseUsed=false;G.lastXI=[];
+  G.suitors={};   // C1: sommerens rygter dør med sæsonen — interessen genfødes af form og alder
   G.seasonTix.sold=0;G.jerseyFactor=1;
   G.revenge=null;   // last year's grudge died with last year's fixture list
   // the curve the boardroom reads: one point per season, kept for the career
@@ -4292,15 +4315,20 @@ function handleAction(m,choice){
   if(a.kind==="sellOffer"){
     const p=byId(a.pid);
     if(!p){m.done=true;render();return;}
+    // C1: indbakkens ENE knap — beslutningen tages på tilbudssiden, ikke i en listerække
+    if(choice==="desk"){openOfferDesk(a.pid);return;}
     if(choice==="accept"){
-      if(G.squad.length<=13){m.done=true;m.body="The gaffer blocks the sale: \"I can't field eleven men and a cat. We asked the cat.\"";render();return;}
+      if(G.squad.length<=13){m.done=true;m.body="Gafferen blokerer salget: \"Jeg kan ikke stille elleve mand og en kat. Vi spurgte katten.\"";render();return;}
       m.done=true;
-      if(!executeSale(p,a.club,a.bid)){m.body="He refused the move. The deal is dead — and the fans love him for it.";}
+      if(!executeSale(p,a.club,a.bid)){m.body="Han afviste skiftet. Handlen er død — og fansene elsker ham for det.";}
     }else if(choice==="demand"){
-      if(Math.random()<0.5){a.bid=Math.round(a.bid*1.2/1000)*1000;m.body="They came back: "+kfmt(a.bid)+". Final offer, they say. They sound like they mean it.";}
-      else{m.done=true;m.body="They walked away. Their agent muttered something about 'amateurs'.";addNews("TRANSFER",a.club+" withdraw their bid for "+p.name+".");}
+      /* C1: modparten læser din kasse, når du presser. Stærk position → de
+         strækker sig (op til +38%); desperat → de kommer TILBAGE med mindre,
+         for de ved du ikke har råd til at sige nej to gange. */
+      if(Math.random()<0.5){a.bid=marketReaction(Math.round(a.bid*1.2));m.body="De kom igen: "+kfmt(a.bid)+". Sidste bud, siger de. De lyder som om de mener det.";}
+      else{m.done=true;m.body="De trak sig. Deres agent mumlede noget om 'amatører'.";addNews("TRANSFER",a.club+" trækker buddet på "+p.name+" tilbage.");}
       a.demanded=true;
-    }else{m.done=true;m.body="Bid rejected. "+p.name.split(" ")[1]+" stays. The gaffer nods approvingly.";}
+    }else{m.done=true;m.body="Bud afvist. "+p.name.split(" ")[1]+" bliver. Gafferen nikker anerkendende.";}
   }
   if(a.kind==="bidAccepted"){
     const p=G.market[marketById(a.pid)];
@@ -4859,8 +4887,7 @@ function shortWhy(amount){return G.balance<amount?"Kun "+kfmt(Math.max(0,G.balan
 function inboxActions(m){
   const a=m.action,id=m.id;
   switch(a.kind){
-    case "sellOffer":return ibtn(id,"accept","Tag imod "+kfmt(a.bid),"")+
-      (a.demanded?"":ibtn(id,"demand","Kræv mere","comm"))+ibtn(id,"reject","Afvis","ghost");
+    case "sellOffer":return ibtn(id,"desk","Se tilbud · "+kfmt(a.bid),"");   // C1: ÉN knap — beslutningen bor på tilbudssiden
     case "sponsorChoice":return ibtn(id,"A","Tag A (sikker)","")+ibtn(id,"B","Tag B (dristig)","comm");
     case "bidAccepted":return ibtn(id,"ok","Åbn forhandling · "+kfmt(a.fee),"",shortWhy(a.fee))+
       ibtn(id,"die","Lad det løbe ud","ghost");
@@ -4945,25 +4972,126 @@ function openSellSheet(id){
   if(!windowOpen()){modal={type:"info",title:"Vinduet er lukket",body:"Ingen klub kan registrere ham nu. Salg åbner igen med vinduet."};render();return;}
   if(G.squad.length<=13){modal={type:"info",title:"\"Ikke tale om.\"",body:"Gafferen blokerer døren: tretten mand er allerede en trup holdt sammen af tape og optimisme."};render();return;}
   if(!byId(id))return;
-  modal={type:"sellChoice",pid:id};render();
+  openOfferDesk(id);
 }
-function quickRing(id){
-  const p=byId(id);if(!p)return;
-  const appeal=clamp((ovr(p)-42)/20+(p.age<27?0.3:p.age>31?-0.4:0)+(p.traits.includes("dreamer")?0.3:0),0,1.4);
-  const n=Math.random()<appeal?(Math.random()<appeal*0.5?R(2,3):1):0;
-  const buyers=[];const used=new Set();
-  for(let i=0;i<n;i++){
-    let club;do{club=pick(G.teams).name}while(used.has(club));used.add(club);
-    buyers.push({club,bid:Math.round(p.value*0.9*(0.75+Math.random()*0.4)/1000)*1000,pushed:false,gone:false}); // haste smells: ~10% lower
+/* ---------- C1: tilbudssiden — et marked man arbejder ----------
+   Interessen er et KARTOTEK pr. spiller (G.suitors[pid]): klubber fra hele
+   pyramiden på tre niveauer — følger ham · overvejer · klar til at byde.
+   Levende bud bor stadig som sellOffer-beskeder i indbakken (én kilde til
+   sandhed, D1's rydning og udløb virker uændret); tilbudssiden er BORDET
+   hvor de samles, og hvor du kan ringe ud og arbejde markedet. */
+const SUITOR_LVL=["følger ham","overvejer","klar til at byde"];
+function playerAppeal(p){
+  return clamp((ovr(p)-42)/20+(p.age<27?0.3:p.age>31?-0.4:0)+(p.traits.includes("dreamer")?0.3:0),0,1.4);
+}
+/* Sælgerens position, som markedet LUGTER den: en kasse i bund betyder at du
+   skal sælge, og buddene falder. En sund kasse betyder at de skal overbyde
+   hinanden for at flytte dig. Tærsklerne følger divisionens pengestrøm. */
+function sellerPressure(){
+  const S=BAL.suitors,m=divCashMult();
+  if(G.balance<S.desperateAt*m)return "desperate";
+  if(G.balance>S.strongAt*m)return "strong";
+  return "neutral";
+}
+function marketReaction(bid){
+  const S=BAL.suitors,pr=sellerPressure();
+  return Math.round(bid*(pr==="strong"?S.eagerBump:pr==="desperate"?S.desperateCut:1)/1000)*1000;
+}
+function suitorBid(p,s){
+  const prem=1+BAL.suitors.higherDivPremium*Math.max(0,G.div-s.div);
+  return marketReaction(Math.round(p.value*(0.85+Math.random()*0.3)*prem));
+}
+function buildSuitors(pid){
+  const p=byId(pid);if(!p)return {md:G.md,list:[]};
+  const S=BAL.suitors,appeal=playerAppeal(p);
+  const n=Math.min(S.maxList,Math.max(appeal>0.25?1:0,Math.round(appeal*3+Math.random()*2)));
+  const pool=[...G.teams.map(t=>({name:t.name,div:G.div})),...(G.worldRest||[]).filter(c=>Math.abs(c.div-G.div)<=1).map(c=>({name:c.name,div:c.div}))];
+  const used=new Set(),list=[];
+  for(let i=0;i<n&&pool.length;i++){
+    let c;do{c=pick(pool);}while(used.has(c.name));used.add(c.name);
+    // jo bedre spilleren er, jo længere fremme er interessen
+    const lvl=Math.random()<appeal*0.35?2:Math.random()<0.55?1:0;
+    list.push({club:c.name,div:c.div,lvl,gone:false,called:false});
   }
-  modal={type:"sell",pid:id,buyers,line:n===0?"Reg rings around. Silence. \""+(p.age>31?"The age puts them off":"No takers right now")+", chairman. Patience — or goals.\"":"Reg rings around. "+(n===1?"One club":n+" clubs")+" call back before tea. They can smell the hurry — bids are on the low side."};
+  return {md:G.md,list};
+}
+function deskSuitors(pid){
+  const S=BAL.suitors;
+  if(!G.suitors[pid]||G.md-G.suitors[pid].md>=S.refreshMD){
+    const old=G.suitors[pid];
+    const fresh=buildSuitors(pid);
+    // klubber du allerede har i røret består — interessen genberegnes kun UDENOM
+    if(old)for(const s of old.list)if((s.called||s.gone)&&!fresh.list.some(x=>x.club===s.club))fresh.list.push(s);
+    G.suitors[pid]=fresh;
+  }
+  return G.suitors[pid];
+}
+function liveOffers(pid){
+  return G.inbox.filter(m=>m.action&&!m.done&&m.action.kind==="sellOffer"&&m.action.pid===pid);
+}
+function openOfferDesk(pid){
+  if(!byId(pid))return;
+  deskSuitors(pid);
+  modal={type:"offerDesk",pid};render();
+}
+/* Opkaldet — hjertet i C1, og det har en tosidet pris:
+   (1) DET SIVER. Han opdager at han bliver shoppet rundt: selvtillid falder,
+       og er han publikumsyndling, mærker byen det. Har du OFFENTLIGT sagt
+       "ikke til salg", koster det dobbelt — ordet var dit.
+   (2) MARKEDET REAGERER BEGGE VEJE. suitorBid går gennem marketReaction:
+       stærk kasse → konkurrencen lægger oveni; kasse i bund → de kan lugte
+       at du skal sælge, og buddet lander lavt. */
+function deskRing(pid,si){
+  const p=byId(pid);const K=G.suitors[pid];
+  if(!p||!K||!K.list[si]||K.list[si].gone)return;
+  const S=BAL.suitors,s=K.list[si];
+  const dbl=p.notForSale===G.season?S.publicDouble:1;
+  p.conf=clamp(p.conf-S.callLeakConf*dbl,10,95);
+  if(p.traits.includes("localhero"))G.fanMood=clamp(G.fanMood-S.callLeakMood*dbl,5,100);
+  s.called=true;
+  if(s.lvl>=2){
+    if(Math.random()<S.callBidChance){
+      const bid=suitorBid(p,s);
+      msg(pick(AGENTS).n,"A","Bud: "+p.name.split(" ")[1],s.club+" byder "+kfmt(bid)+" efter din rundringning. "+(sellerPressure()==="desperate"?"De ved godt, hvordan din kasse ser ud.":sellerPressure()==="strong"?"De måtte strække sig — de er ikke de eneste i røret.":"Lige efter bogen."),{kind:"sellOffer",pid,bid,club:s.club,div:s.div});
+      modal.line="\""+s.club+" er klar. Buddet ligger på bordet.\"";
+    }else if(Math.random()<S.callWalkChance){s.gone=true;modal.line="\""+s.club+" trak følehornene til sig. Man kan godt virke FOR ivrig, formand.\"";}
+    else modal.line="\""+s.club+" kigger stadig. De vil se en kamp mere.\"";
+  }else{
+    if(Math.random()<S.callUpChance){s.lvl++;modal.line="\""+s.club+" lyttede. De er rykket tættere på: "+SUITOR_LVL[s.lvl]+".\"";}
+    else if(Math.random()<S.callWalkChance){s.gone=true;modal.line="\""+s.club+" lagde på. Ikke deres type, siger de.\"";}
+    else modal.line="\""+s.club+" noterede interessen. Uforpligtende, som en politiker.\"";
+  }
+  render();
+}
+function deskAnswer(mid,choice){
+  const m=G.inbox.find(x=>x.id===mid);
+  if(!m||!m.action||m.done){render();return;}
+  handleAction(m,choice);
+  // handleAction kan have åbnet sin egen modal (spilleren nægter / info) — respekter den
+  if(modal&&modal.type==="offerDesk")render();
+}
+/* "Han er IKKE til salg" — sagt offentligt. Fansene elsker det, han retter
+   ryggen — men ordet er givet: shopper eller sælger du ham ALLIGEVEL i denne
+   sæson, betaler du dobbelt (deskRing) plus byens ekstraregning (executeSale). */
+function deskRejectPublic(mid){
+  const m=G.inbox.find(x=>x.id===mid);
+  if(!m||!m.action||m.done)return;
+  const p=byId(m.action.pid);
+  if(!p){m.done=true;render();return;}
+  m.done=true;m.body="Afvist — offentligt. \""+p.name.split(" ")[1]+" er ikke til salg. Punktum.\"";
+  p.notForSale=G.season;
+  p.conf=clamp(p.conf+3,10,95);
+  G.fanMood=clamp(G.fanMood+2,5,100);
+  addNews("CLUB","Formanden i Gazetten: \""+p.name.split(" ")[1].toUpperCase()+" ER IKKE TIL SALG.\" The Shed End maler allerede citatet på et lagen.");
   render();
 }
 function listPlayer(id){
   const p=byId(id);if(!p)return;
   p.listed=true;p.conf=clamp(p.conf-4,10,95);
   addNews("TRANSFER",p.name+" placed on the transfer list. He found out from the noticeboard. Not ideal.");
-  modal=null;render();
+  // C1: sat på listen FRA tilbudssiden — bliv på siden, det er dér man arbejder
+  if(!(modal&&modal.type==="offerDesk"))modal=null;
+  render();
 }
 function playerRefusesSale(p){
   return (p.traits.includes("localhero")||p.conf>85)&&Math.random()<0.4;
@@ -4991,6 +5119,12 @@ function executeSale(p,club,bid){
     if(rival)addNews("LEAGUE",club+", right in the promotion race with you, have signed "+p.name.split(" ")[1]+". You will meet a stronger "+club+" in the spring.");
   }
   if(p.traits.includes("localhero")){G.fanMood=clamp(G.fanMood-12,5,100);bumpTrust(BAL.owners.trustFavourite);addNews("FANS","You sold a local hero. The banners are being repainted. Angrily.");}
+  /* C1: "ikke til salg", sagde du — offentligt, i avisen. Byen har citatet
+     hængende på et lagen, og nu er han væk alligevel. Ordet koster. */
+  if(p.notForSale===G.season){
+    G.fanMood=clamp(G.fanMood-BAL.suitors.soldAfterWordMood,5,100);
+    addNews("FANS","\"IKKE TIL SALG\", stod der. Lagenet med citatet hænger der endnu — nu med formandens ansigt malet under. Byen glemmer ikke den slags.");
+  }
   if(promiseBroken){
     G.fanMood=clamp(G.fanMood-3,5,100);
     for(const q of G.squad)q.conf=clamp(q.conf-3,10,95);
@@ -5001,19 +5135,8 @@ function executeSale(p,club,bid){
   addNews("TRANSFER",p.name+" sold to "+club+" for "+kfmt(bid)+". You'll meet again — the fixture list guarantees it.");
   return true;
 }
-function sellAccept2(bi){
-  const p=byId(modal.pid);const b=modal.buyers[bi];
-  if(!p){modal=null;render();return;}
-  if(executeSale(p,b.club,b.bid))modal=null;
-  render();
-}
-function sellAccept(bi){sellAccept2(bi);}
-function sellPush(bi){
-  const b=modal.buyers[bi];
-  if(Math.random()<0.5){b.bid=Math.round(b.bid*1.15/1000)*1000;b.pushed=true;modal.line="\""+b.club+" grumbled… and went up to "+kfmt(b.bid)+". Final, they say.\"";}
-  else{b.gone=true;modal.line="\""+b.club+" hung up. 'Amateurs', they said. Rich, coming from them.\"";}
-  render();
-}
+/* C1: sellAccept/sellPush og "sell"/"sellChoice"-modalerne er væk — al handel
+   med dine egne spillere går over tilbudssiden (offerDesk), også den udgående. */
 function viewMarket(){
   const w=windowLabel();
   let h=`<div class="winbanner ${w.open?"":"closed"}"><span>${w.txt}</span></div>`;
@@ -5807,30 +5930,41 @@ function renderModal(){
       <button class="glowbtn" onclick="midwayConfirm()">Tilbage til arbejdet ▸</button>
     </div></div>`;
   }
-  if(modal.type==="sellChoice"){
+  if(modal.type==="offerDesk"){
     const p=byId(modal.pid);
     if(!p)return `<div class="overlay"><div class="sheet"><h2>Han er væk</h2><p>Den spiller har forladt klubben.</p><button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
+    const K=G.suitors[modal.pid]||{list:[]};
+    const offers=liveOffers(modal.pid);
+    const starter=G.lastXI.includes(p.id);
+    const pr=sellerPressure();
+    const prTxt=pr==="strong"?"Kassen er sund — konkurrencen arbejder for dig.":pr==="desperate"?"Kassen er i bund, og markedet kan lugte det. Bud lander lavt.":"Kassen er okay. Markedet læser dig neutralt.";
+    const clubLine=(name,div)=>{const dn=G.divNames[div!==undefined?div:G.div];
+      const pos=table().findIndex(r=>r.n===name)+1;
+      return pos>0?`${dn} · nr. ${pos} i tabellen`:dn;};
+    const wordGiven=p.notForSale===G.season;
     return `<div class="overlay"><div class="sheet">
-      <div class="kick">Salg af ${p.name.split(" ")[1]} — hvordan?</div>
+      <div class="kick">Tilbudssiden · ${p.name.split(" ")[1]}</div>
       <h2>${p.name}</h2>
-      <p>${p.pos} · ${ovr(p)} ovr · ${p.age} år · vurderet ~${kfmt(p.value)} · kontrakt ${p.years} år${p.traits.includes("localhero")?" · <b style='color:var(--comm)'>LOKAL HELT — han kan nægte at rejse, og fansene tilgiver måske aldrig</b>":""}</p>
-      <button class="abtn comm" onclick="quickRing(${modal.pid})" style="text-align:left"><b>Hurtig rundringning</b> — Reg finder bud NU, men hastværk lugter: ~10% lavere bud</button>
-      <button class="abtn" onclick="listPlayer(${modal.pid})" style="text-align:left"><b>Sæt ham på listen</b> — bud lander i indbakken over de kommende kampdage. Bedre priser, ingen garantier — og han opdager det (selvtillid −4)</button>
-      <button class="abtn ghost" onclick="modal=null;render()">Glem det</button>
-    </div></div>`;
-  }
-  if(modal.type==="sell"){
-    const p=byId(modal.pid);
-    if(!p)return `<div class="overlay"><div class="sheet"><h2>Han er væk</h2><p>Den spiller har forladt klubben.</p><button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
-    return `<div class="overlay"><div class="sheet">
-      <div class="kick">Markedet for ${p.name.split(" ")[1]}</div>
-      <h2>${p.name}</h2>
-      <p>${p.pos} · ${ovr(p)} ovr · ${p.age} år · vurderet ~${kfmt(p.value)}${p.traits.includes("localhero")?" · <b style='color:var(--comm)'>LOKAL HELT — The Shed End tilgiver ikke let</b>":""}</p>
-      <div class="dlg"><div class="iav g">R</div><div class="bubble">${modal.line}</div></div>
-      ${modal.buyers.filter(b=>!b.gone).map((b,bi)=>`<div class="card"><div class="rowline"><span>${b.club}</span><span class="amt num">${kfmt(b.bid)}</span></div>
-        <div class="actions"><button class="abtn" onclick="sellAccept(${modal.buyers.indexOf(b)})">Tag imod</button>
-        ${!b.pushed?`<button class="abtn comm" onclick="sellPush(${modal.buyers.indexOf(b)})">Pres for mere</button>`:""}</div></div>`).join("")}
-      <button class="abtn ghost" onclick="modal=null;render()">Behold ham</button>
+      <p>${p.pos} · ${ovr(p)} ovr · ${p.age} år · form ${p.conf>70?"høj":p.conf>40?"jævn":"lav"} · kontrakt ${p.years} år · ${kfmt(p.wage)}/u
+        · vurderet ~${kfmt(p.value)}${starter?" · <b>fast mand i startopstillingen</b>":""}${p.id===G.captain?" · <b>ANFØRER</b>":""}${p.traits.includes("localhero")?" · <b style='color:var(--comm)'>LOKAL HELT — han kan nægte at rejse, og fansene tilgiver måske aldrig</b>":""}${wordGiven?" · <b style='color:var(--comm)'>\"IKKE TIL SALG\" — dit ord, offentligt</b>":""}</p>
+      <div class="why">${prTxt}</div>
+      ${modal.line?`<div class="dlg"><div class="iav g">R</div><div class="bubble">${modal.line}</div></div>`:""}
+      ${offers.length?`<div class="kick" style="margin-top:6px">Bud på bordet</div>`+offers.map(m=>{const a=m.action;
+        return `<div class="card"><div class="rowline"><span>${a.club} <small>· ${clubLine(a.club,a.div)}</small></span><span class="amt num">${kfmt(a.bid)}</span></div>
+        <div class="actions"><button class="abtn" onclick="deskAnswer(${m.id},'accept')">Tag imod</button>
+        ${a.demanded?"":`<button class="abtn comm" onclick="deskAnswer(${m.id},'demand')">Kræv mere</button>`}
+        <button class="abtn ghost" onclick="deskAnswer(${m.id},'reject')">Afvis</button>
+        ${wordGiven?"":`<button class="abtn ghost" onclick="deskRejectPublic(${m.id})" title="Fansene elsker det — men shopper eller sælger du ham alligevel i denne sæson, koster ordet dobbelt">Afvis offentligt: "ikke til salg"</button>`}</div></div>`;}).join("")
+      :`<div class="newsline">Ingen bud på bordet lige nu.</div>`}
+      <div class="kick" style="margin-top:6px">Interessen — og telefonen</div>
+      ${K.list.filter(s=>!s.gone).map(s=>{const si=K.list.indexOf(s);
+        return `<div class="rowline"><span>${s.club} <small>· ${G.divNames[s.div]}</small></span>
+        <span><small>${SUITOR_LVL[s.lvl]}</small> ${windowOpen()?`<button class="sellb" onclick="deskRing(${modal.pid},${si})" title="Ring og pres på for et bud. Det siver: selvtillid −${BAL.suitors.callLeakConf*(wordGiven?BAL.suitors.publicDouble:1)}${wordGiven?" (dit ord er givet — dobbelt pris)":""}">Ring</button>`:""}</span></div>`;}).join("")
+      ||`<div class="newsline">Ingen klubber følger ham lige nu. ${playerAppeal(p)<0.3?"Alderen eller niveauet skræmmer.":"Form og spilletid kan ændre det."}</div>`}
+      ${K.list.some(s=>s.gone)?`<div class="kick" style="font-size:9px;text-transform:none;margin-top:4px">Væk fra listen: ${K.list.filter(s=>s.gone).map(s=>s.club).join(", ")} — for mange opkald skræmmer.</div>`:""}
+      ${windowOpen()?"":`<div class="why">Vinduet er lukket — telefonen er død, men interessen består.</div>`}
+      ${p.listed?`<div class="kick" style="font-size:9px;text-transform:none;margin-top:4px">Han står på transferlisten — bud kan lande af sig selv.</div>`:`<button class="abtn" onclick="listPlayer(${modal.pid})" style="text-align:left;margin-top:6px"><b>Sæt ham på listen</b> — bud lander i indbakken over de kommende kampdage. Han opdager det (selvtillid −4)</button>`}
+      <button class="abtn ghost" onclick="modal=null;render()">Luk siden</button>
     </div></div>`;
   }
   if(modal.type==="ownerNego"){
