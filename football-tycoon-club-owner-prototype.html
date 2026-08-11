@@ -486,6 +486,15 @@ const BAL={
     promotedCut:0.95, relegatedBump:1.1, // klubbens retning: op = han vil med, ned = han skal købes
     tenureAt:4, tenureCut:0.95           // klubmand: loyalitet har en (lille) rabat
   },
+  /* C4 (Mads 10/8): free agents peger vejen videre — "retningen, ikke tallet",
+     og han FORSVINDER ikke ved et afslag: afslaget er det, der gør næste bud
+     til en informeret gamble. En arbejdsløs spiller vil have SIKKERHED: for få
+     år lægger oveni kravet, og det siger han ligeud. */
+  freeAgent:{
+    wantYoung:3, wantOld:2, oldAt:30,  // hvor mange år han vil have, efter alder
+    shortBump:0.08,                    // pr. år under ønsket: kravet vokser
+    coolMD:2                           // han vil ikke tale igen FØR — men han er her stadig
+  },
   /* C1 (Mads 10/8): "man skal kunne se interessen og hvem den er fra … flere
      niveauer af interesse … række ud til de andre klubber og presse på for et
      bud." Salget er et MARKED man arbejder — og et opkald har en tosidet pris:
@@ -4065,6 +4074,8 @@ function startBuyNego(ix,freeAgent,opts){
   opts=opts||{};
   if(freeAgent&&!freeAgentSignable()){modal={type:"info",title:"Vinduet er lukket",body:"Free agents kan registreres i en kort nåde efter vinduet — den er forbi. De er her når det åbner igen."};render();return;}
   const p=freeAgent?G.freeAgents[ix]:G.market[ix];
+  // C4: et brudt forløb er ikke et farvel — men han vil se NOGET NYT, ikke samme bud i morgen
+  if(freeAgent&&p&&G.md<p.renewLockMD){modal={type:"info",title:"\"I hørte mit svar.\"",body:p.name.split(" ")[1]+" vil gerne tale igen — om "+(p.renewLockMD-G.md)+" kampdage, og med et bedre bud i hånden. Han er ikke gået nogen steder."};render();return;}
   const agent=agentOf(p.agentKey);   // pakke T3: the player's OWN agent, with his measurable style
   const rel=agentRelOf(agent.key);
   nego={p,agent,agentKey:agent.key,ix,freeAgent,round:0,cround:0,years:2,role:"rot",finalUsed:false,
@@ -4073,6 +4084,8 @@ function startBuyNego(ix,freeAgent,opts){
   const warm=rel>0.3?" \"And for YOU, chairman — I'll keep this civil.\"":"";
   if(freeAgent){
     nego.stage="contract";
+    // C4: en mand uden klub vil have SIKKERHED — hvor mange år, siger alderen
+    nego.wantYears=p.age>=BAL.freeAgent.oldAt?BAL.freeAgent.wantOld:BAL.freeAgent.wantYoung;
     nego.line=pick(agent.open)+" No fee on this one — straight to personal terms."+warm;
   }else{
     nego.stage="fee";
@@ -4149,6 +4162,8 @@ function wageDemandFor(years,role){
   const n=nego;
   let power=1.05;
   if(!n.renewal&&playerAmbitious(n.p))power*=1.12; // stepping DOWN a level costs extra
+  // C4: en free agent uden sikkerhed i årene lægger det på lønnen — og siger det
+  if(n.freeAgent&&!n.renewal&&n.wantYears&&years<n.wantYears)power*=1+BAL.freeAgent.shortBump*(n.wantYears-years);
   if(n.renewal){
     power=n.p.years<=1?1.25:1.08;                       // short contract = his leverage
     if(n.p.sg>=10||n.p.smotm>=4)power*=1.2;             // big season = bigger number
@@ -4293,7 +4308,10 @@ function negoSubmit(finalOffer){
       if(!n.renewal)negoCollapse();
     }else{
       // C3: på en forlængelse svarer HAN — tone efter humør, indhold efter afstand
-      n.line=n.renewal?renewalReply(demand):pick(n.agent.counter)+" (On those terms he wants ~"+kfmt(demand)+"/w)";
+      // C4: en free agent giver RETNINGEN, aldrig tallet — det er pokerens pris
+      n.line=n.renewal?renewalReply(demand)
+        :n.freeAgent?"\"Det er for lidt"+(n.wantYears&&n.years<n.wantYears?" — og jeg vil have mere end "+n.years+" år":"")+". "+(n.wageOffer>=demand*0.9?"Vi er ikke langt fra hinanden.":"Og ikke bare lidt for lidt.")+"\""
+        :pick(n.agent.counter)+" (On those terms he wants ~"+kfmt(demand)+"/w)";
     }
   }
   render();
@@ -4368,7 +4386,9 @@ function negoCollapse(){
   const n=nego;
   // inbox deals just die — but the bid flag has to die with them
   if(n.fromInbox){if(n.p)n.p.pendingBid=false;return;}
-  if(n.freeAgent){G.freeAgents.splice(n.ix,1);return;}
+  /* C4: han FORSVINDER ikke. Afslaget er dét, der gør næste bud muligt —
+     han vil bare ikke tale igen med det samme (coolMD), og han vil se noget nyt. */
+  if(n.freeAgent){if(n.p)n.p.renewLockMD=G.md+BAL.freeAgent.coolMD;return;}
   const p=G.market[n.ix];
   G.market.splice(n.ix,1);
   if(p&&n.stage==="fee"){ // afterlife: agent may call back cheaper
@@ -5648,7 +5668,9 @@ function renderModal(){
         <button class="abtn ghost" onclick="negoAbort()">Ikke i dag</button>`;
     }else{
       const seen=demandVisible();
-      const sub=v=>seen?`<br><span style="font-size:10px;opacity:.75" class="num">${kfmt(v)}</span>`:"";
+      // C4: en free agent afslører ALDRIG tallet — kun retningen (pokerens pris)
+      const faBlind=n.freeAgent&&!n.renewal;
+      const sub=v=>seen&&!faBlind?`<br><span style="font-size:10px;opacity:.75" class="num">${kfmt(v)}</span>`:"";
       body=`<div class="kick" style="margin-top:14px">Kontraktlængde${seen?` <span style="font-size:9px;text-transform:none">· længere aftaler er billigere pr. uge</span>`:""}</div>
         <div class="modes" style="margin-top:8px">${[1,2,3,4].map(y=>`<button class="${n.years===y?'on':''}" onclick="nego.years=${y};render()">${y} år${sub(wageDemandFor(y,n.role))}</button>`).join("")}</div>
         <div class="kick" style="margin-top:12px">Lovet spilletid${seen?` <span style="font-size:9px;text-transform:none">· status er penge værd for ham</span>`:""}</div>
@@ -5666,6 +5688,9 @@ function renderModal(){
           if(!seen)return `<div class="why"><b>Han har ikke nævnt sit tal${n.renewal?" — kun sin holdning":""}.</b> Kontraktlængde og den rolle du lover flytter det begge — læg et bud, så hører du hvor langt du er fra.</div>`;
           const d=wageDemand();
           const short=d-n.wageOffer;
+          /* C4: free agenten peger — "for lidt", "flere år" — men nævner aldrig
+             beløbet. Retningen gør andet bud til en informeret gamble. */
+          if(n.freeAgent&&!n.renewal)return `<div class="why"><b>Han siger ikke et tal.</b> ${short<=Math.round(d*0.03)?"Men tonen er blødere — det her kan være nok.":`Kun at dine <b class="num">${kfmt(n.wageOffer)}</b> er <b>for lidt${n.wageOffer>=d*0.9?" — men ikke langt fra":", og ikke bare lidt"}</b>${n.wantYears&&n.years<n.wantYears?`, og at ${n.years} år ikke er den sikkerhed han leder efter`:""}.`}</div>`;
           return `<div class="why"><b>På ${n.years} år som ${ROLES[n.role].n.toLowerCase()}</b> forventer han <b class="num">~${kfmt(d)}/u</b>.
             ${short<=Math.round(d*0.03)?`Dine <b class="num">${kfmt(n.wageOffer)}</b> burde gøre det.`
               :`Dine <b class="num">${kfmt(n.wageOffer)}</b> er cirka <b class="num">${kfmt(short)}</b> for lidt — eller skru på vilkårene ovenfor.`}</div>`;
