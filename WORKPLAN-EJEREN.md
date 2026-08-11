@@ -106,10 +106,10 @@ Punktet har stået åbent med *"trin 4 er fatalt fra start, fordi du kun ejer 51
 
 Og det gør formuen fra B1 læsbar fra første skærm: pinden flytter andel og kontanter i modsat retning, så de to tal betyder noget med det samme.
 
-### Åbne spørgsmål
+### Åbne spørgsmål — BESVARET af Mads 11/8
 
-1. **Hvem køber de andele, du sælger fra start?** Medejerne findes som karakterer med personlighed og humør. Får man tildelt dem, vælger man imellem dem, eller er de bare "byens folk" indtil de får ansigt? Sælger man ned til 51 %, sidder man fra dag ét med en bestyrelse, der ejer 49 % — og deres personligheder betyder så noget med det samme.
-2. **Kan man sælge yderligere ned senere?** Er pinden kun i onboardingen, eller er den en permanent kapitalkilde? Kan man sælge ned midt i en krise, er det en femte vej ud af økonomitrappen — og den skal i så fald forenes med trin 4, som handler om præcis det.
+1. **Hvem køber de andele, du sælger fra start?** ✅ **Tildelte medejere med personlighed** (de eksisterende karakterer). Du ser HVEM de er, FØR du låser pinden — så valget om at sælge ned også er et valg om hvem du får til bords.
+2. **Kan man sælge yderligere ned senere?** ✅ **Ja — pinden er altid en kapitalkilde.** Du kan altid sælge en skive af din klub til medejerne til clubValuation-pris. Skal FORENES med økonomitrappens trin 4: et frivilligt nedsalg i god tid er den billige udgave, tvangsredningen den dyre. (Husk gate-fundet 11/8: skiven kan aldrig være større end det du ejer.)
 
 ## E3. Ejeren må ikke misse de store begivenheder
 
