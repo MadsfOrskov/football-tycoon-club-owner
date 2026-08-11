@@ -767,6 +767,10 @@ const BAL={
     pushBump:1.18,           // ... and if it goes up, by this much
     holdCost:0.25,           // pay this share of his value (loyalty bonus) to keep a poached man
     poachRaise:0.35,         // N6: a rival's poach offer, above value, that you must beat to hold
+    /* C2: en rival du IGNORERER er ikke gratis — hans hoved er et andet sted
+       når kampen fløjtes i gang. Det er det, der gør "hold på ham" til et
+       valg: bonus (+5 og han bliver) · sælg (pengene) · ignorér (denne pris). */
+    ignoredConfHit:6,
     times:["21:15","21:40","22:05","22:25","22:47","23:05","23:30","23:57"]  // the ticking clock
   },
   agents:{
@@ -2255,6 +2259,7 @@ function playMatchday(){
   sweepInbox();   // D1: ugens post er læst — kun levende beslutninger og nålede beskeder består
   const dKey=G.md===5?"summer":G.md===14?"winter":null;
   if(dKey&&!G.deadlineDone[dKey]){G.deadlineDone[dKey]=true;openDeadline(dKey);return;}
+  settleDeadlineDay();   // C2: kampen fløjtes i gang — bordet ryddes, og ubesvarede rivaler koster
   const round=G.fixtures[G.md];
   const my=round.find(([h,a])=>h===0||a===0);
   const home=my[0]===0;const oppIdx=home?my[1]:my[0];
@@ -3901,16 +3906,38 @@ function buildDeadlineEvents(){
 }
 function openDeadline(key){
   const events=buildDeadlineEvents();
-  // N6: the feed doesn't land all at once — a few have "arrived", the rest tick in.
-  modal={type:"deadline",key,events,shown:Math.min(BAL.deadline.revealStart,events.length),closed:false};
+  /* C2 (Mads 10/8): bordet er SPILLETS tilstand, ikke modalens. Så kan man
+     smække siden i, gå i kartoteket eller banken, og komme tilbage — de gamle
+     poster ligger der endnu, med deres svar. Bordet ryddes først når kampen
+     faktisk spilles (settleDeadlineDay), og at ignorere en rival har en pris. */
+  G.deadline={key,events,shown:Math.min(BAL.deadline.revealStart,events.length)};
+  modal={type:"deadline"};
   render();
+}
+function reopenDeadline(){
+  if(!G.deadline)return;
+  modal={type:"deadline"};render();
 }
 function dlAdvance(){ // N6: the clock ticks on — the next event arrives
-  if(!modal||modal.type!=="deadline")return;
-  modal.shown=Math.min(modal.events.length,(modal.shown||0)+1);
+  if(!G.deadline)return;
+  G.deadline.shown=Math.min(G.deadline.events.length,(G.deadline.shown||0)+1);
   render();
 }
-function dlEvt(i){return modal&&modal.events&&modal.events[i];}
+function dlEvt(i){return G.deadline&&G.deadline.events&&G.deadline.events[i];}
+/* C2: vinduet smækker i når kampen spilles. Rivaler du lod hænge i luften er
+   ikke gratis: manden ved, nogen ville have ham, og du sagde ingenting. */
+function settleDeadlineDay(){
+  if(!G.deadline)return;
+  const unsettled=[];
+  for(const e of G.deadline.events){
+    if(e.kind==="poach"&&!e.done){
+      const p=byId(e.pid);
+      if(p){p.conf=clamp(p.conf-BAL.deadline.ignoredConfHit,10,95);unsettled.push(p.name.split(" ")[1]);}
+    }
+  }
+  if(unsettled.length)addNews("CLUB","Deadline day er forbi. "+unsettled.join(" og ")+" fik aldrig et ord med på vejen om rival-interessen — "+(unsettled.length===1?"han":"de")+" går til kamp med hovedet et andet sted.");
+  G.deadline=null;
+}
 function dlHeistSign(i){
   const e=dlEvt(i);if(!e||e.done||e.kind!=="heist")return;
   if(G.balance<e.price){e.done=true;e.outcome="No funds — he signed elsewhere before midnight.";render();return;}
@@ -3968,7 +3995,10 @@ function dlPoachLet(i){
   e.outcome=ok?("Let him go to "+club+" for "+kfmt(e.offer)+". Sometimes the money is right."):"He refused to move. He stays after all.";
   render();
 }
-function dlClose(){modal=null;playMatchday();}
+/* C2: at lukke siden er IKKE at spille kampen — bordet ligger fremme til
+   kampen fløjtes i gang. dlPlay er den gamle "smæk i og spil"-vej. */
+function dlClose(){modal=null;render();}
+function dlPlay(){modal=null;playMatchday();}
 
 /* ---------- inbox & messages ---------- */
 /* The three replies to a formal bid are the only messages that hold a market
@@ -4789,7 +4819,9 @@ function viewOwner(){
     ${deskN?"":'<div class="newsline">Et tomt bord. Nyd det, mens det varer.</div>'}</div>`;
   if(G.phase==="season"&&G.md<G.rounds){
     const dl=(G.md===5&&!G.deadlineDone.summer)||(G.md===14&&!G.deadlineDone.winter);
+    const dlOpen=G.deadline?G.deadline.events.slice(0,G.deadline.shown||G.deadline.events.length).filter(e=>!e.done).length:0;
     h+=`<div class="card"><div class="kick">Ugen</div>
+      ${G.deadline?`<div class="newsline" style="cursor:pointer;color:var(--comm)" onclick="reopenDeadline()">⚡ Deadline day-bordet ligger fremme — ${dlOpen?dlOpen+" åbne muligheder":"alt afgjort"} ▸</div>`:""}
       <div class="rowline" style="border:none"><span style="font-size:12px">Uge ${G.md+1} af ${G.rounds} — hele pyramiden spiller. Gafferen kører holdet, medmindre du går ind.</span></div>
       <button class="glowbtn" onclick="nextWeek()">${dl?"⚡ Deadline Day":"▶&nbsp; Næste uge"}</button></div>`;
   }else{
@@ -4818,6 +4850,7 @@ function teamOverview(){
         <div class="club">${svgShield(initials(home?opp:G.club),!home,50)}<div class="cname">${home?opp:G.club}</div><div class="csub">${home?"Ude":"Hjemme"}</div></div>
       </div>
       <div class="venue">${home?`<span>Forventet gate ~${attendance(bigNow).toLocaleString("en-GB")}</span>${bigNow?"·<b style=\"color:var(--comm)\">STOR</b>":""}·<b>Under lysmasterne</b>`:`<span>Udebanetur</span>·<b>Minibussen kører klokken ni</b>`}</div>
+      ${G.deadline?`<div class="newsline" style="cursor:pointer;color:var(--comm)" onclick="reopenDeadline()">⚡ Deadline day-bordet ligger fremme ▸</div>`:""}
       <button class="glowbtn" onclick="playMatchday()">${dl?"⚡ Deadline Day":"▶&nbsp; Spil kampdag"}</button>
     </div></div>`;
   }else if(G.phase==="playoff_semi"){
@@ -5619,24 +5652,33 @@ function renderModal(){
     </div></div>`;
   }
   if(modal.type==="deadline"){
-    const m=modal;
+    const m=G.deadline;
+    if(!m)return `<div class="overlay"><div class="sheet"><h2>Bordet er ryddet</h2><p>Deadline day er forbi.</p><button class="glowbtn" onclick="modal=null;render()">OK</button></div></div>`;
     const clubName=ix=>G.teams[ix]?G.teams[ix].name:"a rival";
+    /* C2: fuld information pr. post — spilleren, klubben, hvad et nej (eller
+       tavshed) koster, og hvor meget nat der er igen. */
     const card=(e,i)=>{
       if(e.kind==="heist"){
         const p=e.player,band=potBand(p);
+        const normal=Math.round(p.value/(p.desperation||BAL.deadline.heistDiscount)/1000)*1000;
         return `<div class="card"><div class="rowline" style="border:none;padding-bottom:2px"><span class="kick" style="color:var(--comm)">${e.time} · éndags-kup</span><span class="kick">${clubName(e.fromIdx)} · mangler penge</span></div>
-          <div class="rowline"><span>${p.name} <small>· ${p.pos} · ${ovr(p)} ovr${band?" · "+potBandText(p):""}</small></span><span class="amt num">${kfmt(e.price)}</span></div>
+          <div class="rowline"><span>${p.name} <small>· ${p.pos} · ${p.age} år · ${ovr(p)} ovr${band?" · "+potBandText(p):""}</small></span><span class="amt num">${kfmt(e.price)}</span></div>
+          <div class="kick" style="text-transform:none">Normalpris ~${kfmt(normal)} — kun i nat, kun fordi de skal bruge pengene. Siger du nej, er han en andens i morgen.</div>
           ${e.done?`<div class="why">${e.outcome||"Forbi — du lod den her gå."}</div>`:`<button class="abtn comm" onclick="dlHeistSign(${i})">Hent ham · ${kfmt(e.price)}</button>`}</div>`;
       }
       if(e.kind==="panic"){
+        const p=byId(e.pid),val=p?p.value:0;
+        const over=val?Math.round((e.bid/val-1)*100):0;
         return `<div class="card"><div class="rowline" style="border:none;padding-bottom:2px"><span class="kick" style="color:var(--comm)">${e.time} · panikbud</span><span class="kick">${clubName(e.fromIdx)} er desperate</span></div>
           <div class="rowline"><span>${e.name} <small>· ${e.pos} · ${e.ov} ovr</small></span><span class="amt num">${kfmt(e.bid)}</span></div>
+          <div class="kick" style="text-transform:none">${val?`Vurderet ${kfmt(val)} — buddet er <b>${over>0?"+":""}${over}%</b>. `:""}Står du fast, bliver han — men hovedet er drejet (selvtillid −4).</div>
           ${e.done?`<div class="why">${e.outcome||"Forbi — du lod den her gå."}</div>`:`<div class="boost"><button onclick="dlPanicAccept(${i})">Tag imod · ${kfmt(e.bid)}</button><button onclick="dlPanicReject(${i})">Stå fast</button>${e.pushed?"":`<button class="iap" onclick="dlPanicPush(${i})">Pres for mere</button>`}</div>${e.pushed?`<div class="kick" style="text-transform:none">${e.outcome||""}</div>`:""}`}</div>`;
       }
-      // poach
+      // poach — C2: hvad koster tavshed? Det står HER, for det var det ingen kunne regne ud.
       return `<div class="card"><div class="rowline" style="border:none;padding-bottom:2px"><span class="kick" style="color:var(--comm)">${e.time} · rival kredser</span><span class="kick">${clubName(e.fromIdx)} vil have ham</span></div>
         <div class="rowline"><span>${e.name} <small>· ${e.pos} · ${e.ov} ovr</small></span><span class="amt num">${kfmt(e.offer)}</span></div>
-        ${e.done?`<div class="why">${e.outcome||"Forbi — du lod den her gå."}</div>`:`<div class="boost"><button onclick="dlPoachHold(${i})">Hold på ham · ${kfmt(e.hold)}</button><button onclick="dlPoachLet(${i})">Lad ham gå · ${kfmt(e.offer)}</button></div>`}</div>`;
+        <div class="kick" style="text-transform:none">Loyalitetsbonus ${kfmt(e.hold)}: han bliver og retter ryggen (+5). Sælg: ${kfmt(e.offer)} i kassen. <b>Ignorér: han hører om det alligevel (selvtillid −${BAL.deadline.ignoredConfHit}).</b></div>
+        ${e.done?`<div class="why">${e.outcome||"Forbi — du lod den her gå."}</div>`:`<div class="boost"><button onclick="dlPoachHold(${i})">Betal bonus · ${kfmt(e.hold)}</button><button onclick="dlPoachLet(${i})">Sælg · ${kfmt(e.offer)}</button></div>`}</div>`;
     };
     // N6: a fullscreen rolling feed — only what has "arrived" so far, newest on top,
     // the clock ticking as each call lands. The rest come in when you let time pass.
@@ -5652,9 +5694,10 @@ function renderModal(){
       <div class="kick" style="text-align:center;margin-bottom:6px">${shown} af ${m.events.length} inde · ${openCount?openCount+" åbne":"alt afgjort"}</div>
       ${feed}
       ${moreToCome
-        ?`<button class="glowbtn" onclick="dlAdvance()">Lad uret løbe ▸ <small style="opacity:.7">næste opkald på vej</small></button>
-          <button class="abtn ghost" onclick="dlClose()">Smæk vinduet i &amp; spil ▸</button>`
-        :`<button class="glowbtn" onclick="dlClose()">Vinduet er lukket — spil kampdag ▸</button>`}
+        ?`<button class="glowbtn" onclick="dlAdvance()">Lad uret løbe ▸ <small style="opacity:.7">næste opkald på vej</small></button>`
+        :""}
+      <button class="abtn ghost" onclick="dlClose()">Læg røret — bordet ligger fremme ▸</button>
+      <button class="abtn" onclick="dlPlay()">Smæk vinduet i &amp; spil kampen ▸${openCount?` <small style="opacity:.7">${openCount} åbne går tabt</small>`:""}</button>
     </div></div>`;
   }
   if(modal.type==="bank"){
