@@ -878,8 +878,30 @@ const BAL={
   ownerLife:{
     every:{min:3, max:6},       // matchdays between owner-life events
     chance:0.55,                // ... and a roll, so it is not clockwork
-    vanityCost:[40000,180000], vanityRep:6,
-    charityCost:[20000,90000], charityRep:8, charityFan:6,
+    /* E1 (Mads): "mulighederne skal afspejle hvor man er. Det duer ikke at
+       blive tilbudt noget til 150.000, når man ikke har haft mulighed for at
+       få nogle penge endnu." Butikken er en TRAPPE: tilbuddet vælges blandt de
+       øverste trin inden for rækkevidde (reach af formuen), og det næste trin
+       kan man SE — et mål, ikke en hån. Priserne er faste (absolut realisme);
+       en rig ejer når de høje trin, fordi formuen er større. */
+    reach:0.8,                  // et tilbud må æde op til 80% af formuen
+    vanityTiers:[
+      {i:"et signeret matchprogram fra '66",c:2000,r:2},
+      {i:"en veteranbil i klubbens farver",c:15000,r:3},
+      {i:"en væddeløbshest",c:60000,r:4},
+      {i:"en vinkælder med dit navn på døren",c:150000,r:5},
+      {i:"en vintage Ferrari",c:400000,r:6},
+      {i:"en yacht",c:1500000,r:8},
+      {i:"en privat ø — en lille en",c:8000000,r:10},
+      {i:"en fløj moderne kunst med dit navn",c:25000000,r:12}],
+    charityTiers:[
+      {i:"byens madbank",c:1000,r:2,f:2},
+      {i:"ungdomsakademiets busfond",c:8000,r:3,f:3},
+      {i:"oversvømmelsesindsamlingen",c:40000,r:5,f:4},
+      {i:"børnehospitalets nye afdeling",c:200000,r:7,f:6},
+      {i:"et idrætsanlæg til hele byen",c:1000000,r:9,f:8},
+      {i:"en fond der bærer dit navn",c:10000000,r:12,f:10}],
+    // rival-drinken og skandalens PR-regning følger divisionens verden (pengetrappen)
     rivalDrink:[5000,20000], rivalClapRep:4, rivalIgnoreRep:-4, rivalDrinkRep:2,
     scandalPr:[15000,60000], scandalIgnoreRep:-8, scandalSpinRep:-3
   },
@@ -1671,15 +1693,33 @@ function maybeOwnerLife(){
   G.ownerLifeMD=G.md+R(E.min,E.max);
   if(Math.random()<BAL.ownerLife.chance)openOwnerLife();
 }
+/* E1: hvilke slags events formuen overhovedet kan bære — en flad mand får
+   ikke tilbudt kunst, han får rivaler og skandaler (de er gratis at MODTAGE) */
+function ownerLifeKinds(){
+  const L=BAL.ownerLife,w=(G.personalWealth||0)*L.reach;
+  const kinds=["rival","scandal"];
+  if(L.vanityTiers[0].c<=w)kinds.push("vanity","vanity");
+  if(L.charityTiers[0].c<=w)kinds.push("charity","charity");
+  return kinds;
+}
+/* E1: tilbuddet er det ØVERSTE trin (eller næstøverste — variation) inden for
+   rækkevidde. Returnerer også næste trin, så det man ikke kan nå, kan SES. */
+function tierPick(tiers){
+  const w=(G.personalWealth||0)*BAL.ownerLife.reach;
+  const n=tiers.filter(t=>t.c<=w).length;
+  if(n===0)return {t:tiers[0],next:tiers[1]||null};   // tvunget probe-spor: mindste trin, køb afvises af formuen
+  const t=tiers[n===1?0:Math.random()<0.5?n-1:n-2];
+  return {t,next:tiers[n]||null};
+}
 function openOwnerLife(force){
   const L=BAL.ownerLife;
-  const kind=force||pick(["vanity","vanity","charity","charity","rival","scandal"]);
+  const kind=force||pick(ownerLifeKinds());
   modal={type:"ownerLife",kind,done:false,outcome:""};
   const m=modal;
-  if(kind==="vanity"){m.item=pick(["a yacht","a vintage Ferrari","a racehorse","a wing of modern art","a private box at the opera"]);m.cost=Math.round(R(L.vanityCost[0],L.vanityCost[1])/1000)*1000;m.rep=L.vanityRep;}
-  if(kind==="charity"){m.cause=pick(["the children's hospital","the town food bank","the youth academy fund","the flood relief appeal"]);m.cost=Math.round(R(L.charityCost[0],L.charityCost[1])/1000)*1000;m.rep=L.charityRep;m.fan=L.charityFan;}
-  if(kind==="rival"){m.rivalIdx=Math.floor(Math.random()*G.teams.length);m.rival=G.teams[m.rivalIdx].name;m.drink=Math.round(R(L.rivalDrink[0],L.rivalDrink[1])/1000)*1000;}
-  if(kind==="scandal"){m.pr=Math.round(R(L.scandalPr[0],L.scandalPr[1])/1000)*1000;}
+  if(kind==="vanity"){const p=tierPick(L.vanityTiers);m.item=p.t.i;m.cost=p.t.c;m.rep=p.t.r;m.next=p.next?p.next.i+" · "+kfmt(p.next.c):null;}
+  if(kind==="charity"){const p=tierPick(L.charityTiers);m.cause=p.t.i;m.cost=p.t.c;m.rep=p.t.r;m.fan=p.t.f;m.next=p.next?p.next.i+" · "+kfmt(p.next.c):null;}
+  if(kind==="rival"){m.rivalIdx=Math.floor(Math.random()*G.teams.length);m.rival=G.teams[m.rivalIdx].name;m.drink=Math.round(R(L.rivalDrink[0],L.rivalDrink[1])*divCashMult()/1000)*1000;}
+  if(kind==="scandal"){m.pr=Math.round(R(L.scandalPr[0],L.scandalPr[1])*divCashMult()/1000)*1000;}
   render();
 }
 function ownerLifeAct(choice){
@@ -5972,10 +6012,10 @@ function renderModal(){
     const head={vanity:"Det gode liv",charity:"En sag banker på",rival:"En rivaliserende ejer",scandal:"Pressen har en historie"}[m.kind];
     let body="",btns="";
     if(m.kind==="vanity"){
-      body=`Rygtet siger at <b>${m.item}</b> er stille og roligt til salg — <b>${kfmt(m.cost)}</b> af dine egne penge. Den slags, ejere bliver fotograferet med.`;
+      body=`Rygtet siger at <b>${m.item}</b> er stille og roligt til salg — <b>${kfmt(m.cost)}</b> af dine egne penge. Den slags, ejere bliver fotograferet med.${m.next?`<br><small style="opacity:.7">Næste på hylden, når formuen kan bære det: ${m.next}.</small>`:""}`;
       btns=m.done?"":`<div class="boost"><button onclick="ownerLifeAct('buy')">Køb den · ${kfmt(m.cost)}</button><button onclick="ownerLifeAct('pass')">Lad den gå</button></div>`;
     }else if(m.kind==="charity"){
-      body=`<b>${m.cause[0].toUpperCase()+m.cause.slice(1)}</b> mangler en velgører. <b>${kfmt(m.cost)}</b> af din formue ville gøre det — og byen ville kende dit navn.`;
+      body=`<b>${m.cause[0].toUpperCase()+m.cause.slice(1)}</b> mangler en velgører. <b>${kfmt(m.cost)}</b> af din formue ville gøre det — og byen ville kende dit navn.${m.next?`<br><small style="opacity:.7">En dag, med en større formue: ${m.next}.</small>`:""}`;
       btns=m.done?"":`<div class="boost"><button onclick="ownerLifeAct('give')">Donér · ${kfmt(m.cost)}</button><button onclick="ownerLifeAct('decline')">Ikke nu</button></div>`;
     }else if(m.kind==="rival"){
       body=`Ejeren af <b>${clubName(m.rivalIdx)}</b> kalder dig "en turist med et checkhæfte" på bagsiderne. Lokalet ser på, hvordan du tager det.`;
