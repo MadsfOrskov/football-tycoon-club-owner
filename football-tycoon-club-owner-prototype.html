@@ -473,6 +473,19 @@ const BAL={
   // A fax nobody answers used to hang forever, and the player stayed flagged
   // BID PENDING for the rest of the career. Bids now have a shelf life.
   bids:{replyMD:2},
+  /* E2 (Mads 10/8): balancepinden. "Spillet starter med en balancepind, hvor
+     man kan styre hvor stor en andel af klubben man ejer (51-100%). Ejer man
+     100% har man ingen penge — man kan få penge ved at sætte ejerandelen ned."
+     Pengene er DINE, ikke klubbens: alle starter med samme klubbudget. Og
+     pinden er PERMANENT (Mads 11/8): du kan altid sælge en skive til
+     medejerne til clubValuation-pris — det frivillige nedsalg er den billige
+     vej, økonomitrappens tvangsredning den dyre. */
+  e2:{
+    minShare:51,
+    sellDiscount:0.9,     // frivilligt nedsalg: medejerne vil have en margen …
+    sellSlice:5,          // … og de køber i skiver af 5%
+    sellCooldownMD:6      // én skive ad gangen — bordet skal ikke være en pengeautomat
+  },
   /* C3 (Mads 10/8): "Prisen er ikke fast. Trivsel, spilletid, rolle, klubbens
      retning og hvor længe han har været her skal flytte, hvad han accepterer —
      i BEGGE retninger." Faktorerne ganges på forlængelses-kravet. Spilletid
@@ -1024,6 +1037,7 @@ function loadGame(){
   for(const p of [...G.squad,...G.market,...G.freeAgents])if(!Number.isFinite(p.load))p.load=0;
   ensureWorld();   // M1: en karriere gemt før pyramiden fandtes får sin verden født her
   if(!G.suitors)G.suitors={};   // C1: gamle karrierer fødes uden interessent-kartotek
+  delete G.pindPending;   // E2: lukkede man appen midt i ejerskabs-trinnet, gælder arvens 51%
   // C3: anciennitet på gamle karrierer — truppen får en rimelig fortid, resten starter på nul
   for(const p of G.squad)if(!Number.isFinite(p.tenure))p.tenure=R(1,5);
   for(const p of [...G.market,...G.freeAgents])if(!Number.isFinite(p.tenure))p.tenure=0;
@@ -1639,7 +1653,10 @@ function applyOwner(name,avatar,bg){
   const B=BAL.owner,b=B.backgrounds[bg]||B.backgrounds.selfmade;
   G.owner={name:safeName(name)||"Formanden",avatar:avatar||"🧑‍💼",background:B.backgrounds[bg]?bg:"selfmade"};
   G.reputation=clamp(B.repStart+(b.rep||0),B.repFloor,B.repCap);
-  G.balance=Math.max(0,G.balance+(b.cash||0));
+  /* E2 (Mads): "ALLE skal starte med det samme budget i klubben" — baggrundens
+     startkapital er DIN historie og DINE penge, ikke klubbens. Før gik den i
+     klubkassen og brød netop den regel. */
+  G.personalWealth=Math.max(0,(G.personalWealth||0)+(b.cash||0));
   G.fanMood=clamp(G.fanMood+(b.fan||0),5,100);
 }
 /* ---------- O3: the owner's life — events about YOU ----------
@@ -6408,7 +6425,7 @@ function renderOnboarding(){
      (3) farve → (4) look → (5) gaffer. Spillet handler om personen. */
   if(obStep===0){
     const B=BAL.owner.backgrounds,bg=B[obData.ownerBg]||B.selfmade;
-    inner=`<div class="letter"><div class="lh">TRIN 1 AF 5 · DIG</div>Før klubben, før pengene, før aviserne — hvem er <b>du</b>?</div>
+    inner=`<div class="letter"><div class="lh">TRIN 1 AF 6 · DIG</div>Før klubben, før pengene, før aviserne — hvem er <b>du</b>?</div>
       <input id="obowner" type="text" value="${obData.ownerName}" maxlength="22" placeholder="Dit navn">
       <div class="kick" style="margin-top:12px">Portræt</div>
       <div class="swatches" style="font-size:26px">${OWNER_AVATARS.map(a=>`<div class="sw ${obData.ownerAvatar===a?'on':''}" style="display:flex;align-items:center;justify-content:center;background:hsl(${obData.hue},30%,20%)" onclick="obAvatar('${a}')">${a}</div>`).join("")}</div>
@@ -6419,19 +6436,19 @@ function renderOnboarding(){
       <button class="glowbtn" style="margin-top:14px" onclick="obNext()">Det er mig ▸</button>`;
   }
   if(obStep===1){
-    inner=`<div class="letter"><div class="lh">TRIN 2 AF 5 · ARVEN</div>
+    inner=`<div class="letter"><div class="lh">TRIN 2 AF 6 · ARVEN</div>
       Et advokatbrev: din grandonkel har efterladt <b>dig</b> en klub i de lavere rækker, dens gæld og et tomt trofæskab. Giv den et navn.</div>
       <input id="obname" type="text" value="${obData.name}" maxlength="24" placeholder="Navngiv din klub">
       <button class="glowbtn" style="margin-top:14px" onclick="obNext()">Skriv under ▸</button>`;
   }
   if(obStep===2){
     const sw=SWATCHES.find(s=>s.h===obData.hue);
-    inner=`<div class="letter"><div class="lh">TRIN 3 AF 5 · FARVE</div>Vælg <b>${obData.name}</b>s farve.</div>
+    inner=`<div class="letter"><div class="lh">TRIN 3 AF 6 · FARVE</div>Vælg <b>${obData.name}</b>s farve.</div>
       <div class="swatches">${SWATCHES.map(s=>`<div class="sw ${obData.hue===s.h?'on':''}" style="background:linear-gradient(135deg,hsl(${s.h},88%,60%),hsl(${s.h},75%,42%))" onclick="obHue(${s.h})" title="${s.n}"></div>`).join("")}</div>
       <button class="glowbtn" style="margin-top:16px" onclick="obNext()">Næste ▸</button>`;
   }
   if(obStep===3){
-    inner=`<div class="letter"><div class="lh">TRIN 4 AF 5 · UDSEENDE</div>Mørk eller lys? Skift når som helst.</div>
+    inner=`<div class="letter"><div class="lh">TRIN 4 AF 6 · UDSEENDE</div>Mørk eller lys? Skift når som helst.</div>
       <div class="modes" style="margin-top:14px;flex-direction:column">
         <button class="${obData.mode==='dark'?'on':''}" onclick="obMode('dark')">◗&nbsp; Mørk</button>
         <button class="${obData.mode==='light'?'on':''}" onclick="obMode('light')">☀&nbsp; Lys</button></div>
@@ -6439,12 +6456,40 @@ function renderOnboarding(){
   }
   if(obStep===4){
     const c=obData.coach||(obData.coach=pick(COACHES));
-    inner=`<div class="letter"><div class="lh">TRIN 5 AF 5 · GAFFEREN</div>
+    inner=`<div class="letter"><div class="lh">TRIN 5 AF 6 · GAFFEREN</div>
       <b>${c.n}</b> · ${c.style} · TAC ${c.tac} · MAN ${c.man} · DEV ${c.dev}</div>
       <div class="truth"><span class="n">1</span><span>Truppen: ærlig men begrænset. Byg den.</span></div>
       <div class="truth"><span class="n">2</span><span>Ingen sponsor · 1,500 souls · £150,000 i kassen.</span></div>
       <div class="truth"><span class="n">3</span><span>En kamp gemmes i det øjeblik den spilles. Ingen omkampe.</span></div>
       <button class="glowbtn" style="margin-top:16px" onclick="obFinish()">Tag over ▸</button>`;
+  }
+  /* E2: EJERSKABET — det sidste trin, og det tegnes EFTER klubben er født, så
+     tallene er ægte: clubValuation() og de tre køberes ansigter, ikke et skøn.
+     Pengene fra pinden er DINE — klubbens budget er identisk uanset valget. */
+  if(obStep===5&&G){
+    const v=clubValuation();
+    const share=clamp(obData.share||BAL.e2.minShare,BAL.e2.minShare,100);
+    const sold=100-share;
+    const cash=Math.round(v*sold/100/1000)*1000;
+    const A=BAL.owners.dividendAppetite;
+    const blurb=r=>A[r]>=0.5?"grådig med udbyttet, rundhåndet med redninger":A[r]>=0.3?"vil se afkast, men kan vente":"tålmodig — bygger hellere end han tager ud";
+    const w=[24,15,10];
+    let alloc=w.map(x=>Math.floor(x*sold/49));let rest=sold-alloc.reduce((a,b)=>a+b,0);
+    for(let i=0;rest>0;i=(i+1)%3){alloc[i]++;rest--;}
+    inner=`<div class="letter"><div class="lh">TRIN 6 AF 6 · EJERSKABET</div>
+      Advokaten vurderer boet til <b class="num">~${kfmt(v)}</b>. Tre lokale vil købe sig ind — <b>sælger du fra start, er pengene DINE</b>, ikke klubbens. Klubbens budget er det samme uanset.</div>
+      <div class="kick" style="margin-top:10px">Køberne ved bordet</div>
+      ${G.owners.map((o,i)=>`<div class="rowline"><span>${o.n} <small>· ${o.role} · ${blurb(o.role)}</small></span><span class="amt num">${sold?alloc[i]+"%":"—"}</span></div>`).join("")}
+      <div class="kick" style="margin-top:12px">Din andel</div>
+      <div class="stepper">
+        <button onclick="obShare(-10)" title="stort skridt ned">‹‹</button>
+        <button onclick="obShare(-1)" title="lille skridt ned">‹</button>
+        <span class="val num">${share}%</span>
+        <button onclick="obShare(1)" title="lille skridt op">›</button>
+        <button onclick="obShare(10)" title="stort skridt op">››</button></div>
+      <div class="why" style="margin-top:10px"><b>Du beholder ${share}% · ${sold?`sælger ${sold}% · <b class="num">${kfmt(cash)}</b> i DIN lomme.`:"sælger ingenting — og starter uden kontanter."}</b>
+        ${share===100?" Én klub, hele vejen: alt klubben tjener er dit — men der er ingen medejere at hente redningskapital hos, og ingen kapital til at købe dig ind andre steder.":share<=55?" Kapital til imperiet fra sæson 1 — men du er ÉN redning fra at miste kontrollen over din egen klub. Det valg er dit.":" Et sted imellem: lidt kapital, lidt luft under 50%-grænsen."}</div>
+      <button class="glowbtn" style="margin-top:12px" onclick="obLockShare()">Lås ejerskabet &amp; tag over ▸</button>`;
   }
   app().innerHTML=`<div class="ob"><div class="box">
     <div style="text-align:center;margin-bottom:14px">${obStep===0?`<div style="font-size:52px;line-height:1">${obData.ownerAvatar}</div>`:svgShield(initials(obData.name),true,52)}
@@ -6467,6 +6512,44 @@ function obFinish(){
   G.coach={...obData.coach};
   applyOwner(obData.ownerName,obData.ownerAvatar,obData.ownerBg);  // O1: stamp yourself on the club
   applyTheme(G.hue,G.mode);
+  /* E2: klubben er født — NU kan ejerskabs-trinnet vise ægte tal (vurdering,
+     købere). Lukker man appen her uden at låse, falder valget til 51% som før
+     pinden fandtes (loadGame rydder flaget). */
+  G.pindPending=true;
+  obData.share=obData.share||BAL.e2.minShare;
+  obStep=5;
+  renderOnboarding();
+}
+function obShare(d){
+  obData.share=clamp((obData.share||BAL.e2.minShare)+d,BAL.e2.minShare,100);
+  renderOnboarding();
+}
+/* E2's kerne, som en MÅLBAR funktion: klubbens budget røres ALDRIG — provenuet
+   er formandens egne kontanter. Medejerne får det solgte fordelt efter deres
+   gamle vægte (24/15/10), præcist til sidste procent. */
+function obApplyShare(share){
+  share=clamp(Math.round(share),BAL.e2.minShare,100);
+  const v=clubValuation();
+  const sold=100-share;
+  if(sold===0)G.owners=[];
+  else{
+    const w=[24,15,10];
+    const alloc=w.map(x=>Math.floor(x*sold/49));
+    let rest=sold-alloc.reduce((a,b)=>a+b,0);
+    for(let i=0;rest>0;i=(i+1)%3){alloc[i]++;rest--;}
+    G.owners=G.owners.map((o,i)=>({...o,share:alloc[i]})).filter(o=>o.share>0);
+  }
+  G.myShare=share;
+  const cash=Math.round(v*sold/100/1000)*1000;
+  if(cash>0){
+    G.personalWealth=(G.personalWealth||0)+cash;
+    addNews("OWNER","Du solgte "+sold+"% af klubben fra start — "+kfmt(cash)+" på DIN konto. Kapital til imperiet, eller til en regnvejrsdag.");
+  }
+  delete G.pindPending;
+  return cash;
+}
+function obLockShare(){
+  obApplyShare(obData.share||BAL.e2.minShare);
   screen="home";
   openBudgetMeeting(); // the first board meeting is part of taking over
 }
