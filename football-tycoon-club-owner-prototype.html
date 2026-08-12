@@ -4885,6 +4885,31 @@ function viewBooks(){
     ${G.showExport?`<textarea readonly onclick="this.select()" style="width:100%;min-height:70px;margin-top:8px;background:rgba(0,0,0,.25);color:inherit;border:1px solid rgba(150,175,205,.25);border-radius:9px;padding:8px;font-size:10px">${exportCareerText().replace(/&/g,"&amp;").replace(/</g,"&lt;")}</textarea>
     <div class="kick" style="font-size:9px;margin-top:5px;text-transform:none">Tryk på boksen for at markere, kopiér, og gem den et sikkert sted. Sæt den ind på titelskærmen for at gendanne.</div>`:""}</div>`;
 }
+/* ---------- E3: ejer-lagets røde tråd ----------
+   Mads: "Det er vigtigt at man som ejer får besked omkring de store
+   begivenheder. Jeg skal ikke misse et transfervindue." M2.5's ro skabte
+   hullet: man kan sidde i ejer-laget mens klubben har brug for en beslutning.
+   Tråden er et FAST felt — ingen modaler, du kan ignorere den, men du kan
+   ikke IKKE se den. Vinduets lukkedag udledes af spillets egen windowOpen(),
+   så tråden aldrig kan stå og lyve om kalenderen. */
+function ownerThread(){
+  const t=[];
+  if(!G||G.phase!=="season"||G.md>=G.rounds)return t;
+  const dlToday=(G.md===5&&!G.deadlineDone.summer)||(G.md===14&&!G.deadlineDone.winter);
+  if(dlToday)t.push({txt:"⚡ DEADLINE DAY — i dag. Kup, panikbud og rivaler venter, når du trykker videre.",urgent:true});
+  if(windowOpen()){
+    const saveMd=G.md;let left=1;
+    while(left<10){G.md=saveMd+left;if(!windowOpen())break;left++;}
+    G.md=saveMd;
+    t.push({txt:"Transfervinduet er ÅBENT — det smækker i om "+left+" kampdag"+(left===1?"":"e")+".",urgent:left<=2});
+  }else{
+    const saveMd=G.md;let until=null;
+    for(let k=1;k<=G.rounds-G.md;k++){G.md=saveMd+k;if(windowOpen()){until=k;break;}}
+    G.md=saveMd;
+    t.push({txt:until?"Vinduet er lukket — det åbner igen om "+until+" kampdag"+(until===1?"":"e")+".":"Vinduet er lukket for i år — det åbner med den nye sæson.",urgent:false});
+  }
+  return t;
+}
 function viewOwner(){
   const o=G.owner||{name:"Formanden",avatar:"🧑‍💼",background:"selfmade"};
   const nw=netWorth(),rep=reputationRead(),bg=BAL.owner.backgrounds[o.background];
@@ -4911,6 +4936,7 @@ function viewOwner(){
       ${bestAgent?`<div class="kick" style="font-size:9px;margin-top:3px">Tætteste agent: <b>${bestAgent}</b></div>`:'<div class="kick" style="font-size:9px;margin-top:3px">Ingen agenter har varmet op til dig endnu</div>'}</div></div>`;
   // M2.5: bordet — stående beslutninger + dørklokken for hastende klubpost.
   // Bordet er en dørklokke, ikke en svarknap: trykket hopper dig IND i klubben.
+  const thread=ownerThread();
   const dec=[];
   if(!isMajority())dec.push("Du er mindretalsejer — køb dig tilbage over "+BAL.owners.majorityAt+"%.");
   if(G.owners.length&&G.ownerBoughtSeason!==G.season)dec.push("Du kan købe en medejer ud i denne sæson.");
@@ -4922,6 +4948,7 @@ function viewOwner(){
   const late=divi&&G.md>=BAL.owners.dividendRemindFrom;
   const deskN=dec.length+bell.length+(divi?1:0);
   h+=`<div class="card"><div class="kick" style="margin-bottom:2px">På dit bord${deskN?" · <b>"+deskN+"</b>":""}</div>
+    ${thread.map(x=>`<div class="newsline" style="${x.urgent?"color:var(--comm)":"opacity:.85"}">${x.txt}</div>`).join("")}
     ${divi?`<div class="newsline" style="cursor:pointer${late?";color:var(--comm)":""}" onclick="openDividend()">💰 Erklær udbytte — ${kfmt(Math.max(0,G.balance))} i kassen${late?" · <b>sidste chance i denne sæson</b>":""}</div>`:""}
     ${dec.map(d=>`<div class="newsline">${d}</div>`).join("")}
     ${bell.map(b=>`<div class="newsline" style="cursor:pointer${b.urgent?";color:var(--comm)":""}" onclick="enterClub('inbox')">✉ ${G.club}: ${b.title}${b.urgent?" · <b>udløber snart</b>":""} — gå ind ▸</div>`).join("")}
