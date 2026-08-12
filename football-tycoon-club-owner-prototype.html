@@ -473,6 +473,18 @@ const BAL={
   // A fax nobody answers used to hang forever, and the player stayed flagged
   // BID PENDING for the rest of the career. Bids now have a shelf life.
   bids:{replyMD:2},
+  /* E4 (Mads 10/8): "Klubbens økonomi skal deles op i 2: en pengekasse og et
+     lønbudget — og man skal kunne skubbe frem og tilbage." Valgt form: INGEN
+     anden pengekasse (to kasser var stadionfondens fejlklasse, R1b) — loftet
+     er medejernes TILLADELSE, og skyderen er prisen på at flytte den: op er
+     billigt (en garantipræmie), ned giver kun en del af præmien igen, for
+     lønforpligtelser er underskrevet — en transferkasse er bare penge. */
+  e4:{
+    stepBase:500,     // ét skub på loftet (pr. uge) — ×G_DIV_WAGE, følger divisionen
+    upWeeks:6,        // præmien: N ugers skub, kontant fra kassen
+    downRefund:0.4,   // den anden vej: kun 40% af præmien retur
+    floorMargin:1.05  // loftet kan aldrig presses under lønsummen — nogen skal væk først
+  },
   /* E2 (Mads 10/8): balancepinden. "Spillet starter med en balancepind, hvor
      man kan styre hvor stor en andel af klubben man ejer (51-100%). Ejer man
      100% har man ingen penge — man kan få penge ved at sætte ejerandelen ned."
@@ -3594,6 +3606,25 @@ function askCapRaise(){
   }
   render();
 }
+/* ---------- E4: skyderen mellem pengekassen og lønloftet ---------- */
+function e4Step(){return Math.round(BAL.e4.stepBase*G_DIV_WAGE(G.div)/100)*100;}
+function e4Fee(){return e4Step()*BAL.e4.upWeeks;}
+function e4Refund(){return Math.round(e4Fee()*BAL.e4.downRefund/100)*100;}
+function capUp(){
+  if(G.myShare>=100){modal={type:"info",title:"Loftet er dit eget ord",body:"Du ejer det hele — der er ingen medejere at købe tilladelse hos, og intet loft der binder dig."};render();return;}
+  const fee=e4Fee();
+  if(G.balance<fee){modal={type:"info",title:"Kassen rækker ikke",body:"Medejerne vil se "+kfmt(fee)+" i garantipræmie, før de flytter loftet. Kassen har "+kfmt(Math.max(0,G.balance))+"."};render();return;}
+  G.balance-=fee;G.wageCap+=e4Step();
+  addNews("CLUB","Lønloftet skubbet op til "+kfmt(G.wageCap)+"/u. Garantipræmien ("+kfmt(fee)+") er betalt af pengekassen — det er den handel, skyderen er.");
+  render();
+}
+function capDown(){
+  const step=e4Step(),wages=G.squad.reduce((s,p)=>s+p.wage,0);
+  if(G.wageCap-step<wages*BAL.e4.floorMargin){modal={type:"info",title:"\"Nogen skal væk først.\"",body:"Lønsummen er "+kfmt(wages)+"/u — loftet kan ikke presses ned under det, der allerede er skrevet under på. Sælg eller lad kontrakter løbe ud, så taler vi."};render();return;}
+  G.wageCap-=step;G.balance+=e4Refund();
+  addNews("CLUB","Lønloftet sænket til "+kfmt(G.wageCap)+"/u. Medejerne frigiver "+kfmt(e4Refund())+" af præmien — resten er prisen for underskrifter, der allerede er givet.");
+  render();
+}
 function openMidway(){
   const pos=myPos();
   const verdict=pos<=G.objectivePos?"\"On track. We are cautiously — and I stress cautiously — pleased.\"":"\"You are "+ord(pos)+". The objective is top "+G.objectivePos+". Do something, chairman.\"";
@@ -5137,7 +5168,11 @@ function viewSquad(){
   const wages=G.squad.reduce((s,p)=>s+p.wage,0);
   const wo=windowOpen();
   let h=`<div class="card"><div class="kick" style="margin-bottom:4px">Trup · ${G.squad.length} spillere · løn <b>${kfmt(wages)}/u</b> af ${kfmt(G.wageCap)} loft</div>
-    <div class="bar${wages>G.wageCap*0.9?" amber":""}"><i style="width:${clamp(Math.round(100*wages/G.wageCap),2,100)}%"></i></div>`;
+    <div class="bar${wages>G.wageCap*0.9?" amber":""}"><i style="width:${clamp(Math.round(100*wages/G.wageCap),2,100)}%"></i></div>
+    ${G.myShare<100?`<div class="actions" style="margin-top:6px">
+      <button class="abtn" style="padding:5px 9px;font-size:10px" onclick="capUp()" title="Garantipræmie fra pengekassen — det er den handel, skyderen er">Loft op +${kfmt(e4Step())}/u · koster ${kfmt(e4Fee())}</button>
+      <button class="abtn ghost" style="padding:5px 9px;font-size:10px" onclick="capDown()" title="Kun ${pct(BAL.e4.downRefund)} af præmien retur — underskrifter er givet">Loft ned · frigiv ${kfmt(e4Refund())}</button></div>`
+    :`<div class="kick" style="font-size:9px;text-transform:none;margin-top:4px">Du ejer det hele — loftet er dit eget ord, og skyderen er overflødig.</div>`}`;
   for(const [pos,label] of SQUAD_GROUPS){
     const list=G.squad.map((p,ix)=>({p,ix})).filter(x=>x.p.pos===pos).sort((a,b)=>ovr(b.p)-ovr(a.p));
     if(!list.length)continue;
