@@ -4840,9 +4840,13 @@ function nextWeek(){
 function viewEmpire(){
   ensureWorld();
   // my club, my stakes, then the whole pyramid — every club has a price
+  const sliceLeft=sliceCooldownLeft();
+  const slicePrice=Math.round(clubValuation()*BAL.e2.sellSlice/100*BAL.e2.sellDiscount/1000)*1000;
   let h=`<div class="card" style="border-color:var(--strokeAcc)"><div class="kick" style="margin-bottom:2px">Din klub · du driver den</div>
     <div class="rowline"><span><b>${G.club}</b> <small>· ${G.divNames[G.div]} · ${ord(myPos())}</small></span><span class="amt num">${G.myShare}%</span></div>
     <div class="rowline"><span>Klubværdi <small>· din andel ${kfmt(Math.round(clubValuation()*G.myShare/100))}</small></span><span class="amt num">${kfmt(clubValuation())}</span></div>
+    ${isMajority()?`<div class="rowline"><span>Sælg en skive til bordet <small>· ${BAL.e2.sellSlice}% · pengene er DINE${sliceLeft?" · de lytter igen om "+sliceLeft+" kampdage":""}</small></span>
+      ${sliceLeft?`<span class="sc" style="opacity:.5">venter</span>`:`<button class="sellb" onclick="sellOwnSlice()">Sælg · ${kfmt(slicePrice)}</button>`}</div>`:""}
     <button class="glowbtn" onclick="enterClub()">Gå ind i klubben ▸</button></div>`;
   const stakes=G.stakes||[];
   h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Dine andele ${G.stakeIncome?`<small>· ${kfmt(G.stakeIncome)} i udbytte sidste sæson</small>`:""}</div>
@@ -6120,6 +6124,20 @@ function renderModal(){
       <button class="abtn ghost" onclick="modal=null;render()">Luk siden</button>
     </div></div>`;
   }
+  if(modal.type==="sellSlice"){
+    const m=modal,after=G.myShare-m.slice;
+    const crossing=isMajority()&&after<=BAL.owners.majorityAt;
+    return `<div class="overlay"><div class="sheet">
+      <div class="kick">Nedsalg · ${m.slice}% af ${G.club}</div>
+      <h2>${m.buyerName||"En ny mand ved bordet"}</h2>
+      <p>${m.buyerName?m.buyerRole+" · han lægger "+kfmt(m.price)+" — kontant, til DIG. Medejerne handler til "+pct(BAL.e2.sellDiscount)+" af vurderingen; margen er deres pris for at sige ja med det samme.":"Ingen medejere endnu — en lokal investor står klar med "+kfmt(m.price)+" for at komme ind ved bordet."}</p>
+      <div class="rowline"><span>Din andel efter salget</span><span class="amt num">${after}%</span></div>
+      ${crossing?`<div class="why" style="border-left-color:rgba(224,90,74,.6);background:rgba(224,90,74,.08)"><b>Du falder til mindretal.</b> Du beholder sædet — men bestyrelsen tager udbyttet, og vejen tilbage til kontrol går gennem at købe dem ud igen.</div>`
+        :`<div class="why">Det frivillige nedsalg er den billige vej til kapital. Venter du til banken står i døren, koster den samme slags skive langt mere (økonomitrappens trin 4).</div>`}
+      <button class="glowbtn" onclick="sellSliceConfirm()">Sælg ${m.slice}% · ${kfmt(m.price)} til dig ✍</button>
+      <button class="abtn ghost" onclick="modal=null;render()">Behold klubben samlet</button>
+    </div></div>`;
+  }
   if(modal.type==="ownerNego"){
     const o=G.owners[modal.i];
     return `<div class="overlay"><div class="sheet">
@@ -6552,6 +6570,52 @@ function obLockShare(){
   obApplyShare(obData.share||BAL.e2.minShare);
   screen="home";
   openBudgetMeeting(); // the first board meeting is part of taking over
+}
+/* ---------- E2b: pinden er PERMANENT (Mads 11/8) ----------
+   "Du kan altid sælge en skive af din klub til medejerne til clubValuation-
+   pris." Det frivillige nedsalg er den BILLIGE vej (90% af fair — medejerne
+   vil have en margen); økonomitrappens tvangsredning er den dyre (trin 4).
+   Én skive ad gangen: bordet er en kapitalkilde, ikke en pengeautomat. */
+const LOCAL_INVESTORS=[{n:"Ronnie Blackwood",role:"scrap dealer"},{n:"Deirdre Platt",role:"hotel owner"},{n:"Frank Netherton",role:"builder's merchant"}];
+function sliceCooldownLeft(){
+  if(!G.sliceAt)return 0;
+  const gone=(G.season-G.sliceAt.s)*G.rounds+(G.md-G.sliceAt.md);
+  return Math.max(0,BAL.e2.sellCooldownMD-gone);
+}
+function sliceBuyer(){
+  if(G.owners.length)return G.owners.reduce((a,b)=>b.share>a.share?b:a);
+  return null; // eneejer: en ny lokal træder til ved bordet
+}
+function sellOwnSlice(){
+  const E=BAL.e2,slice=E.sellSlice;
+  if(!isMajority()){modal={type:"info",title:"Bordet bestemmer nu",body:"Som mindretalsejer sælger du ikke skiver af klubben — bestyrelsen gør. Din vej til kapital er udbytterne."};render();return;}
+  if(G.myShare-slice<1){modal={type:"info",title:"Der er ikke mere at sælge af",body:"Du kan ikke sælge en større skive, end du ejer."};render();return;}
+  const left=sliceCooldownLeft();
+  if(left>0){modal={type:"info",title:"\"Ikke igen allerede.\"",body:"Medejerne købte for nylig. De vil se bogføringen falde til ro — om "+left+" kampdage lytter de igen."};render();return;}
+  const price=Math.round(clubValuation()*slice/100*E.sellDiscount/1000)*1000;
+  const b=sliceBuyer();
+  modal={type:"sellSlice",slice,price,buyerName:b?b.n:null,buyerRole:b?b.role:null};
+  render();
+}
+function sellSliceConfirm(){
+  const m=modal;if(!m||m.type!=="sellSlice")return;
+  const slice=Math.min(m.slice,G.myShare-1);   // aldrig mere end du ejer (gate-fundets regel)
+  if(slice<=0){modal=null;render();return;}
+  let b=sliceBuyer();
+  if(!b){
+    const used=new Set(G.owners.map(o=>o.n));
+    const cand=LOCAL_INVESTORS.find(x=>!used.has(x.n))||LOCAL_INVESTORS[0];
+    b={n:cand.n,role:cand.role,share:0};
+    G.owners.push(b);
+    addNews("CLUB",b.n+" ("+b.role+") har købt sig ind i "+G.club+". Ny mand ved bordet — han medbragte egne kuglepenne.");
+  }
+  const wasMajority=isMajority();
+  G.myShare-=slice;b.share+=slice;
+  G.personalWealth=(G.personalWealth||0)+m.price;
+  G.sliceAt={s:G.season,md:G.md};
+  addNews("OWNER","Du solgte "+slice+"% af "+G.club+" til "+b.n+" for "+kfmt(m.price)+". Pengene er dine — det er "+slice+"% af beslutningerne ikke længere.");
+  if(wasMajority&&!isMajority())msg("The co-owners","CO","Flertallet er skiftet","\"Regnestykket er enkelt, formand: du ejer under halvdelen nu. Du beholder sædet — men udbyttet, det tager bestyrelsen sig af fremover.\"",null);
+  modal=null;render();
 }
 
 /* ---------- boot ---------- */
