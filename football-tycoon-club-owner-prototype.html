@@ -473,6 +473,18 @@ const BAL={
   // A fax nobody answers used to hang forever, and the player stayed flagged
   // BID PENDING for the rest of the career. Bids now have a shelf life.
   bids:{replyMD:2},
+  /* IMP1 (M3+E0, natten 11/8): imperiet. ÉN dyb klub ad gangen — den du står
+     i. Andre kontrollerede klubber lever som verdensklubber (spiller deres
+     runder i pyramiden) med den dybe tilstand PAKKET i G.holdings[wid].deep.
+     At skifte klub er applyPyramidExchange's rebuild-mønster: alle klubber i
+     én pulje, min nye division bliver teams, resten bliver worldRest. */
+  imp:{
+    controlPct:51,          // "køb kontrol" køber op til denne andel i ét hug
+    startCashBase:120000,   // en overtaget klubs kasse (×divCash × pressens forfatning)
+    squadSpread:6,          // truppens base = klubbens styrke ± dette
+    forcedSaleFactor:0.9,   // oprykningskollision: ligaen tvinger salg — til 90% af værdien
+    pressWealthLo:0.5, pressWealthHi:1.5   // forfatningen: press 0→lo, 100→hi
+  },
   /* E4 (Mads 10/8): "Klubbens økonomi skal deles op i 2: en pengekasse og et
      lønbudget — og man skal kunne skubbe frem og tilbage." Valgt form: INGEN
      anden pengekasse (to kasser var stadionfondens fejlklasse, R1b) — loftet
@@ -1071,6 +1083,8 @@ function loadGame(){
   for(const p of [...G.squad,...G.market,...G.freeAgents])if(!Number.isFinite(p.load))p.load=0;
   ensureWorld();   // M1: en karriere gemt før pyramiden fandtes får sin verden født her
   if(!G.suitors)G.suitors={};   // C1: gamle karrierer fødes uden interessent-kartotek
+  if(!G.holdings)G.holdings={};   // IMP1: gamle karrierer fødes uden imperium
+  if(G.activeWid===undefined)G.activeWid=0;
   delete G.pindPending;   // E2: lukkede man appen midt i ejerskabs-trinnet, gælder arvens 51%
   // C3: anciennitet på gamle karrierer — truppen får en rimelig fortid, resten starter på nul
   for(const p of G.squad)if(!Number.isFinite(p.tenure))p.tenure=R(1,5);
@@ -1613,6 +1627,7 @@ function newGame(name,hue,mode){
     personalWealth:0,dividendTaken:true,lastDividend:null,   // N5/R3: ejerfinanser — kortet kommer ved foerste saesonskift
     owner:{name:"Formanden",avatar:"🧑‍💼",background:"selfmade"},reputation:BAL.owner.repStart,netWorthHistory:[],ownerLifeMD:0,  // O1/O3: ejer-identitet + ejer-liv
     stakes:[],stakeIncome:0,  // M2: andele i pyramidens klubber {wid,pct,paid}
+    holdings:{},activeWid:0,  // IMP1: kontrollerede klubber {pct,deep,name} · din klubs wid er 0
     layer:"owner",  // M2.5: hvilken verden du står i — "owner" (guld, dig) eller "club" (inde i klubben)
     worldTopLifted:true,  // R7: verden fødes MED toppens ekstra styrke — migrationen må ikke løfte igen
 
@@ -1675,7 +1690,7 @@ function divLift(d){return (3-d)*BAL.world.moveAdj+((BAL.world.topLift||{})[d]||
 /* ---------- O1: the owner as a character ----------
    Imperium = din kontante formue + din equity i klubben (andel × klubværdi).
    Egen funktion, så den kan måles udefra som netWorth/reputation. */
-function netWorth(){return (G.personalWealth||0)+Math.round(clubValuation()*G.myShare/100)+stakesWorth();}   // M2: + andele i andre klubber
+function netWorth(){return (G.personalWealth||0)+Math.round(clubValuation()*G.myShare/100)+stakesWorth()+holdingsWorth();}   // M2/IMP1: + andele og kontrollerede klubber
 function repGainMult(){const b=BAL.owner.backgrounds[G.owner&&G.owner.background];return (b&&b.repGain)||BAL.owner.repGainDefault;}
 function bumpRep(d){G.reputation=clamp((G.reputation===undefined?BAL.owner.repStart:G.reputation)+(d>0?d*repGainMult():d),BAL.owner.repFloor,BAL.owner.repCap);}
 function reputationRead(){
@@ -1766,6 +1781,7 @@ function myStakePct(wid){const s=(G.stakes||[]).find(x=>x.wid===wid);return s?s.
 function stakesWorth(){return (G.stakes||[]).reduce((s,st)=>{const c=findWorldClub(st.wid);return s+(c?Math.round(stakeValue(c)*st.pct/100):0);},0);}
 function buyStake(wid,pct){
   const S=BAL.stake,c=findWorldClub(wid);if(!c)return;
+  if(G.holdings&&G.holdings[wid])return;   // IMP1: du ejer den allerede — kontrol handles ikke i skiver
   const have=myStakePct(wid),to=have+pct;
   if(to>100)return;
   // control comes with rules: the league vets you, and no man owns two clubs in one division
@@ -1789,6 +1805,138 @@ function sellStake(wid){
   addNews("OWNER","You sold your "+st.pct+"% of "+c.name+" for "+kfmt(out)+".");
   render();
 }
+/* ---------- IMP1 (M3+E0): imperiet — én dyb klub ad gangen ----------
+   G ER den klub du står i. Andre kontrollerede klubber lever som verdens-
+   klubber i pyramiden (de spiller deres runder, rykker op og ned) og deres
+   dybe tilstand — truppen, kassen, tribunerne, indbakken — ligger PAKKET i
+   G.holdings[wid].deep, klar til næste besøg. DIG (formue, omdømme, andele,
+   kalenderen) bor på G udenfor CLUB_FIELDS og følger med overalt. */
+const CLUB_FIELDS=["club","hue","badge","div","balance","ticket","capacity","stands","standBuild",
+  "fac","facBuild","facDown","seasonTix","bigExtra","jerseyFactor","jerseyName","owners","myShare",
+  "ownerBoughtSeason","capRaiseUsed","periodNet","periodMD","midwayDone","sponsorChecked","sponsorRiskMD",
+  "dividendTaken","lastDividend","netEwma","trust","admins","valHistory","commitments","protest",
+  "revenge","build","buildCost","loans","warnedNeg","bankForced","sponsor","sponsorOffered","sponsorDue",
+  "coach","fanMood","objectivePos","objectiveBold","pendingMatch","gafferPatience","lastOrder",
+  "squad","market","freeAgents","scoutPending","scoutUsed","sponsorBoost","wageCap","bids","callbacks",
+  "lastXI","suitors","captain","captSuggested","talkCooldown","soldTo","teams","me","fixtures",
+  "inbox","news","lastResult","deadlineDone","playoff","history","titles","phase","mdWeather",
+  "deadline","sliceAt","fireSale","clubTab"];
+function packClub(){
+  const p={};
+  for(const k of CLUB_FIELDS)p[k]=G[k];
+  return p;
+}
+/* Klubben som verden ser den, når du forlader den: styrken er truppens
+   bedste elleve, tabellen er tabellen, og omtalen følger byens humør. */
+function clubAsWorld(){
+  const xi=[...G.squad].sort((a,b)=>ovr(b)-ovr(a)).slice(0,11);
+  const avg=f=>Math.round(xi.reduce((s,p)=>s+f(p),0)/Math.max(1,xi.length));
+  return {wid:G.activeWid,name:G.club,div:G.div,att:avg(p=>p.att),def:avg(p=>p.def),phy:avg(p=>p.phy),
+    pts:G.me.pts,gd:G.me.gd,pl:G.me.pl,press:clamp(Math.round(50+(G.fanMood-60)/2),5,100)};
+}
+function holdingsWorth(){
+  let s=0;
+  for(const wid in (G.holdings||{})){
+    const c=findWorldClub(+wid);
+    if(c)s+=Math.round(stakeValue(c)*G.holdings[wid].pct/100);
+  }
+  return s;
+}
+/* Køb kontrol i ét hug: op til controlPct af en klub i en ANDEN division —
+   ligaens adgangskrav (formue/omdømme) og konfliktreglen genbruges fra M2. */
+function buyControl(wid){
+  const S=BAL.stake,c=findWorldClub(wid);if(!c)return;
+  if(G.holdings[wid])return;
+  if(c.div===G.div&&G.activeWid!==null){modal={type:"info",title:"Ligaen siger nej",body:"Du kan ikke kontrollere to klubber i samme division."};render();return;}
+  if((G.personalWealth||0)<S.gateWealth||reputationRead().value<S.gateRep){modal={type:"info",title:"\"Ikke endnu, formand.\"",body:"Ligaen kræver en formue på "+kfmt(S.gateWealth)+" og et omdømme på "+S.gateRep+" før den godkender kontrol med klub nummer to."};render();return;}
+  const have=myStakePct(wid);
+  const need=BAL.imp.controlPct-have;
+  const price=Math.round(stakeValue(c)*need/100*S.premium/1000)*1000;
+  if((G.personalWealth||0)<price){modal={type:"info",title:"Din formue rækker ikke",body:"Kontrollen koster "+kfmt(price)+" af dine egne penge for de sidste "+need+"%."};render();return;}
+  G.personalWealth-=price;
+  G.stakes=(G.stakes||[]).filter(x=>x.wid!==wid);   // minoritetsposten foldes ind i kontrollen
+  G.holdings[wid]={pct:BAL.imp.controlPct,deep:null,name:c.name};
+  addNews("OWNER","Du har overtaget kontrollen med "+c.name+" ("+G.divNames[c.div]+") — "+BAL.imp.controlPct+"% for "+kfmt(price)+". En ansat direktør driver den, til du selv går ind ad døren.");
+  bumpRep(BAL.owner.repPromotion||2);
+  render();
+}
+/* Første besøg i en overtaget klub: den dybe verden fødes af det, verden ved —
+   styrken bliver til en trup, pressen til en kasse, divisionen til lønninger. */
+function genHoldingState(c,pct){
+  const posPlan=["GK","GK","DF","DF","DF","DF","DF","MF","MF","MF","MF","MF","FW","FW","FW","MF"];
+  const base=clamp(Math.round((c.att+c.def)/2)-2,40,76);
+  const IM=BAL.imp;
+  const wealth=IM.pressWealthLo+((c.press===undefined?50:c.press)/100)*(IM.pressWealthHi-IM.pressWealthLo);
+  const squad=posPlan.map(p=>genPlayer(p,clamp(base+R(-IM.squadSpread,IM.squadSpread),35,80),G_DIV_WAGE(c.div)));
+  for(const p of squad)p.tenure=R(0,5);
+  const wages=squad.reduce((s,p)=>s+p.wage,0);
+  const tier=3-c.div;   // 0 i L3 … 3 i PL: en topklub kommer med mere beton
+  return {
+    club:c.name,hue:pick(SWATCHES).h,badge:initials(c.name),div:c.div,
+    balance:Math.round(IM.startCashBase*divCashMult(c.div)*wealth/1000)*1000,
+    ticket:Math.round(10*(BAL.money.price[c.div]||1)),capacity:0,
+    stands:{shed:clamp(1+tier*2,1,8),main:clamp(1+tier*2,1,8),family:clamp(tier*2,0,6),away:clamp(tier*2,0,6)},standBuild:null,
+    fac:{shop:tier,pub:tier,screen:tier>=2?1:0,clinic:tier,training:tier,parking:tier,loos:tier,lights:tier,vip:tier>=2?1:0},facBuild:null,facDown:{},
+    seasonTix:{price:150,sold:0},bigExtra:2,jerseyFactor:1,jerseyName:null,
+    owners:[{n:"Byens folk",role:"consortium",share:100-pct}].filter(o=>o.share>0),
+    myShare:pct,ownerBoughtSeason:0,capRaiseUsed:false,periodNet:0,periodMD:0,midwayDone:true,sponsorChecked:true,sponsorRiskMD:null,
+    dividendTaken:true,lastDividend:null,netEwma:0,trust:BAL.owners.trustStart,admins:0,valHistory:[],commitments:[],protest:0,
+    revenge:null,build:null,buildCost:80000,loans:[],warnedNeg:false,bankForced:false,
+    sponsor:{n:"Regional Ale Co.",per:Math.round(600*(BAL.money.sponsor[c.div]||1)/10)*10,seasonsLeft:2},sponsorOffered:true,sponsorDue:null,
+    coach:{...pick(COACHES)},fanMood:clamp((c.press===undefined?50:c.press),25,85),
+    objectivePos:8,objectiveBold:0,pendingMatch:null,gafferPatience:BAL.orders.startPatience,lastOrder:null,
+    squad,market:[],freeAgents:[],scoutPending:0,scoutUsed:false,sponsorBoost:false,
+    wageCap:Math.round(wages*1.25/100)*100,bids:[],callbacks:[],
+    lastXI:[],suitors:{},captain:null,captSuggested:false,talkCooldown:0,soldTo:[],teams:[],me:{pts:c.pts,gd:c.gd,pl:c.pl},fixtures:[],
+    inbox:[],news:[],lastResult:null,deadlineDone:{summer:true,winter:G.md>=14},playoff:null,history:[],titles:0,phase:"season",mdWeather:null,
+    deadline:null,sliceAt:null,fireSale:null,clubTab:"team"
+  };
+}
+/* Skiftet selv. Guards: kun i ro — ingen kamp i luften, ingen playoffs, intet
+   deadline-bord fremme. Verden bygges om med præcis exchange-mønsteret. */
+function enterHolding(wid){
+  wid=+wid;
+  const hold=G.holdings&&G.holdings[wid];
+  if(!hold)return;
+  if(G.phase!=="season"||G.pendingMatch||G.deadline||modal){modal=modal||{type:"info",title:"Ikke lige nu",body:"Skift klub fra roen på kontoret — ikke midt i en kampdag, et playoff eller en deadline."};render();return;}
+  const target=(G.worldRest||[]).find(c=>c.wid===wid);
+  if(!target)return;
+  // 1) pak den aktive klub og stil den ud i verden
+  const meWorld=clubAsWorld();
+  G.holdings[G.activeWid]={pct:G.myShare,deep:packClub(),name:G.club};
+  // 2) alle klubber i én pulje; målet ud, mig ind
+  const pool=[...G.teams,...G.worldRest,meWorld].filter(c=>c.wid!==wid);
+  // 3) den dybe tilstand: gendan sidste besøg, eller født af verdens viden
+  const deep=hold.deep||genHoldingState(target,hold.pct);
+  for(const k of CLUB_FIELDS)G[k]=deep[k];
+  // 4) resync mod verden: divisionen og tabellen er dér hvor PYRAMIDEN har ført klubben hen
+  G.div=target.div;
+  G.me={pts:target.pts,gd:target.gd,pl:target.pl};
+  G.teams=pool.filter(c=>c.div===target.div);
+  G.worldRest=pool.filter(c=>c.div!==target.div);
+  G.fixtures=makeFixtures();
+  G.activeWid=wid;
+  delete G.holdings[wid];
+  recalcCapacity();
+  if(!G.captain||!byId(G.captain))pickCaptain();
+  addNews("OWNER","Du er gået ind ad døren hos "+G.club+". "+G.divNames[G.div]+", "+ord(myPos())+" — og et skrivebord der er dit nu.");
+  applyTheme(G.hue,G.mode);
+  G.layer="owner";screen="home";
+  saveGame();render();
+}
+/* Oprykningskollision (M-plan, låst): en kontrolleret klub der rykker ind i
+   MIN division tvinges solgt — ligaen tillader ikke to af dine i samme række. */
+function resolveHoldingConflicts(){
+  for(const wid in (G.holdings||{})){
+    const c=findWorldClub(+wid);
+    if(!c||c.div!==G.div)continue;
+    const out=Math.round(stakeValue(c)*G.holdings[wid].pct/100*BAL.imp.forcedSaleFactor/1000)*1000;
+    G.personalWealth=(G.personalWealth||0)+out;
+    msg("Ligaens sekretariat","FA","TVUNGET SALG: "+c.name,"To kontrollerede klubber i samme division er mod reglerne. Din andel i "+c.name+" er afhændet for "+kfmt(out)+" — pengene står på din private konto.",null);
+    delete G.holdings[wid];
+  }
+}
+
 /* Season dividends from stakes: a slice of each club's abstract net, scaled by
    how their season went (press carries the form). Paid to YOU, not the club. */
 function settleStakes(){
@@ -3248,6 +3396,7 @@ function finishSeason(o){
   }
   // M1: hele pyramiden bytter klubber — én gang, uanset om jeg selv flyttede mig
   applyPyramidExchange(promoted,relegated,oldDiv);
+  resolveHoldingConflicts();   // IMP1: en kontrolleret klub der rykker ind i MIN division tvinges solgt
   settleStakes();   // M2: dine andele i andre klubber betaler deres sæsonudbytte
   /* Pakke 16/19: maalsaetningen hoerer til divisionen og forhandles paa ny hvert
      aar. EET sted saetter den -- her, lige efter divisionen kan have flyttet
@@ -4919,6 +5068,18 @@ function viewEmpire(){
     ${isMajority()?`<div class="rowline"><span>Sælg en skive til bordet <small>· ${BAL.e2.sellSlice}% · pengene er DINE${sliceLeft?" · de lytter igen om "+sliceLeft+" kampdage":""}</small></span>
       ${sliceLeft?`<span class="sc" style="opacity:.5">venter</span>`:`<button class="sellb" onclick="sellOwnSlice()">Sælg · ${kfmt(slicePrice)}</button>`}</div>`:""}
     <button class="glowbtn" onclick="enterClub()">Gå ind i klubben ▸</button></div>`;
+  // IMP1: imperiets kontrollerede klubber — hver med en dør ind
+  const holdWids=Object.keys(G.holdings||{});
+  if(holdWids.length){
+    h+=`<div class="card" style="border-color:var(--strokeAcc)"><div class="kick" style="margin-bottom:2px">Dine klubber · direktør-drevet til du går ind</div>
+      ${holdWids.map(wid=>{const c=findWorldClub(+wid);const hd=G.holdings[wid];
+        if(!c)return "";
+        const rows=[...(G.worldRest||[]).filter(x=>x.div===c.div),...(c.div===G.div?G.teams:[])].sort((a,b)=>b.pts-a.pts||b.gd-a.gd);
+        const pos=rows.findIndex(x=>x.wid===c.wid)+1;
+        return `<div class="rowline"><span><b>${c.name}</b> <small>· ${G.divNames[c.div]} · nr. ${pos} · din ${hd.pct}% ~ ${kfmt(Math.round(stakeValue(c)*hd.pct/100))}</small></span>
+          <button class="abtn" style="padding:5px 9px;font-size:10px" onclick="enterHolding(${wid})">GÅ IND ▸</button></div>`;
+      }).join("")}</div>`;
+  }
   const stakes=G.stakes||[];
   h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Dine andele ${G.stakeIncome?`<small>· ${kfmt(G.stakeIncome)} i udbytte sidste sæson</small>`:""}</div>
     ${stakes.map(st=>{const c=findWorldClub(st.wid);if(!c)return "";
@@ -4933,8 +5094,12 @@ function viewEmpire(){
     ${clubs.map(c=>{const pct=myStakePct(c.wid);
       const step=BAL.stake.stepPct;
       const cost=Math.round(stakeValue(c)*step/100*BAL.stake.premium/1000)*1000;
-      return `<div class="rowline"><span>${c.name} <small>· omtale ${Math.round(c.press||50)} · værdi ${kfmt(stakeValue(c))}${pct?" · <b>din "+pct+"%</b>":""}</small></span>
-        <button class="abtn" style="padding:5px 9px;font-size:10px" onclick="buyStake(${c.wid},${step})">+${step}% · ${kfmt(cost)}</button></div>`;
+      const owned=!!G.holdings[c.wid];
+      const ctrlCost=Math.round(stakeValue(c)*(BAL.imp.controlPct-pct)/100*BAL.stake.premium/1000)*1000;
+      const canCtrl=!owned&&c.div!==G.div&&(G.personalWealth||0)>=BAL.stake.gateWealth&&reputationRead().value>=BAL.stake.gateRep;
+      return `<div class="rowline"><span>${c.name} <small>· omtale ${Math.round(c.press||50)} · værdi ${kfmt(stakeValue(c))}${pct?" · <b>din "+pct+"%</b>":""}${owned?" · <b>DIN KLUB</b>":""}</small></span>
+        <span style="display:flex;gap:4px">${owned?"":`<button class="abtn" style="padding:5px 9px;font-size:10px" onclick="buyStake(${c.wid},${step})">+${step}% · ${kfmt(cost)}</button>`}
+        ${canCtrl?`<button class="abtn comm" style="padding:5px 9px;font-size:10px" onclick="buyControl(${c.wid})" title="Køb dig til ${BAL.imp.controlPct}% i ét hug — en direktør driver den, til du går ind">Kontrol · ${kfmt(ctrlCost)}</button>`:""}</span></div>`;
     }).join("")}</div>
   <div class="kick" style="font-size:9px;margin-top:6px;text-transform:none">Kontrol (over ${BAL.owners.majorityAt}%) kræver en formue på ${kfmt(BAL.stake.gateWealth)}, omdømme ${BAL.stake.gateRep} — og aldrig to klubber i samme division. En kontrolleret klub drives i det daglige af en ansat direktør — besøg kommer senere.</div>`;
   return h;
@@ -4945,6 +5110,7 @@ function viewBooks(){
     <div class="rowline"><span>Personlig formue <small>· kontant</small></span><span class="amt num" style="color:var(--acc)">${kfmt(G.personalWealth||0)}</span></div>
     <div class="rowline"><span>Din andel af ${G.club} <small>· ${G.myShare}%</small></span><span class="amt num">${kfmt(Math.round(clubValuation()*G.myShare/100))}</span></div>
     <div class="rowline"><span>Andele i andre klubber <small>· ${(G.stakes||[]).length} poster</small></span><span class="amt num">${kfmt(stakesWorth())}</span></div>
+    ${Object.keys(G.holdings||{}).length?`<div class="rowline"><span>Dine klubber <small>· ${Object.keys(G.holdings).length} under direktører</small></span><span class="amt num">${kfmt(holdingsWorth())}</span></div>`:""}
     <div class="rowline" style="border-top:1px solid rgba(255,255,255,.12)"><span><b>Formue i alt</b></span><span class="amt num" style="font-size:16px"><b>${kfmt(netWorth())}</b></span></div></div>
   <div class="card"><div class="kick" style="margin-bottom:2px">Ind & ud</div>
     <div class="rowline"><span>Seneste udbytte fra ${G.club}</span><span class="amt num">${G.lastDividend&&G.lastDividend.mine?kfmt(G.lastDividend.mine):"—"}</span></div>
