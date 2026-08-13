@@ -5498,7 +5498,7 @@ function viewSquad(){
   const wages=G.squad.reduce((s,p)=>s+p.wage,0);
   const wo=windowOpen();
   let h=`<div class="card"><div class="kick" style="margin-bottom:4px">Trup · ${G.squad.length} spillere · løn <b>${kfmt(wages)}/u</b> af ${kfmt(G.wageCap)} loft</div>
-    <div class="bar${wages>G.wageCap*0.9?" amber":""}"><i style="width:${clamp(Math.round(100*wages/G.wageCap),2,100)}%"></i></div>
+    <div class="bar${wages>G.wageCap*0.9?" amber":""}"><i style="width:${clamp(Math.round(100*wages/Math.max(1,G.wageCap)),2,100)}%"></i></div>
     ${G.myShare<100?`<div class="actions" style="margin-top:6px">
       <button class="abtn" style="padding:5px 9px;font-size:10px" onclick="capUp()" title="Garantipræmie fra pengekassen — det er den handel, skyderen er">Loft op +${kfmt(e4Step())}/u · koster ${kfmt(e4Fee())}</button>
       <button class="abtn ghost" style="padding:5px 9px;font-size:10px" onclick="capDown()" title="Kun ${pct(BAL.e4.downRefund)} af præmien retur — underskrifter er givet">Loft ned · frigiv ${kfmt(e4Refund())}</button></div>`
