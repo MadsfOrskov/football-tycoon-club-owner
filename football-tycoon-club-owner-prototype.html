@@ -493,6 +493,15 @@ const BAL={
     crisisBleed:6,          // lader du den bløde: pressen falder videre
     retireAge:34            // pakkede trupper ældes ved sæsonskiftet — og gamle ben går på pension
   },
+  /* E0 (GRUNDPRINCIPPET, Mads 10/8): "Det er MEGA vigtigt at du adskiller DIG
+     og KLUBBEN." At miste klubben er et KAPITEL, aldrig game over: klubben
+     spiller videre under den nye ejer, du står mellem klubber med din formue
+     og dit (ridsede) navn — og vejen tilbage går gennem Imperiet. En klubløs
+     mand kan ALTID komme tilbage: en klub i knæ tager imod enhver ejer. */
+  e0:{
+    repHit:8,               // at miste en klub ridser navnet
+    comebackShare:0.9       // klubløs: den billigste kriseklub koster højst denne del af din formue
+  },
   /* E4 (Mads 10/8): "Klubbens økonomi skal deles op i 2: en pengekasse og et
      lønbudget — og man skal kunne skubbe frem og tilbage." Valgt form: INGEN
      anden pengekasse (to kasser var stadionfondens fejlklasse, R1b) — loftet
@@ -1093,6 +1102,15 @@ function loadGame(){
   if(!G.suitors)G.suitors={};   // C1: gamle karrierer fødes uden interessent-kartotek
   if(!G.holdings)G.holdings={};   // IMP1: gamle karrierer fødes uden imperium
   if(G.activeWid===undefined)G.activeWid=0;
+  /* E0: en gammel karriere gemt PÅ game over vækkes til live igen — kapitlet
+     lukkes, klubben stilles ud i verden, og karrieren fortsætter som investor. */
+  if(G.phase==="over"){
+    G.lastEra=G.lastEra||eraSummary();
+    G.worldRest=[...(G.teams||[]),...(G.worldRest||[]),clubAsWorld()];
+    G.teams=[];
+    investorState();
+    addNews("OWNER","Spillet troede, det var slut. Det var det ikke — du står mellem klubber, og pyramiden er til salg.");
+  }
   delete G.pindPending;   // E2: lukkede man appen midt i ejerskabs-trinnet, gælder arvens 51%
   // C3: anciennitet på gamle karrierer — truppen får en rimelig fortid, resten starter på nul
   for(const p of G.squad)if(!Number.isFinite(p.tenure))p.tenure=R(1,5);
@@ -1721,7 +1739,7 @@ function applyOwner(name,avatar,bg){
    Reputation is the currency you build. */
 function ownerSpend(n){const p=Math.min(n,G.personalWealth||0);G.personalWealth=(G.personalWealth||0)-p;return p;}
 function maybeOwnerLife(){
-  if(G.phase!=="season"||G.md<2||G.md>=G.rounds)return;
+  if((G.phase!=="season"&&G.phase!=="investor")||G.md<2||G.md>=G.rounds)return;   // E0: livet fortsætter mellem klubber
   const E=BAL.ownerLife.every;
   if(!G.ownerLifeMD||G.ownerLifeMD>G.rounds)G.ownerLifeMD=G.md+R(E.min,E.max);
   if(G.md<G.ownerLifeMD)return;
@@ -1855,11 +1873,17 @@ function holdingsWorth(){
 function buyControl(wid){
   const S=BAL.stake,c=findWorldClub(wid);if(!c)return;
   if(G.holdings[wid])return;
-  if(c.div===G.div&&G.activeWid!==null){modal={type:"info",title:"Ligaen siger nej",body:"Du kan ikke kontrollere to klubber i samme division."};render();return;}
-  if((G.personalWealth||0)<S.gateWealth||reputationRead().value<S.gateRep){modal={type:"info",title:"\"Ikke endnu, formand.\"",body:"Ligaen kræver en formue på "+kfmt(S.gateWealth)+" og et omdømme på "+S.gateRep+" før den godkender kontrol med klub nummer to."};render();return;}
+  const clubless=G.activeWid===null||G.activeWid===undefined;
+  if(c.div===G.div&&!clubless){modal={type:"info",title:"Ligaen siger nej",body:"Du kan ikke kontrollere to klubber i samme division."};render();return;}
+  /* E0: adgangskravene gælder klub NUMMER TO. En klubløs mand vinkes ind —
+     ligaen vil hellere have en ejer med ridser end en klub uden ejer. */
+  if(!clubless&&((G.personalWealth||0)<S.gateWealth||reputationRead().value<S.gateRep)){modal={type:"info",title:"\"Ikke endnu, formand.\"",body:"Ligaen kræver en formue på "+kfmt(S.gateWealth)+" og et omdømme på "+S.gateRep+" før den godkender kontrol med klub nummer to."};render();return;}
   const have=myStakePct(wid);
   const need=BAL.imp.controlPct-have;
-  const price=Math.round(stakeValue(c)*need/100*S.premium/1000)*1000;
+  let price=Math.round(stakeValue(c)*need/100*S.premium/1000)*1000;
+  /* E0's comeback-garanti: klubløs betaler højst comebackShare af formuen —
+     en klub i knæ tager imod enhver ejer, og spillet er ALDRIG låst. */
+  if(clubless)price=Math.min(price,Math.max(0,Math.floor((G.personalWealth||0)*BAL.e0.comebackShare/1000)*1000));
   if((G.personalWealth||0)<price){modal={type:"info",title:"Din formue rækker ikke",body:"Kontrollen koster "+kfmt(price)+" af dine egne penge for de sidste "+need+"%."};render();return;}
   G.personalWealth-=price;
   G.stakes=(G.stakes||[]).filter(x=>x.wid!==wid);   // minoritetsposten foldes ind i kontrollen
@@ -1907,14 +1931,14 @@ function enterHolding(wid){
   wid=+wid;
   const hold=G.holdings&&G.holdings[wid];
   if(!hold)return;
-  if(G.phase!=="season"||G.pendingMatch||G.deadline||modal){modal=modal||{type:"info",title:"Ikke lige nu",body:"Skift klub fra roen på kontoret — ikke midt i en kampdag, et playoff eller en deadline."};render();return;}
+  if((G.phase!=="season"&&G.phase!=="investor")||G.pendingMatch||G.deadline||modal){modal=modal||{type:"info",title:"Ikke lige nu",body:"Skift klub fra roen på kontoret — ikke midt i en kampdag, et playoff eller en deadline."};render();return;}
   const target=(G.worldRest||[]).find(c=>c.wid===wid);
   if(!target)return;
-  // 1) pak den aktive klub og stil den ud i verden
-  const meWorld=clubAsWorld();
-  G.holdings[G.activeWid]={pct:G.myShare,deep:packClub(),name:G.club};
+  // 1) pak den aktive klub og stil den ud i verden — E0: en klubløs mand har intet at pakke
+  const meWorld=G.activeWid!==null&&G.activeWid!==undefined?clubAsWorld():null;
+  if(meWorld)G.holdings[G.activeWid]={pct:G.myShare,deep:packClub(),name:G.club};
   // 2) alle klubber i én pulje; målet ud, mig ind
-  const pool=[...G.teams,...G.worldRest,meWorld].filter(c=>c.wid!==wid);
+  const pool=[...G.teams,...G.worldRest,...(meWorld?[meWorld]:[])].filter(c=>c.wid!==wid);
   // 3) den dybe tilstand: gendan sidste besøg, eller født af verdens viden
   const deep=hold.deep||genHoldingState(target,hold.pct);
   for(const k of CLUB_FIELDS)G[k]=deep[k];
@@ -4090,13 +4114,60 @@ function rescueDecline(){
   addNews("CLUB","The rescue package was turned down. The administrators are on their way.");
   modal=null;administration();
 }
-/* Trin 5. Ikke en konkurs -- en generalforsamling. Aeraen goeres op, og det er
-   den opgoerelse der er belonningen for at have spillet saa laenge. */
+/* ---------- E0: at miste klubben er et KAPITEL ----------
+   GRUNDPRINCIPPET (Mads): klubben er ikke gået nedenom og hjem, fordi DU
+   mistede den — den spiller videre i pyramiden under den nye ejer, og DU
+   spiller videre med din formue, dit navn og dine andele. Har du en anden
+   kontrolleret klub, flytter tilstedeværelsen dertil; ellers står du mellem
+   klubber, og Imperiet er vejen tilbage. Aldrig game over. */
+function investorState(){
+  G.club="Mellem klubber";G.badge="—";G.div=-1;
+  G.squad=[];G.market=[];G.freeAgents=[];G.teams=[];G.fixtures=[];G.me={pts:0,gd:0,pl:0};
+  G.inbox=[];G.balance=0;G.owners=[];G.myShare=0;G.loans=[];G.commitments=[];
+  G.stands={shed:0,main:0,family:0,away:0};G.standBuild=null;
+  G.fac={shop:0,pub:0,screen:0,clinic:0,training:0,parking:0,loos:0,lights:0,vip:0};G.facBuild=null;G.facDown={};
+  G.capacity=0;G.sponsor=null;G.sponsorDue=null;G.pendingMatch=null;G.deadline=null;G.playoff=null;
+  G.suitors={};G.bids=[];G.callbacks=[];G.captain=null;G.lastXI=[];G.soldTo=[];G.wageCap=0;
+  G.trust=BAL.owners.trustStart;G.fanMood=60;G.protest=0;G.fireSale=null;
+  G.phase="investor";G.activeWid=null;G.layer="owner";
+}
 function loseControl(who){
-  G.phase="over";G.overTo=who||null;
-  addNews("CLUB","Control of "+G.club+" has passed out of your hands. Fourteen seasons of paperwork, and it fits in one envelope.");
-  modal={type:"eraOver",who:who||null};
+  const lost=G.club;
+  G.overTo=who||null;
+  G.lastEra=eraSummary();   // opgørelsen tages FØR staten rives ned — den er kapitlets tal
+  bumpRep(-BAL.e0.repHit);
+  addNews("OWNER","Kontrollen med "+lost+" er ude af dine hænder. Klubben spiller videre — og det gør du også, formand.");
+  const meWorld=clubAsWorld();
+  G.worldRest=[...G.teams,...G.worldRest,meWorld];
+  G.teams=[];G.div=-1;G.activeWid=null;
+  const next=Object.keys(G.holdings||{})[0];
+  if(next!==undefined){
+    // tilstedeværelsen flytter til din anden klub
+    G.phase="season";modal=null;
+    enterHolding(+next);
+    modal={type:"eraOver",who:G.overTo,moved:G.club};
+  }else{
+    investorState();
+    modal={type:"eraOver",who:G.overTo,moved:null};
+  }
   saveGame();render();
+}
+/* Ugen, når du står mellem klubber: hele pyramiden spiller (div -1 springer
+   ingen over), livet fortsætter, og sæsonskiftet er verdens eget. */
+function investorWeek(){
+  G.md++;
+  simWorldRound();
+  maybeOwnerLife();
+  if(G.md>=G.rounds)investorSeasonEnd();
+  saveGame();render();
+}
+function investorSeasonEnd(){
+  applyPyramidExchange(false,false,-1);
+  resolveHoldingConflicts();
+  settleStakes();settleHoldings();
+  G.season++;G.md=0;
+  G.netWorthHistory=(G.netWorthHistory||[]).concat([{s:G.season-1,v:netWorth()}]).slice(-30);
+  addNews("OWNER","Sæsonen sluttede uden en klub med dit navn på døren. Pyramiden spillede videre — og dine penge arbejdede.");
 }
 function eraSummary(){
   const h=G.history||[];
@@ -5101,7 +5172,10 @@ function go(s){screen=s;if(s==="inbox")G.inbox.forEach(m=>m.unread=false);keepSc
    Ejer-laget (guld) er dit: Kontor · Imperium · Økonomi. Klublaget (klubbens
    farve) er klubbens: Klub · Trup · Marked · Tabel · Indbakke — og findes kun
    når du er gået ind. Tilstedeværelsen er implicit: du ER hvor du gik ind. */
-function enterClub(toScreen){G.layer="club";screen=toScreen||"club";keepScroll=false;saveGame();render();}
+function enterClub(toScreen){
+  if(G.phase==="investor"){modal={type:"info",title:"Ingen klub at gå ind i",body:"Du står mellem klubber. Vejen tilbage går gennem Imperiet — pyramiden er til salg, og en klub i knæ tager imod enhver ejer."};render();return;}
+  G.layer="club";screen=toScreen||"club";keepScroll=false;saveGame();render();
+}
 function exitClub(){G.layer="owner";screen="home";keepScroll=false;saveGame();render();}
 /* Dørklokken: hastende klubpost giver en linje på dit bord. Bordet er en
    dørklokke, ikke en svarknap — trykket hopper dig IND i klubben. Invariantens
@@ -5115,6 +5189,7 @@ function deskDoorbell(){
    begivenheder (deadline day, banken, sæsonskiftet) banker stadig på. I
    playoff-tiden er hver kamp for stor til at skippe — så føres du derind. */
 function nextWeek(){
+  if(G.phase==="investor"){investorWeek();return;}   // E0: mellem klubber drives ugen fra kontoret
   if(G.phase!=="season"||G.md>=G.rounds){enterClub();return;}
   playMatchday();
 }
@@ -5130,7 +5205,10 @@ function viewEmpire(){
   // my club, my stakes, then the whole pyramid — every club has a price
   const sliceLeft=sliceCooldownLeft();
   const slicePrice=Math.round(clubValuation()*BAL.e2.sellSlice/100*BAL.e2.sellDiscount/1000)*1000;
-  let h=`<div class="card" style="border-color:var(--strokeAcc)"><div class="kick" style="margin-bottom:2px">Din klub · du driver den</div>
+  let h=G.phase==="investor"
+    ?`<div class="card" style="border-color:var(--strokeAcc)"><div class="kick" style="margin-bottom:2px">Mellem klubber</div>
+      <div class="rowline" style="border:none"><span style="font-size:12px">Ingen klub bærer dit navn lige nu. Pyramiden nedenfor er til salg — og en klub i knæ tager imod enhver ejer, uanset ridserne i lakken.</span></div></div>`
+    :`<div class="card" style="border-color:var(--strokeAcc)"><div class="kick" style="margin-bottom:2px">Din klub · du driver den</div>
     <div class="rowline"><span><b>${G.club}</b> <small>· ${G.divNames[G.div]} · ${ord(myPos())}</small></span><span class="amt num">${G.myShare}%</span></div>
     <div class="rowline"><span>Klubværdi <small>· din andel ${kfmt(Math.round(clubValuation()*G.myShare/100))}</small></span><span class="amt num">${kfmt(clubValuation())}</span></div>
     ${isMajority()?`<div class="rowline"><span>Sælg en skive til bordet <small>· ${BAL.e2.sellSlice}% · pengene er DINE${sliceLeft?" · de lytter igen om "+sliceLeft+" kampdage":""}</small></span>
@@ -5228,7 +5306,7 @@ function viewOwner(){
     <div style="display:flex;align-items:center;gap:12px">
       <div style="font-size:44px;line-height:1">${o.avatar}</div>
       <div><div class="cname" style="font-size:20px">${o.name}</div>
-      <div class="csub">${bg?bg.n:"Ejer"} · ${G.myShare}% af ${G.club}</div></div></div>
+      <div class="csub">${bg?bg.n:"Ejer"} · ${G.phase==="investor"?"mellem klubber — pyramiden venter":G.myShare+"% af "+G.club}</div></div></div>
     <div class="kick" style="margin-top:12px">Dit imperium</div>
     <div style="font-size:30px" class="num"><b>${kfmt(nw)}</b> ${trend!==null?`<span style="font-size:13px;color:${trend>=0?'var(--acc)':'#E05A4A'}">${trend>=0?"▲ +":"▼ "}${trend}%</span>`:""}</div>
     <div class="kick" style="font-size:9px">Personlig formue ${kfmt(G.personalWealth||0)} · dine andele ${kfmt(equity)}</div>
@@ -5271,6 +5349,11 @@ function viewOwner(){
       ${G.deadline?`<div class="newsline" style="cursor:pointer;color:var(--comm)" onclick="reopenDeadline()">⚡ Deadline day-bordet ligger fremme — ${dlOpen?dlOpen+" åbne muligheder":"alt afgjort"} ▸</div>`:""}
       <div class="rowline" style="border:none"><span style="font-size:12px">Uge ${G.md+1} af ${G.rounds} — hele pyramiden spiller. Gafferen kører holdet, medmindre du går ind.</span></div>
       <button class="glowbtn" onclick="nextWeek()">${dl?"⚡ Deadline Day":"▶&nbsp; Næste uge"}</button></div>`;
+  }else if(G.phase==="investor"){
+    // E0: mellem klubber — ugen drives herfra, og døren tilbage står i Imperiet
+    h+=`<div class="card"><div class="kick">Ugen · mellem klubber</div>
+      <div class="rowline" style="border:none"><span style="font-size:12px">Uge ${G.md+1} af ${G.rounds} — hele pyramiden spiller uden dig. Dine andele arbejder; Imperiet er vejen tilbage.</span></div>
+      <button class="glowbtn" onclick="nextWeek()">▶&nbsp; Næste uge</button></div>`;
   }else{
     h+=`<div class="card"><div class="kick">Ugen</div>
       <div class="rowline" style="border:none"><span style="font-size:12px">${G.phase==="playoff_semi"||G.phase==="playoff_final"?"En playoff-aften — for stor til at se hjemmefra.":"Sæsonen gør sig færdig."}</span></div>
@@ -6226,11 +6309,11 @@ function renderModal(){
   /* Trin 5. Ikke en fejlskaerm -- en opgoerelse. Det er den, der goer at man
      kan gaa ind i trin 4 med aabne oejne og alligevel goere det. */
   if(modal.type==="eraOver"){
-    const e=eraSummary();
+    const e=G.lastEra||eraSummary();   // E0: opgørelsen blev taget FØR kapitlet lukkede
     return `<div class="overlay"><div class="sheet">
-      <div class="kick">${G.club} · slutningen på det</div>
-      <h2>Din æra</h2>
-      <p>${modal.who?`${modal.who} har flertallet nu. `:""}Du ankom med et advokatbrev og et tomt trofæskab. Du går med ${e.seasons} sæson${e.seasons===1?"":"er"} i bøgerne og ${e.share}% af en fodboldklub.</p>
+      <div class="kick">Et kapitel lukker</div>
+      <h2>Æraens opgørelse</h2>
+      <p>${modal.who?`${modal.who} har flertallet nu. `:""}Du ankom med et advokatbrev og et tomt trofæskab. Kapitlet slutter med ${e.seasons} sæson${e.seasons===1?"":"er"} i bøgerne — men karrieren er DIN, ikke klubbens.</p>
       <div class="card">
         <div class="rowline"><span>Sæsoner ved roret</span><span class="amt num">${e.seasons}</span></div>
         <div class="rowline"><span>Oprykninger</span><span class="amt num">${e.promotions}</span></div>
@@ -6241,8 +6324,9 @@ function renderModal(){
         <div class="rowline"><span>Klubværdi på toppen</span><span class="amt num">${kfmt(e.peak)}</span></div>
         <div class="rowline" style="border-top:1px solid rgba(255,255,255,.12)"><span><b>Din personlige formue</b></span><span class="amt num" style="color:var(--acc)">${kfmt(e.wealth)}</span></div>
         <div class="rowline"><span>Hvor det endte</span><span class="amt">${e.div}</span></div></div>
-      <div class="why">Du mistede ikke klubben ved at tabe kampe. Du solgte den, en skive ad gangen, for at holde den i live — og gik derfra med ${kfmt(e.wealth)} af dine egne. Det er en anden slags historie.</div>
-      <button class="glowbtn" onclick="newCareer()">Begynd forfra ▸</button>
+      ${modal.moved?`<div class="why"><b>Tilstedeværelsen er flyttet til ${modal.moved}.</b> Dit andet skrivebord stod klar — imperiet var din forsikring.</div>`
+        :`<div class="why"><b>Du står mellem klubber nu.</b> Formuen og navnet er dine, pyramiden spiller videre — og i Imperiet er enhver klub til salg. En klub i knæ tager imod enhver ejer.</div>`}
+      <button class="glowbtn" onclick="modal=null;render()">Videre — karrieren fortsætter ▸</button>
     </div></div>`;
   }
   if(modal.type==="interstitial"){
