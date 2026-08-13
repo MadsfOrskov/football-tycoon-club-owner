@@ -1102,6 +1102,9 @@ function loadGame(){
   if(!G.suitors)G.suitors={};   // C1: gamle karrierer fødes uden interessent-kartotek
   if(!G.holdings)G.holdings={};   // IMP1: gamle karrierer fødes uden imperium
   if(G.activeWid===undefined)G.activeWid=0;
+  // IMP1-rettelse: gamle gemmer kan have pakket teams/me/fixtures (JSON-kopier
+  // af verdensklubber) — de genbygges ved besøg og skal ikke ligge dobbelt
+  for(const w in G.holdings){const d=G.holdings[w].deep;if(d){delete d.teams;delete d.me;delete d.fixtures;}}
   /* E0: en gammel karriere gemt PÅ game over vækkes til live igen — kapitlet
      lukkes, klubben stilles ud i verden, og karrieren fortsætter som investor. */
   if(G.phase==="over"){
@@ -1844,7 +1847,11 @@ const CLUB_FIELDS=["club","hue","badge","div","balance","ticket","capacity","sta
   "revenge","build","buildCost","loans","warnedNeg","bankForced","sponsor","sponsorOffered","sponsorDue",
   "coach","fanMood","objectivePos","objectiveBold","pendingMatch","gafferPatience","lastOrder",
   "squad","market","freeAgents","scoutPending","scoutUsed","sponsorBoost","wageCap","bids","callbacks",
-  "lastXI","suitors","captain","captSuggested","talkCooldown","soldTo","teams","me","fixtures",
+  "lastXI","suitors","captain","captSuggested","talkCooldown","soldTo",
+  /* BEMÆRK: teams/me/fixtures pakkes IKKE — de genbygges af verdens viden ved
+     hvert besøg (resync i enterHolding). At pakke dem var at gemme ALIASER til
+     levende verdensobjekter: samme klub bogført to steder, og gem/indlæs
+     splittede identiteten (fundet af 200x20-gaten, 7/400). */
   "inbox","news","lastResult","deadlineDone","playoff","history","titles","phase","mdWeather",
   "deadline","sliceAt","fireSale","clubTab"];
 function packClub(){
