@@ -483,7 +483,15 @@ const BAL={
     startCashBase:120000,   // en overtaget klubs kasse (×divCash × pressens forfatning)
     squadSpread:6,          // truppens base = klubbens styrke ± dette
     forcedSaleFactor:0.9,   // oprykningskollision: ligaen tvinger salg — til 90% af værdien
-    pressWealthLo:0.5, pressWealthHi:1.5   // forfatningen: press 0→lo, 100→hi
+    pressWealthLo:0.5, pressWealthHi:1.5,   // forfatningen: press 0→lo, 100→hi
+    /* IMP2: direktøren. En person med evne (driver klubben frem) og grådighed
+       (tager af DIT udbytte). Krisen ringer på din dør — resten klarer han. */
+    dirDivFactor:1,         // udbyttet fra en kontrolleret klub = stakes-formlen × (1−greed)
+    crisisPressAt:28,       // under dette: krise-papir på bordet
+    crisisAsk:60000,        // indskuddet direktøren beder om (×divCash for klubbens division)
+    crisisBoost:14,         // ... og hvad det løfter pressen med
+    crisisBleed:6,          // lader du den bløde: pressen falder videre
+    retireAge:34            // pakkede trupper ældes ved sæsonskiftet — og gamle ben går på pension
   },
   /* E4 (Mads 10/8): "Klubbens økonomi skal deles op i 2: en pengekasse og et
      lønbudget — og man skal kunne skubbe frem og tilbage." Valgt form: INGEN
@@ -1855,8 +1863,9 @@ function buyControl(wid){
   if((G.personalWealth||0)<price){modal={type:"info",title:"Din formue rækker ikke",body:"Kontrollen koster "+kfmt(price)+" af dine egne penge for de sidste "+need+"%."};render();return;}
   G.personalWealth-=price;
   G.stakes=(G.stakes||[]).filter(x=>x.wid!==wid);   // minoritetsposten foldes ind i kontrollen
-  G.holdings[wid]={pct:BAL.imp.controlPct,deep:null,name:c.name};
-  addNews("OWNER","Du har overtaget kontrollen med "+c.name+" ("+G.divNames[c.div]+") — "+BAL.imp.controlPct+"% for "+kfmt(price)+". En ansat direktør driver den, til du selv går ind ad døren.");
+  const dir=pick(DIRECTORS);
+  G.holdings[wid]={pct:BAL.imp.controlPct,deep:null,name:c.name,dir:{...dir}};
+  addNews("OWNER","Du har overtaget kontrollen med "+c.name+" ("+G.divNames[c.div]+") — "+BAL.imp.controlPct+"% for "+kfmt(price)+". "+dir.n+" ansættes som direktør ("+dir.blurb+") og driver den, til du selv går ind ad døren.");
   bumpRep(BAL.owner.repPromotion||2);
   render();
 }
@@ -1935,6 +1944,64 @@ function resolveHoldingConflicts(){
     msg("Ligaens sekretariat","FA","TVUNGET SALG: "+c.name,"To kontrollerede klubber i samme division er mod reglerne. Din andel i "+c.name+" er afhændet for "+kfmt(out)+" — pengene står på din private konto.",null);
     delete G.holdings[wid];
   }
+}
+
+/* ---------- IMP2: direktørerne — fraværende klubber lever ---------- */
+const DIRECTORS=[
+  {key:"gray",  n:"Marion Gray",   skill:2, greed:0.10, blurb:"nøgtern regnskabskvinde — langsom fremgang, rene bøger"},
+  {key:"veck",  n:"Harold Veck",   skill:3, greed:0.25, blurb:"gammel spillerhandler — bygger hurtigt, tager sin bid"},
+  {key:"osei",  n:"Comfort Osei",  skill:1, greed:0.05, blurb:"ung og loyal — lærer stadig, koster næsten intet"},
+  {key:"brandt",n:"Kai Brandt",    skill:3, greed:0.15, blurb:"dyr kontinental attitude — men tabellen lyver ikke"}
+];
+/* Sæsonafregning pr. kontrolleret klub: udbyttet er stakes-formlen minus
+   direktørens bid, klubben drives FREM af hans evne (styrke-drift), og en
+   PAKKET trup ældes ærligt — gamle ben går på pension og erstattes. */
+function settleHoldings(){
+  const IM=BAL.imp;let total=0;
+  for(const wid in (G.holdings||{})){
+    const hd=G.holdings[wid],c=findWorldClub(+wid);
+    if(!c)continue;
+    const dir=hd.dir||DIRECTORS[0];
+    const form=0.5+((c.press===undefined?50:c.press)/100);
+    const divi=Math.round(stakeValue(c)*BAL.stake.divPerSeason*form*hd.pct/100*(1-dir.greed)*IM.dirDivFactor/100)*100;
+    if(divi>0){G.personalWealth=(G.personalWealth||0)+divi;total+=divi;}
+    // evnen driver klubben frem — verdens tal, som exchange og topBuy gør det
+    const cap=BAL.world.topCap||84;
+    c.att=clamp(c.att+R(0,dir.skill),40,cap);c.def=clamp(c.def+R(0,dir.skill),40,cap);
+    addNews("OWNER",dir.n+" ("+hd.name+"): sæsonen gjort op — dit udbytte "+kfmt(divi)+" efter hans "+pct(dir.greed)+".");
+    // den pakkede trup ældes — en direktør fylder selv hullerne
+    if(hd.deep&&hd.deep.squad){
+      hd.deep.squad=hd.deep.squad.map(p=>{
+        p.age++;p.sg=0;p.sapps=0;p.smotm=0;p.inj=0;p.susp=0;p.tenure=(p.tenure||0)+1;
+        if(p.age>=IM.retireAge){const r=genPlayer(p.pos,clamp(ovr(p)-4,35,70),G_DIV_WAGE(c.div));r.tenure=0;return r;}
+        return p;
+      });
+      hd.deep.captain=null;
+    }
+    /* krisen ringer på din dør — alt andet klarer mandatet. Papiret er
+       TILSTAND på holdingen (ikke en klub-besked): bordet tegner det, uanset
+       hvilken klub du står i, og det kan ikke pakkes væk med en forkert indbakke. */
+    if((c.press===undefined?50:c.press)<IM.crisisPressAt&&!hd.crisis){
+      hd.crisis={ask:Math.round(IM.crisisAsk*divCashMult(c.div)/1000)*1000};
+      addNews("OWNER",dir.n+" ringer: "+hd.name+" bløder. Der ligger et papir på dit bord.");
+    }
+  }
+  if(total>0)G.stakeIncome=(G.stakeIncome||0)+total;
+}
+/* Krise-papiret: skyd ind af FORMUEN (aldrig klubkassen) eller lad den bløde */
+function dirCrisisAct(wid,pay){
+  const hd=G.holdings&&G.holdings[wid];if(!hd||!hd.crisis)return;
+  const c=findWorldClub(+wid);
+  if(pay){
+    if((G.personalWealth||0)<hd.crisis.ask){addNews("OWNER","Din formue rækker ikke til indskuddet i "+hd.name+" — krisen står."); return;}
+    G.personalWealth-=hd.crisis.ask;
+    if(c)c.press=clamp((c.press||50)+BAL.imp.crisisBoost,5,100);
+    addNews("OWNER","Du skød "+kfmt(hd.crisis.ask)+" ind i "+hd.name+". Byen trækker vejret igen.");
+  }else{
+    if(c)c.press=clamp((c.press||50)-BAL.imp.crisisBleed,5,100);
+    addNews("OWNER","Du lod "+hd.name+" bløde. Omtalen falder videre — og direktøren noterer sig, hvem der ikke kom.");
+  }
+  delete hd.crisis;
 }
 
 /* Season dividends from stakes: a slice of each club's abstract net, scaled by
@@ -3398,6 +3465,7 @@ function finishSeason(o){
   applyPyramidExchange(promoted,relegated,oldDiv);
   resolveHoldingConflicts();   // IMP1: en kontrolleret klub der rykker ind i MIN division tvinges solgt
   settleStakes();   // M2: dine andele i andre klubber betaler deres sæsonudbytte
+  settleHoldings(); // IMP2: direktørerne gør sæsonen op — udbytte, drift, aldring, kriser
   /* Pakke 16/19: maalsaetningen hoerer til divisionen og forhandles paa ny hvert
      aar. EET sted saetter den -- her, lige efter divisionen kan have flyttet
      sig. Den stod ogsaa inde i baade oprykningens og nedrykningens gren, og to
@@ -5076,7 +5144,7 @@ function viewEmpire(){
         if(!c)return "";
         const rows=[...(G.worldRest||[]).filter(x=>x.div===c.div),...(c.div===G.div?G.teams:[])].sort((a,b)=>b.pts-a.pts||b.gd-a.gd);
         const pos=rows.findIndex(x=>x.wid===c.wid)+1;
-        return `<div class="rowline"><span><b>${c.name}</b> <small>· ${G.divNames[c.div]} · nr. ${pos} · din ${hd.pct}% ~ ${kfmt(Math.round(stakeValue(c)*hd.pct/100))}</small></span>
+        return `<div class="rowline"><span><b>${c.name}</b> <small>· ${G.divNames[c.div]} · nr. ${pos} · din ${hd.pct}% ~ ${kfmt(Math.round(stakeValue(c)*hd.pct/100))}${hd.dir?" · "+hd.dir.n+" ("+hd.dir.blurb.split(" —")[0]+")":""}${hd.crisis?" · <b style='color:var(--comm)'>KRISE</b>":""}</small></span>
           <button class="abtn" style="padding:5px 9px;font-size:10px" onclick="enterHolding(${wid})">GÅ IND ▸</button></div>`;
       }).join("")}</div>`;
   }
@@ -5174,6 +5242,8 @@ function viewOwner(){
   // M2.5: bordet — stående beslutninger + dørklokken for hastende klubpost.
   // Bordet er en dørklokke, ikke en svarknap: trykket hopper dig IND i klubben.
   const thread=ownerThread();
+  // IMP2: direktørernes papirer — tilstand på holdingerne, tegnet direkte
+  const papers=Object.keys(G.holdings||{}).filter(w=>G.holdings[w].crisis);
   const dec=[];
   if(!isMajority())dec.push("Du er mindretalsejer — køb dig tilbage over "+BAL.owners.majorityAt+"%.");
   if(G.owners.length&&G.ownerBoughtSeason!==G.season)dec.push("Du kan købe en medejer ud i denne sæson.");
@@ -5183,9 +5253,13 @@ function viewOwner(){
   // dividendRemindFrom markeres det, så man ikke glemmer at betale sig selv.
   const divi=isMajority()&&G.dividendTaken===false&&G.balance>0;
   const late=divi&&G.md>=BAL.owners.dividendRemindFrom;
-  const deskN=dec.length+bell.length+(divi?1:0);
+  const deskN=dec.length+bell.length+(divi?1:0)+papers.length;
   h+=`<div class="card"><div class="kick" style="margin-bottom:2px">På dit bord${deskN?" · <b>"+deskN+"</b>":""}</div>
     ${thread.map(x=>`<div class="newsline" style="${x.urgent?"color:var(--comm)":"opacity:.85"}">${x.txt}</div>`).join("")}
+    ${papers.map(w=>{const hd=G.holdings[w];const dir=hd.dir||{n:"Direktøren"};
+      return `<div class="newsline" style="color:var(--comm)">📄 ${dir.n}: <b>${hd.name}</b> bløder — han beder om ${kfmt(hd.crisis.ask)} af DINE penge.
+      <div class="actions" style="margin-top:4px"><button class="abtn" onclick="dirCrisisAct(${w},1);render()">Skyd ind · ${kfmt(hd.crisis.ask)}</button>
+      <button class="abtn ghost" onclick="dirCrisisAct(${w},0);render()">Lad den bløde</button></div></div>`;}).join("")}
     ${divi?`<div class="newsline" style="cursor:pointer${late?";color:var(--comm)":""}" onclick="openDividend()">💰 Erklær udbytte — ${kfmt(Math.max(0,G.balance))} i kassen${late?" · <b>sidste chance i denne sæson</b>":""}</div>`:""}
     ${dec.map(d=>`<div class="newsline">${d}</div>`).join("")}
     ${bell.map(b=>`<div class="newsline" style="cursor:pointer${b.urgent?";color:var(--comm)":""}" onclick="enterClub('inbox')">✉ ${G.club}: ${b.title}${b.urgent?" · <b>udløber snart</b>":""} — gå ind ▸</div>`).join("")}
