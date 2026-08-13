@@ -29,6 +29,15 @@ Klubbens valgte farve (introens AKT 2) lever videre som IDENTITET — skjold,
 trøje, små detaljer (`--club`) — aldrig som hele UI'ets tema. Lys tilstand
 findes ikke: primær UI er mørk navy, altid.
 
+### 2b. Referencebilledet (Mads 13/8, 10 skærme) — stilens detaljer
+- **Bottom-nav har IKONER over labels** (stroke-ikoner, arver knapfarven: blå aktiv i klubben, guld hos ejeren).
+- **Spiller-ratings står i GRØNNE badges** (grøn tekst, grøn-tintet baggrund, afrundet ramme) — ratings er kvalitet, ikke interaktion.
+- **Omdømme vises med GULD-stjerner** (★★★☆☆, fyldte = værdi/20).
+- **Aktive faner er solide blå piller** med hvid tekst.
+- **CTA-knapper er flade og solide blå** med hvid tekst — ingen gradient-glød.
+- **Statusbjælker (tillid, kemi, omdømme) er grønne**; grafer og kurver er blå.
+- **Typografien er LIGE og tung** (Inter 800 til display/overskrifter/tal) — ingen kursiv/kondenseret i display-laget. BarlowCN må kun overleve i mikro-chips og tabelhoveder, hvor kompaktheden bærer.
+
 ## 3. Cards
 Centrale. Bløde hjørner (ikke overdrevent runde), diskrete borders, meget let
 shadow/elevation, god spacing. Professionelle dashboard-komponenter — bruges
