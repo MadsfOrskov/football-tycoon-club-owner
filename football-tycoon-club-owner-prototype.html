@@ -1934,8 +1934,12 @@ function buyControl(wid){
   /* E0: adgangskravene gælder klub NUMMER TO. En klubløs mand vinkes ind —
      ligaen vil hellere have en ejer med ridser end en klub uden ejer. */
   if(!clubless&&((G.personalWealth||0)<S.gateWealth||reputationRead().value<S.gateRep)){modal={type:"info",title:"\"Ikke endnu, formand.\"",body:"Ligaen kræver en formue på "+kfmt(S.gateWealth)+" og et omdømme på "+S.gateRep+" før den godkender kontrol med klub nummer to."};render();return;}
+  /* Gate-fund (200×20): skiver kan stables OVER kontrolgrænsen uden at blive
+     kontrol — og behøver man så "-behøver" procent, blev prisen NEGATIV og
+     kontrollen betalte dig. Ejer du allerede nok, er konverteringen gratis,
+     og posten bærer HELE din andel — ikke kun grænsen. */
   const have=myStakePct(wid);
-  const need=BAL.imp.controlPct-have;
+  const need=Math.max(0,BAL.imp.controlPct-have);
   let price=Math.round(stakeValue(c)*need/100*S.premium/1000)*1000;
   /* E0's comeback-garanti: klubløs betaler højst comebackShare af formuen —
      en klub i knæ tager imod enhver ejer, og spillet er ALDRIG låst. */
@@ -1944,8 +1948,9 @@ function buyControl(wid){
   G.personalWealth-=price;
   G.stakes=(G.stakes||[]).filter(x=>x.wid!==wid);   // minoritetsposten foldes ind i kontrollen
   const dir=pick(DIRECTORS);
-  G.holdings[wid]={pct:BAL.imp.controlPct,deep:null,name:c.name,dir:{...dir}};
-  addNews("OWNER","Du har overtaget kontrollen med "+c.name+" ("+G.divNames[c.div]+") — "+BAL.imp.controlPct+"% for "+kfmt(price)+". "+dir.n+" ansættes som direktør ("+dir.blurb+") og driver den, til du selv går ind ad døren.");
+  const pct=Math.max(BAL.imp.controlPct,have);   // en stablet overandel foldes IND, ikke væk
+  G.holdings[wid]={pct,deep:null,name:c.name,dir:{...dir}};
+  addNews("OWNER","Du har overtaget kontrollen med "+c.name+" ("+G.divNames[c.div]+") — "+pct+"% for "+kfmt(price)+". "+dir.n+" ansættes som direktør ("+dir.blurb+") og driver den, til du selv går ind ad døren.");
   bumpRep(BAL.owner.repPromotion||2);
   if(clubless)G.cameBack=true;   // M4: vejen tilbage er en milepæl — flaget sættes hvor den betrædes
   checkMilestonesNow();          // M4: et klubkøb kan i sig selv udløse club2/top2/comeback
@@ -2124,9 +2129,10 @@ function brokerAccept(){
   if(clubless)price=Math.min(price,Math.max(0,Math.floor((G.personalWealth||0)*BAL.e0.comebackShare/1000)*1000));   // comeback-garantien gælder også hos mægleren
   if((G.personalWealth||0)<price){modal={type:"info",title:"Din formue rækker ikke",body:BAL.broker.n+" trækker på skuldrene: \""+kfmt(price)+", kontant. Jeg holder den ikke varm.\""};render();return;}
   G.personalWealth-=price;
+  const heldPct=myStakePct(o.wid);   // gate-fund: en stablet skive må ikke fordampe i mæglerens handel
   G.stakes=(G.stakes||[]).filter(x=>x.wid!==o.wid);
   const dir=pick(DIRECTORS);
-  G.holdings[o.wid]={pct:BAL.imp.controlPct,deep:null,name:o.name,dir:{...dir}};
+  G.holdings[o.wid]={pct:Math.max(BAL.imp.controlPct,heldPct),deep:null,name:o.name,dir:{...dir}};
   addNews("OWNER","Du købte "+o.name+" gennem "+BAL.broker.n+" — "+BAL.imp.controlPct+"% for "+kfmt(price)+" (under markedet: de SKULLE sælge). "+dir.n+" sætter sig i direktørstolen.");
   bumpRep(BAL.owner.repPromotion||2);
   if(clubless)G.cameBack=true;   // M4: også mæglerens dør tæller som vejen tilbage
