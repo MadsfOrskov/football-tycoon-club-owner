@@ -523,7 +523,12 @@ const BAL={
      vej, økonomitrappens tvangsredning den dyre. */
   e2:{
     minShare:51,
-    sellDiscount:0.9,     // frivilligt nedsalg: medejerne vil have en margen …
+    /* E2-justering (Mads 13/8): pinden gav for mange kontanter — 51% kunne
+       finansiere andele i højere ligaer fra dag ét. Stiftelses-rabatten er
+       fiktionens egen: et dødsbo med gæld og et tomt trofæskab handler UNDER
+       vurdering, og køberne ved det. Vist ærligt på ejerskabs-trinnet. */
+    startDiscount:0.55,
+    sellDiscount:0.9,     // frivilligt nedsalg SENERE: medejerne vil have en margen …
     sellSlice:5,          // … og de køber i skiver af 5%
     sellCooldownMD:6      // én skive ad gangen — bordet skal ikke være en pengeautomat
   },
@@ -914,7 +919,12 @@ const BAL={
     valBase:60000, valPerStr:9000, divMult:{0:200,1:30,2:6,3:1},   // pengetrappen: følger værditrappen — en PL-klub er ~£140M værd
     pressSwing:0.5,           // value swings ±this around press 50
     divPerSeason:0.055,       // season dividend: this share of club value, scaled by form
-    gateWealth:1000000, gateRep:55   // pengetrappen: kontrol med klub nr. 2 kræver en ægte formue
+    gateWealth:1000000, gateRep:55,   // pengetrappen: kontrol med klub nr. 2 kræver en ægte formue
+    /* E2-justering (Mads 13/8): "man skal ikke kunne købe sig ind i andre
+       klubber helt fra begyndelsen." Pindens kontanter kunne købe andele i
+       hele pyramiden fra dag ét — nu godkender ligaen først EKSTERNE
+       ejerandele (minoritet OG kontrol) efter din første hele sæson. */
+    unlockSeason:2
   },
   ownerLife:{
     every:{min:3, max:6},       // matchdays between owner-life events
@@ -1811,6 +1821,8 @@ function stakesWorth(){return (G.stakes||[]).reduce((s,st)=>{const c=findWorldCl
 function buyStake(wid,pct){
   const S=BAL.stake,c=findWorldClub(wid);if(!c)return;
   if(G.holdings&&G.holdings[wid])return;   // IMP1: du ejer den allerede — kontrol handles ikke i skiver
+  // E2-justering (Mads): ingen eksterne køb fra begyndelsen — ligaen skal kende dig først
+  if(G.season<S.unlockSeason){modal={type:"info",title:"\"Hvem er du, helt præcist?\"",body:"Ligaen godkender først ejerandele i andre klubber efter din første hele sæson. Driv din egen — så kender de dit navn, når du banker på."};render();return;}
   const have=myStakePct(wid),to=have+pct;
   if(to>100)return;
   // control comes with rules: the league vets you, and no man owns two clubs in one division
@@ -1881,6 +1893,9 @@ function buyControl(wid){
   const S=BAL.stake,c=findWorldClub(wid);if(!c)return;
   if(G.holdings[wid])return;
   const clubless=G.activeWid===null||G.activeWid===undefined;
+  // E2-justering: samme dør som minoritetsandele — første sæson er din egen klubs
+  // (en klubløs investor er ALTID forbi første sæson: kapitel-vejen kræver en mistet klub)
+  if(!clubless&&G.season<BAL.stake.unlockSeason){modal={type:"info",title:"\"Hvem er du, helt præcist?\"",body:"Ligaen godkender først ejerandele i andre klubber efter din første hele sæson."};render();return;}
   if(c.div===G.div&&!clubless){modal={type:"info",title:"Ligaen siger nej",body:"Du kan ikke kontrollere to klubber i samme division."};render();return;}
   /* E0: adgangskravene gælder klub NUMMER TO. En klubløs mand vinkes ind —
      ligaen vil hellere have en ejer med ridser end en klub uden ejer. */
@@ -5243,7 +5258,10 @@ function viewEmpire(){
   const d=(G.empDiv===undefined||G.empDiv===null)?(G.div===0?1:0):G.empDiv;
   h+=`<div class="modes" style="margin:10px 0">`+[0,1,2,3].map(x=>`<button class="${d===x?'on':''}" onclick="G.empDiv=${x};render()">${G.divNames[x].replace("League ","L").replace("Premier Division","Prem")}</button>`).join("")+`</div>`;
   const clubs=[...(G.worldRest||[]).filter(c=>c.div===d),...(d===G.div?G.teams:[])].sort((a,b)=>b.pts-a.pts||b.gd-a.gd);
-  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">${G.divNames[d]} · køb dig ind</div>
+  // E2-justering: første sæson er din egen klubs — pyramiden kan SES, ikke købes
+  const stakesLocked=G.season<BAL.stake.unlockSeason&&G.phase!=="investor";
+  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">${G.divNames[d]} · ${stakesLocked?"til salg — men ikke til dig endnu":"køb dig ind"}</div>
+    ${stakesLocked?`<div class="newsline">Ligaen godkender først ejerandele i andre klubber efter din første hele sæson. Kig, lær navnene — og kom igen til sommer.</div>`:""}
     ${clubs.map(c=>{const pct=myStakePct(c.wid);
       const step=BAL.stake.stepPct;
       const cost=Math.round(stakeValue(c)*step/100*BAL.stake.premium/1000)*1000;
@@ -5251,8 +5269,8 @@ function viewEmpire(){
       const ctrlCost=Math.round(stakeValue(c)*(BAL.imp.controlPct-pct)/100*BAL.stake.premium/1000)*1000;
       const canCtrl=!owned&&c.div!==G.div&&(G.personalWealth||0)>=BAL.stake.gateWealth&&reputationRead().value>=BAL.stake.gateRep;
       return `<div class="rowline"><span>${c.name} <small>· omtale ${Math.round(c.press||50)} · værdi ${kfmt(stakeValue(c))}${pct?" · <b>din "+pct+"%</b>":""}${owned?" · <b>DIN KLUB</b>":""}</small></span>
-        <span style="display:flex;gap:4px">${owned?"":`<button class="abtn" style="padding:5px 9px;font-size:10px" onclick="buyStake(${c.wid},${step})">+${step}% · ${kfmt(cost)}</button>`}
-        ${canCtrl?`<button class="abtn comm" style="padding:5px 9px;font-size:10px" onclick="buyControl(${c.wid})" title="Køb dig til ${BAL.imp.controlPct}% i ét hug — en direktør driver den, til du går ind">Kontrol · ${kfmt(ctrlCost)}</button>`:""}</span></div>`;
+        <span style="display:flex;gap:4px">${owned||stakesLocked?"":`<button class="abtn" style="padding:5px 9px;font-size:10px" onclick="buyStake(${c.wid},${step})">+${step}% · ${kfmt(cost)}</button>`}
+        ${canCtrl&&!stakesLocked?`<button class="abtn comm" style="padding:5px 9px;font-size:10px" onclick="buyControl(${c.wid})" title="Køb dig til ${BAL.imp.controlPct}% i ét hug — en direktør driver den, til du går ind">Kontrol · ${kfmt(ctrlCost)}</button>`:""}</span></div>`;
     }).join("")}</div>
   <div class="kick" style="font-size:9px;margin-top:6px;text-transform:none">Kontrol (over ${BAL.owners.majorityAt}%) kræver en formue på ${kfmt(BAL.stake.gateWealth)}, omdømme ${BAL.stake.gateRep} — og aldrig to klubber i samme division. En kontrolleret klub drives i det daglige af en ansat direktør — besøg kommer senere.</div>`;
   return h;
@@ -6921,14 +6939,14 @@ function renderOnboarding(){
     const v=clubValuation();
     const share=clamp(obData.share||BAL.e2.minShare,BAL.e2.minShare,100);
     const sold=100-share;
-    const cash=Math.round(v*sold/100/1000)*1000;
+    const cash=Math.round(v*sold/100*BAL.e2.startDiscount/1000)*1000;
     const A=BAL.owners.dividendAppetite;
     const blurb=r=>A[r]>=0.5?"grådig med udbyttet, rundhåndet med redninger":A[r]>=0.3?"vil se afkast, men kan vente":"tålmodig — bygger hellere end han tager ud";
     const w=[24,15,10];
     let alloc=w.map(x=>Math.floor(x*sold/49));let rest=sold-alloc.reduce((a,b)=>a+b,0);
     for(let i=0;rest>0;i=(i+1)%3){alloc[i]++;rest--;}
     inner=`<div class="letter"><div class="lh">TRIN 6 AF 6 · EJERSKABET</div>
-      Advokaten vurderer boet til <b class="num">~${kfmt(v)}</b>. Tre lokale vil købe sig ind — <b>sælger du fra start, er pengene DINE</b>, ikke klubbens. Klubbens budget er det samme uanset.</div>
+      Advokaten vurderer boet til <b class="num">~${kfmt(v)}</b>. Tre lokale vil købe sig ind — <b>sælger du fra start, er pengene DINE</b>, ikke klubbens. Klubbens budget er det samme uanset. Men et dødsbo handler under vurdering: køberne betaler ${pct(BAL.e2.startDiscount)} — og ligaen godkender først ejerandele i ANDRE klubber efter din første sæson.</div>
       <div class="kick" style="margin-top:10px">Køberne ved bordet</div>
       ${G.owners.map((o,i)=>`<div class="rowline"><span>${o.n} <small>· ${o.role} · ${blurb(o.role)}</small></span><span class="amt num">${sold?alloc[i]+"%":"—"}</span></div>`).join("")}
       <div class="kick" style="margin-top:12px">Din andel</div>
@@ -6991,10 +7009,11 @@ function obApplyShare(share){
     G.owners=G.owners.map((o,i)=>({...o,share:alloc[i]})).filter(o=>o.share>0);
   }
   G.myShare=share;
-  const cash=Math.round(v*sold/100/1000)*1000;
+  // E2-justering: dødsbo-rabatten — køberne betaler under vurdering ved stiftelsen
+  const cash=Math.round(v*sold/100*BAL.e2.startDiscount/1000)*1000;
   if(cash>0){
     G.personalWealth=(G.personalWealth||0)+cash;
-    addNews("OWNER","Du solgte "+sold+"% af klubben fra start — "+kfmt(cash)+" på DIN konto. Kapital til imperiet, eller til en regnvejrsdag.");
+    addNews("OWNER","Du solgte "+sold+"% af klubben fra start — "+kfmt(cash)+" på DIN konto (et dødsbo handler under vurdering). Kapital til livet, og med tiden til imperiet.");
   }
   delete G.pindPending;
   return cash;
