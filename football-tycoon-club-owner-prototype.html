@@ -493,6 +493,13 @@ const BAL={
     crisisBleed:6,          // lader du den bløde: pressen falder videre
     retireAge:34            // pakkede trupper ældes ved sæsonskiftet — og gamle ben går på pension
   },
+  /* M4: vindermålet er en BLANDING af formue og dynasti (låst med Mads):
+     milepæle fejres én gang, bygger navnet, og æraens opgørelse vægter
+     begge — pengene OG fodboldmagten. */
+  m4:{
+    repPerMilestone:3,
+    wealthMilestone:1000000, nwMilestone:10000000
+  },
   /* R9: klubmægleren og Invest-fanen. Mægleren er en PERSON, der lægger
      klubtilbud på DIT bord — kriseklubber (lav omtale) med rabat, T1's
      desperation på klubniveau. Mellem klubber ringer han oftere: det er
@@ -1136,6 +1143,7 @@ function loadGame(){
   if(!G.holdings)G.holdings={};   // IMP1: gamle karrierer fødes uden imperium
   if(G.activeWid===undefined)G.activeWid=0;
   if(!G.invest)G.invest={};if(G.brokerOffer===undefined)G.brokerOffer=null;   // R9
+  if(!G.milestones)G.milestones={};   // M4: gamle karrierer fødes uden mærker — de indhentes ved næste sæsonskifte
   // IMP1-rettelse: gamle gemmer kan have pakket teams/me/fixtures (JSON-kopier
   // af verdensklubber) — de genbygges ved besøg og skal ikke ligge dobbelt
   for(const w in G.holdings){const d=G.holdings[w].deep;if(d){delete d.teams;delete d.me;delete d.fixtures;}}
@@ -1692,6 +1700,7 @@ function newGame(name,hue,mode){
     stakes:[],stakeIncome:0,  // M2: andele i pyramidens klubber {wid,pct,paid}
     holdings:{},activeWid:0,  // IMP1: kontrollerede klubber {pct,deep,name} · din klubs wid er 0
     invest:{},investIncome:0,brokerOffer:null,  // R9: dine aktiver + mæglerens papir
+    milestones:{},cameBack:false,  // M4: dynastiets mærker — {key:season}, fejres én gang
     layer:"owner",  // M2.5: hvilken verden du står i — "owner" (guld, dig) eller "club" (inde i klubben)
     worldTopLifted:true,  // R7: verden fødes MED toppens ekstra styrke — migrationen må ikke løfte igen
 
@@ -1938,6 +1947,8 @@ function buyControl(wid){
   G.holdings[wid]={pct:BAL.imp.controlPct,deep:null,name:c.name,dir:{...dir}};
   addNews("OWNER","Du har overtaget kontrollen med "+c.name+" ("+G.divNames[c.div]+") — "+BAL.imp.controlPct+"% for "+kfmt(price)+". "+dir.n+" ansættes som direktør ("+dir.blurb+") og driver den, til du selv går ind ad døren.");
   bumpRep(BAL.owner.repPromotion||2);
+  if(clubless)G.cameBack=true;   // M4: vejen tilbage er en milepæl — flaget sættes hvor den betrædes
+  checkMilestonesNow();          // M4: et klubkøb kan i sig selv udløse club2/top2/comeback
   render();
 }
 /* Første besøg i en overtaget klub: den dybe verden fødes af det, verden ved —
@@ -2118,6 +2129,8 @@ function brokerAccept(){
   G.holdings[o.wid]={pct:BAL.imp.controlPct,deep:null,name:o.name,dir:{...dir}};
   addNews("OWNER","Du købte "+o.name+" gennem "+BAL.broker.n+" — "+BAL.imp.controlPct+"% for "+kfmt(price)+" (under markedet: de SKULLE sælge). "+dir.n+" sætter sig i direktørstolen.");
   bumpRep(BAL.owner.repPromotion||2);
+  if(clubless)G.cameBack=true;   // M4: også mæglerens dør tæller som vejen tilbage
+  checkMilestonesNow();
   G.brokerOffer=null;render();
 }
 function brokerDecline(){
@@ -3721,6 +3734,7 @@ function finishSeason(o){
   G.valHistory=(G.valHistory||[]).concat([{s:G.season-1,v:clubValuation()}]).slice(-30);
   G.netWorthHistory=(G.netWorthHistory||[]).concat([{s:G.season-1,v:netWorth()}]).slice(-30);  // O1: imperium-trend
   if(o.promoted)bumpRep(BAL.owner.repPromotion);   // O1: climbing the pyramid builds your name
+  checkMilestonesNow();   // M4: sæsonskiftet er milepælenes puls — alt er gjort op nu
   modal={type:"seasonDone",txt,promoted,pos,prize,crown};
   saveGame();
   render();
@@ -4309,7 +4323,36 @@ function investorSeasonEnd(){
   settleStakes();settleHoldings();settleInvest();
   G.season++;G.md=0;
   G.netWorthHistory=(G.netWorthHistory||[]).concat([{s:G.season-1,v:netWorth()}]).slice(-30);
+  checkMilestonesNow();   // M4: også et sæsonskifte mellem klubber gør formuen op
   addNews("OWNER","Sæsonen sluttede uden en klub med dit navn på døren. Pyramiden spillede videre — og dine penge arbejdede.");
+}
+/* M4: milepælene er dynastiets sprog — hver fejres ÉN gang pr. karriere,
+   bygger navnet (omdømme) og tælles i æraens opgørelse. Betingelserne læser
+   KUN tilstanden, aldrig vejen derhen — så det samme tjek kan kaldes fra
+   begge sæsonskift OG fra et klubkøb uden at kende historien. */
+const MILESTONES=[
+  {key:"wealth1m", txt:()=>"Den første million — "+kfmt(BAL.m4.wealthMilestone)+" på din PRIVATE konto.",
+    hit:()=>(G.personalWealth||0)>=BAL.m4.wealthMilestone},
+  {key:"nw10m",    txt:()=>"Formuens fulde billede rundede "+kfmt(BAL.m4.nwMilestone)+" — klub, andele og aktiver talt med.",
+    hit:()=>netWorth()>=BAL.m4.nwMilestone},
+  {key:"club2",    txt:()=>"To klubber med dit navn på døren — imperiet er ikke længere en talemåde.",
+    hit:()=>((G.activeWid!==null&&G.activeWid!==undefined)?1:0)+Object.keys(G.holdings||{}).length>=2},
+  {key:"top2",     txt:()=>"To af dine klubber i landets to øverste rækker på samme tid.",
+    hit:()=>{let n=(G.activeWid!==null&&G.activeWid!==undefined&&G.div<=1)?1:0;
+      for(const w in (G.holdings||{})){const c=findWorldClub(+w);if(c&&c.div<=1)n++;}
+      return n>=2;}},
+  {key:"comeback", txt:()=>"Tilbage fra ingenting: du mistede en klub og købte dig ind igen. Byen husker den slags.",
+    hit:()=>!!G.cameBack}
+];
+function checkMilestonesNow(){
+  G.milestones=G.milestones||{};
+  for(const m of MILESTONES){
+    if(G.milestones[m.key]!==undefined)continue;   // fejres ÉN gang — dét er hele pointen
+    if(!m.hit())continue;
+    G.milestones[m.key]=G.season;
+    bumpRep(BAL.m4.repPerMilestone);
+    addNews("OWNER","🏆 MILEPÆL: "+m.txt());
+  }
 }
 function eraSummary(){
   const h=G.history||[];
@@ -4323,7 +4366,11 @@ function eraSummary(){
     peak:(G.valHistory||[]).reduce((a,x)=>Math.max(a,x.v),clubValuation()),
     div:G.divNames[G.div],
     share:G.myShare,
-    wealth:G.personalWealth||0   // N5: the career score you actually walk away with
+    wealth:G.personalWealth||0,   // N5: the career score you actually walk away with
+    /* M4: kapitlet gøres op i BEGGE valutaer — pengene og fodboldmagten */
+    nw:netWorth(),
+    clubs:((G.activeWid!==null&&G.activeWid!==undefined)?1:0)+Object.keys(G.holdings||{}).length,
+    milestones:Object.keys(G.milestones||{}).length
   };
 }
 function wageBill(){return G.squad.reduce((s,p)=>s+p.wage,0);}
@@ -6488,6 +6535,9 @@ function renderModal(){
         ${e.best?`<div class="rowline"><span>Bedste placering</span><span class="amt">${ord(e.best.pos)} · ${e.best.div}</span></div>`:""}
         <div class="rowline"><span>Klubværdi på toppen</span><span class="amt num">${kfmt(e.peak)}</span></div>
         <div class="rowline" style="border-top:1px solid rgba(255,255,255,.12)"><span><b>Din personlige formue</b></span><span class="amt num" style="color:var(--acc)">${kfmt(e.wealth)}</span></div>
+        ${e.nw!==undefined?`<div class="rowline"><span><b>Formuens fulde billede</b></span><span class="amt num" style="color:var(--acc)">${kfmt(e.nw)}</span></div>`:""}
+        ${e.clubs!==undefined?`<div class="rowline"><span>Klubber i imperiet</span><span class="amt num">${e.clubs}</span></div>`:""}
+        ${e.milestones!==undefined?`<div class="rowline"><span>Milepæle nået</span><span class="amt num">🏆 ${e.milestones}</span></div>`:""}
         <div class="rowline"><span>Hvor det endte</span><span class="amt">${e.div}</span></div></div>
       ${modal.moved?`<div class="why"><b>Tilstedeværelsen er flyttet til ${modal.moved}.</b> Dit andet skrivebord stod klar — imperiet var din forsikring.</div>`
         :`<div class="why"><b>Du står mellem klubber nu.</b> Formuen og navnet er dine, pyramiden spiller videre — og i Imperiet er enhver klub til salg. En klub i knæ tager imod enhver ejer.</div>`}
