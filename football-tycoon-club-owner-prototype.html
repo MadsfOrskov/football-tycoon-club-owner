@@ -548,7 +548,18 @@ const BAL={
     repNarrow:0.3,     // dit omdømme åbner døre: ved omdømme 100 er båndet 30% smallere
     // forventningen: hvor hårdt bestyrelsen læner sig op ad rangeringen
     expectPull:0.75,   // 1 = ren styrke-rangering · 0 = den gamle faste tabel
-    ambition:1         // de vil altid have én plads mere end tallene siger
+    ambition:1,        // de vil altid have én plads mere end tallene siger
+    /* Kalibrering mellem to skalaer. AI-ligaen afgør sine egne kampe med ANDRE
+       konstanter end mine (base 1,15 og /22 mod 1,05 og /24, og et fladt
+       hjemmetillæg mod mit dynamiske), så et rå styrke-ræs mellem min klub og
+       deres tal rammer skævt: uden klubbonussen forudsagde indekset 12. plads
+       for et hold, der i praksis bliver nr. 5; med den fulde bonus forudsagde
+       den 1. plads. Faktoren er MÅLT mod karrierernes faktiske slutplacering —
+       Faktoren er MÅLT mod karrierernes faktiske placeringer, ikke gættet:
+       0,5 gav afvigelse +2,8 · 0,85 gav +1,1 · 0,95 gav +0,9 (20×5). Den lille
+       rest gør indekset en anelse forsigtigt — den rigtige side at fejle til.
+       Efterprøves med --stats-linjen "forventet placering mod faktisk". */
+    selfAdj:0.95
   },
   e2:{
     minShare:51,
@@ -2527,21 +2538,23 @@ function bestXI(){
 }
 function xiList(){const xi=bestXI();return [...xi.gk,...xi.df,...xi.mf,...xi.fw];}
 function myPhy(){const l=xiList();return l.length?l.reduce((s,p)=>s+p.phy*phyMult(p),0)/l.length:40;}
+/* Matchdagens styrke = klubbens niveau (squadRating) + ugens vejr: form,
+   selvtillid og trætte ben. STYRKE-1 lagde sammensætningen ét sted, så tabellen
+   og motoren aldrig kan komme til at måle to forskellige klubber. */
 function myStrength(){
   const xi=bestXI();
   const avg=(arr,f)=>arr.length?arr.reduce((s,p)=>s+f(p),0)/arr.length:35;
-  let leader=G.squad.some(p=>p.traits.includes("leader"))?1.5:0;
-  const cap=byId(G.captain);
-  if(cap&&cap.traits.includes("leader"))leader+=1; // the right armband amplifies
   const all=[...xi.df,...xi.mf,...xi.fw];
   const confAvg=(avg(all,p=>p.conf)-50)/22; // confidence: the slow layer
   const formAvg=avg(all,p=>p.form)+confAvg;
   // tired legs turn up, but they don't turn up all the way
   const A=p=>p.att*skillMult(p),D=p=>p.def*skillMult(p);
-  const att=avg(xi.fw,A)*0.5+avg(xi.mf,A)*0.35+avg(xi.df,A)*0.15;
-  const def=avg(xi.gk,D)*0.35+avg(xi.df,D)*0.45+avg(xi.mf,D)*0.2;
-  const coachB=(G.coach.tac+G.coach.man)/2/16;
-  return {att:att+formAvg+coachB+leader,def:def+formAvg+coachB+leader};
+  const fatigue=(avg(xi.fw,A)*0.5+avg(xi.mf,A)*0.35+avg(xi.df,A)*0.15)
+               -(avg(xi.fw,p=>p.att)*0.5+avg(xi.mf,p=>p.att)*0.35+avg(xi.df,p=>p.att)*0.15);
+  const fatigueD=(avg(xi.gk,D)*0.35+avg(xi.df,D)*0.45+avg(xi.mf,D)*0.2)
+               -(avg(xi.gk,p=>p.def)*0.35+avg(xi.df,p=>p.def)*0.45+avg(xi.mf,p=>p.def)*0.2);
+  const base=squadRating();
+  return {att:base.att+formAvg+fatigue,def:base.def+formAvg+fatigueD};
 }
 function bigGameBonus(){return G.squad.some(p=>p.traits.includes("biggame"))?2.5:0;}
 /* ---------- STYRKE-1: indekset ----------
@@ -2553,9 +2566,21 @@ function bigGameBonus(){return G.squad.some(p=>p.traits.includes("biggame"))?2.5
 function squadRating(){
   const xi=bestXI();
   const avg=(arr,f)=>arr.length?arr.reduce((s,p)=>s+f(p),0)/arr.length:35;
+  /* Samme vægte som matchdagen, men på FRISKE tal (ingen skillMult): indekset
+     er klubbens niveau, ikke onsdagens skavanker. */
   const att=avg(xi.fw,p=>p.att)*0.5+avg(xi.mf,p=>p.att)*0.35+avg(xi.df,p=>p.att)*0.15;
   const def=avg(xi.gk,p=>p.def)*0.35+avg(xi.df,p=>p.def)*0.45+avg(xi.mf,p=>p.def)*0.2;
-  return {att,def,ovr:(att+def)/2};
+  /* Træneren og anføreren TÆLLER med: de er vedvarende fordele, som motoren
+     regner med i hver eneste kamp — og de er netop den systematiske kant
+     formandens XI bærer (se genClub). Skar man dem væk sammen med formen,
+     undervurderede indekset klubben og forudsagde 12.-plads for et hold, der
+     rykker op i halvdelen af karriererne. FORMEN bliver derimod udenfor: den
+     hører til ugen, ikke til truppen. */
+  let leader=G.squad.some(p=>p.traits.includes("leader"))?1.5:0;
+  const cap=byId(G.captain);
+  if(cap&&cap.traits.includes("leader"))leader+=1;
+  const b=(G.coach.tac+G.coach.man)/2/16+leader;
+  return {att:att+b,def:def+b,ovr:(att+def)/2+b,bonus:b};
 }
 function clubRating(c){return {att:c.att,def:c.def,ovr:(c.att+c.def)/2};}
 /* Usikkerheden: du kender ikke en fremmed klubs facit. Båndet strammer med
@@ -2570,7 +2595,10 @@ function ratingBand(){
 /* Ligaen rangeret efter styrke — MIN klub med sit eget præcise tal, de andre
    med deres. Bruges både til styrketabellen og til forventningen. */
 function strengthTable(){
-  const rows=[{i:0,n:G.club,ovr:squadRating().ovr,me:true}]
+  const sr=squadRating();
+  // kun den kalibrerede del af klubbonussen tæller, når jeg måles mod AI-skalaen
+  const raw=sr.ovr-(sr.bonus||0)+(sr.bonus||0)*BAL.rate.selfAdj;
+  const rows=[{i:0,n:G.club,ovr:raw,me:true}]
     .concat(G.teams.map((t,ix)=>({i:ix+1,n:t.name,ovr:clubRating(t).ovr,me:false})));
   rows.sort((a,b)=>b.ovr-a.ovr);
   return rows;
@@ -3617,7 +3645,8 @@ function finishSeason(o){
   G.balance+=prize;
   sponsorSettleDemand(pos);          // the top-N clause is settled before the deal rolls over
   G.history.push({season:G.season,div:G.divNames[G.div],pos,promoted:!!o.promoted,relegated:!!o.relegated,
-    objective:G.objectivePos,bold:G.objectiveBold||0,hit:pos<=G.objectivePos});
+    objective:G.objectivePos,bold:G.objectiveBold||0,hit:pos<=G.objectivePos,
+    expect:Number.isFinite(G.seasonExpect)?G.seasonExpect:null});   // STYRKE-1: hvad tallene sagde FØR sæsonen
   /* Trust is time plus delivery. It is why a share costs ~1,9× fair in season 1
      and drifts toward ~1,25× for a chairman they have watched keep his word. */
   /* Pakke 19: dristigheden er indsatsen. Lovede du mere end de forventede, er
