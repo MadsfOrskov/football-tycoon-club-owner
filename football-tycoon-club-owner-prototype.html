@@ -2580,6 +2580,42 @@ function myStrength(){
   return {att:base.att+formAvg+fatigue,def:base.def+formAvg+fatigueD};
 }
 function bigGameBonus(){return G.squad.some(p=>p.traits.includes("biggame"))?2.5:0;}
+/* ---------- NAV-2: omdøb klub — din verden, dine navne ----------
+   Spillet udgives med opdigtede navne (NAV-1), og spilleren skriver selv, hvad
+   klubberne skal hedde i SIN verden. Det er både en tycoon-frihed og hele
+   licens-svaret: vi distribuerer ingen rigtige klubnavne. */
+function allClubNames(){
+  return [G.club,...(G.teams||[]).map(c=>c.name),...(G.worldRest||[]).map(c=>c.name)];
+}
+function openRename(wid){
+  // wid === null betyder DIN egen klub
+  const cur=wid===null?G.club:(findWorldClub(wid)||{}).name;
+  if(cur===undefined)return;
+  modal={type:"rename",wid,cur,err:null};
+  render();
+}
+function renameConfirm(){
+  const m=modal;if(!m||m.type!=="rename")return;
+  const el=document.getElementById("rnInput");
+  const want=safeName(el?el.value:"");
+  if(!want||want.length<2){m.err="Giv den et navn på mindst to bogstaver.";render();return;}
+  if(want.length>24){m.err="For langt — højst 24 tegn.";render();return;}
+  // unikhed mod HELE verden: to klubber må aldrig hedde det samme
+  if(want!==m.cur&&allClubNames().some(n=>n.toLowerCase()===want.toLowerCase())){
+    m.err="\""+want+"\" findes allerede i pyramiden.";render();return;}
+  if(m.wid===null){
+    G.club=want;G.badge=initials(want);
+    addNews("CLUB","Klubben hedder "+want+" fra i dag. Skiltet over indgangen er allerede skiftet.");
+  }else{
+    const c=findWorldClub(m.wid);if(!c){modal=null;render();return;}
+    const old=c.name;
+    c.name=want;
+    if(G.holdings&&G.holdings[m.wid])G.holdings[m.wid].name=want;   // din egen post skal følge med
+    addNews("OWNER",old+" hedder "+want+" nu.");
+  }
+  modal=null;saveGame();render();
+}
+
 /* ---------- STYRKE-1: indekset ----------
    myStrength() er MATCHDAGENS styrke — den bærer form, selvtillid, træner og
    anfører, og den hopper derfor fra uge til uge. Til en tabel skal tallet være
@@ -5515,6 +5551,8 @@ function viewEmpire(){
     <div class="rowline"><span>Klubværdi <small>· din andel ${kfmt(Math.round(clubValuation()*G.myShare/100))}</small></span><span class="amt num">${kfmt(clubValuation())}</span></div>
     ${isMajority()?`<div class="rowline"><span>Sælg en skive til bordet <small>· ${BAL.e2.sellSlice}% · pengene er DINE${sliceLeft?" · de lytter igen om "+sliceLeft+" kampdage":""}</small></span>
       ${sliceLeft?`<span class="sc" style="opacity:.5">venter</span>`:`<button class="sellb" onclick="sellOwnSlice()">Sælg · ${kfmt(slicePrice)}</button>`}</div>`:""}
+    <div class="rowline"><span>Klubbens navn <small>· din verden, dine navne</small></span>
+      <button class="abtn" style="padding:5px 9px;font-size:10px" onclick="openRename(null)">OMDØB</button></div>
     <button class="glowbtn" onclick="enterClub()">Gå ind i klubben ▸</button></div>`;
   // IMP1: imperiets kontrollerede klubber — hver med en dør ind
   const holdWids=Object.keys(G.holdings||{});
@@ -5525,7 +5563,8 @@ function viewEmpire(){
         const rows=[...(G.worldRest||[]).filter(x=>x.div===c.div),...(c.div===G.div?G.teams:[])].sort((a,b)=>b.pts-a.pts||b.gd-a.gd);
         const pos=rows.findIndex(x=>x.wid===c.wid)+1;
         return `<div class="rowline"><span><b>${c.name}</b> <small>· ${G.divNames[c.div]} · nr. ${pos} · din ${hd.pct}% ~ ${kfmt(Math.round(stakeValue(c)*hd.pct/100))}${hd.dir?" · "+hd.dir.n+" ("+hd.dir.blurb.split(" —")[0]+")":""}${hd.crisis?" · <b style='color:var(--comm)'>KRISE</b>":""}</small></span>
-          <button class="abtn" style="padding:5px 9px;font-size:10px" onclick="enterHolding(${wid})">GÅ IND ▸</button></div>`;
+          <span style="display:flex;gap:6px"><button class="abtn ghost" style="padding:5px 8px;font-size:10px" onclick="openRename(${wid})">OMDØB</button>
+          <button class="abtn" style="padding:5px 9px;font-size:10px" onclick="enterHolding(${wid})">GÅ IND ▸</button></span></div>`;
       }).join("")}</div>`;
   }
   const stakes=G.stakes||[];
@@ -6846,6 +6885,18 @@ function renderModal(){
         ${st<LAST?`<button class="glowbtn" style="flex:1;margin-top:0" onclick="budgetNext()">Næste ▸</button>`
           :`<button class="glowbtn" style="flex:1;margin-top:0" onclick="budgetConfirm()">Hæv mødet ▸</button>`}
       </div>
+    </div></div>`;
+  }
+  if(modal.type==="rename"){
+    const m=modal;
+    return `<div class="overlay"><div class="sheet">
+      <div class="kick">${m.wid===null?"Din klub":"Klub i pyramiden"}</div>
+      <h2>Omdøb ${m.cur}</h2>
+      <p style="font-size:12.5px">Din verden, dine navne. Navnet gælder hele karrieren og kan ændres igen når som helst.</p>
+      <input id="rnInput" type="text" value="${m.cur}" maxlength="24" placeholder="Klubbens navn">
+      ${m.err?`<div class="why" style="border-left-color:rgba(255,92,103,.6);background:rgba(255,92,103,.08)"><b>${m.err}</b></div>`:""}
+      <button class="glowbtn" onclick="renameConfirm()">Skriv det på skiltet ▸</button>
+      <button class="abtn ghost" onclick="modal=null;render()">Fortryd</button>
     </div></div>`;
   }
   if(modal.type==="gafferIntro"){
