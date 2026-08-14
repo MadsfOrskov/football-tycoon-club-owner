@@ -311,6 +311,108 @@ klubdørene åbner.
 
 ---
 
+# DEL 1B — STYRKE & FORVENTNINGER (Mads 14/8)
+
+*Mads' spørgsmål: hvor meget logik er der bag, hvor godt ens hold er mod
+modstanderne? Kan man se ligaens klubbers samlede niveau og sit eget — og kan
+man bygge logik om, hvor ofte man BØR vinde, og dermed om forventninger?*
+
+## Hvad der ALLEREDE findes (målt i motoren, ikke gættet)
+
+**Der er én fælles skala — den er bare usynlig.** `myStrength()` koger din
+bedste XI ned til et att/def-par (angreb: 50 % angribere, 35 % midtbane, 15 %
+forsvar; forsvar: 35 % målmand, 45 % forsvar, 20 % midtbane; plus form,
+selvtillid, trænerbonus og anførerbonus). AI-klubberne har tre flade tal på
+klubobjektet: `att`, `def`, `phy`. **Begge sider går ind i den SAMME
+subtraktion** i `myLambdas`: `(min att − hans def)/24` giver mine forventede
+mål, `(hans att − min def)/24` giver hans. En styrketabel er altså ikke et nyt
+system — det er at VISE det tal, der allerede afgør hver eneste kamp.
+
+Målt ved sæsonstart i League Three: din XI ligger på **att 57,1 / def 58,2**,
+ligaens 13 AI-klubber på **att 55,2 (spænd 52-60) / def 54,2**. Du starter
+altså bevidst en anelse over gennemsnittet — det svarer til kommentaren i
+`genClub` om, at formandens XI bærer en systematisk fordel.
+
+## Hvad styrke KØBER (40.000 kampe pr. punkt gennem spillets egen `myLambdas` + `poisson`)
+
+`diff` = hvor mange point stærkere du er i begge ender. Neutral tilgang, intet vejr.
+
+| diff | hjemme W/D/L | ude W/D/L |
+|---|---|---|
+| −12 | 18 / 26 / 56 | 11 / 21 / 68 |
+| −8 | 25 / 27 / 47 | 16 / 24 / 60 |
+| −4 | 33 / 28 / 39 | 23 / 26 / 51 |
+| **0** | **41 / 28 / 31** | **30 / 28 / 43** |
+| +4 | 50 / 27 / 23 | 38 / 28 / 34 |
+| +8 | 59 / 25 / 17 | 46 / 27 / 27 |
+| +12 | 67 / 22 / 11 | 55 / 26 / 19 |
+| +20 | 82 / 15 / 3 | 71 / 20 / 9 |
+
+**Læsningen:** ~4 styrkepoint ≈ **+9 procentpoint sejrsrate**. Hjemmebanen er
+værd ~11 procentpoint. Og hele League Threes spænd er ca. 8 point — så
+afstanden fra ligaens bund til dens top er forskellen mellem 25 % og 59 %
+hjemmesejre. Motoren er altså *følsom*: trupkvalitet afgør virkelig noget.
+
+## Hullet: forventningen er BLIND for din trup
+
+`DIV_OBJECTIVE` er en **konstant pr. division** — `{L3:8, L2:10, L1:9, PL:7}` —
+justeret af medejernes personlighed og fanhumøret. Intet andet.
+
+**Målt bevis:** jeg lagde +25 på ATT, DEF og PHY hos ALLE spillere i truppen og
+kaldte `ownerDemandPos()` igen. Kravet var **uændret: top 8**. Bestyrelsen beder
+om det samme, uanset om du har ligaens bedste eller ringeste trup. Det er
+formentlig spillets største realisme-hul lige nu: en bestyrelse, der ikke kan se
+sin egen trup.
+
+(Bemærk også kuriositeten: L2 kræver top 10, men L1 kræver top 9 og PL top 7 —
+rækken er ikke monoton. Det er formentlig tunet, men det bør efterses samtidig.)
+
+## Pakke STYRKE-1 — Styrkeindekset: vis tallet, der allerede afgør kampene
+
+**a) Ét stabilt indeks pr. klub, samme skala for dig og AI.** Vigtigt: brug
+IKKE `myStrength()` til tabellen — den indeholder form, selvtillid, træner og
+anfører, så tabellen ville hoppe hver uge. Byg `squadRating()`: ren evne fra
+bedste XI (samme vægte, uden form/conf/coach/leader), så den er sammenlignelig
+med AI-klubbernes rå `att`/`def`. Vis eventuelt formen som et separat, lille
+udsving ved siden af.
+
+**b) Usikkerhed frem for facitliste.** Du skal ikke kende rivalernes præcise
+tal. Vis et **bånd**, der bliver smallere med spejderarbejde/omdømme — præcis
+som T2's skjulte potentiale allerede gør for spillere. Ellers bliver
+styrketabellen en løsning på spillet frem for information om verden.
+
+**c) Forventet placering.** Ranger ligaen efter indeks → din forventede
+placering falder ud af det. Så bliver `ownerDemandPos()`:
+*forventet placering justeret af bestyrelsens ambition* (personlighed, humør,
+tillid) i stedet for en konstant. Konsekvenser der SKAL tænkes med:
+- **Køber du stjerner, stiger barren.** Realistisk og spændingsskabende, men må
+  ikke straffe det at bygge: lås forventningen til styrken ved SÆSONSTART
+  (ikke løbende), så en januar-forstærkning ikke flytter målet midt i sæsonen.
+- Overpræstation mod forventning er dét, der bygger tillid — den kobling
+  findes allerede i `finishSeason` og bliver bare mere ærlig.
+- Måltallene i `--stats` (oprykning S1 i sit bånd, administrationer lavt) skal
+  holde EFTER ændringen; en dynamisk målsætning kan let gøre alle sæsoner lette
+  eller alle umulige.
+
+**d) "Forventet resultat" før kampen.** Med den fælles skala kan prematch-arket
+vise oddsene — og Mads' egen designreference har præcis "Expected result" på
+næste-kamp-kortet. Men jf. designsystemets gyldne regel (premium, ikke
+Excel-ark): vis det som en **læsning** ("favorit · jævnbyrdig · underdog") med
+tallet tilgængeligt, ikke tre decimaler i ansigtet.
+
+**Afhængighed den kodende agent skal kende:** AI-klubber har INGEN trup — deres
+"niveau" ER `att`/`def`. Indekset er derfor broen, hvis man senere vil give
+verden rigtige trupper (M5-skala). Direktør-drevne klubber (IMP2) driver
+allerede deres `att`/`def`, så indekset forbliver levende af sig selv.
+
+**Invariant `checkStrengthIndex`** (sabotér hver): indekset for din klub og for
+en AI-klub ligger på samme skala (byt truppen ud med kendte tal og regn efter) ·
+indekset ændrer sig IKKE af form alene, men ÆNDRER sig af rigtige køb/salg ·
+forventet placering flytter sig, når truppen forbedres markant (den nuværende
+blindhed skal være målbart brudt — det er selve pakkens løfte).
+
+---
+
 # DEL 2 — NAVNENE (klar til at bygge, analysen er lavet)
 
 ## Baggrund: licens
