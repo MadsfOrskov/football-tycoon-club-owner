@@ -33,108 +33,140 @@ mandag morgen er: *køb pubkæden (£180k)*. Derefter ligger pengene stille.
 giver dig hele klubbens opside og går ikke glip af noget, fordi kontanter næsten
 ingen job har. Kontantsiden mangler et "hvad gør jeg med dem i morgen".
 
-## Det tematiske hul
+## Mads' beslutning 14/8: NEJ til nyemission
 
-**Du kan ikke lægge dine egne penge IND i din klub.** Det er den mest oplagte
-manglende handling for en engelsk klubejer overhovedet — direktørlånet er selve
-definitionen på lower-league-formandskab. Spillet har allerede vejen UD
-(udbyttet, R3), men ingen vej IND. Bemærk også skævheden: at købe en medejer ud
-(`ownerNegoSubmit`) betales i dag af **klubkassen** (`G.balance`), ikke af dine
-egne penge — klubben køber altså sine egne aktier og forærer dig dem.
+Forslaget om at kunne købe flere aktier i egen klub er **forkastet** — det
+udvander konceptet. Balancepinden er et **identitetsvalg**, ikke et løbebånd man
+kan gå tilbage ad. Byg det ikke, og foreslå det ikke igen.
 
-## Pakke PENGE-1 — Kapitalindskud: pinden skal kunne køre BEGGE veje ⭐ vigtigst
+Det tematiske hul består (man kan ikke lægge egne penge ind i klubben, og et
+medejer-opkøb betales af klubkassen) — men det er IKKE der, løsningen skal
+findes. **Løsningen er, at pengene får deres eget liv uden for fodbolden.**
 
-Ejeren kan skyde egne penge ind i klubben. Tre mulige former — **anbefaling:
-byg (b) som hovedgreb**, fordi den lukker balancepindens sløjfe:
+---
 
-- **(a) Direktørlån.** Du låner klubben penge; den skylder dig dem. Skaber en
-  beslutning senere ("kalder jeg lånet hjem, eller eftergiver jeg det for
-  tillid?"). Meget engelsk. Kan komme som smagsgiver i v2.
-- **(b) Nyemission — DIN andel stiger** ⭐. Du indskyder kontanter og får nye
-  aktier; medejerne udvandes. Så bliver E2 en sløjfe: sælg 49 % ved stiftelsen
-  for en krigskasse, køb dig tilbage op gennem karrieren med det, du selv har
-  tjent. Prisen pr. procent skal være **dyrere end stiftelsesrabatten**
-  (`BAL.e2.startDiscount` 0,55), ellers er der en arbitrage: sælg billigt, køb
-  billigt tilbage. Brug klubvurderingen × en præmie ≥ 1,0.
-- **(c) Gave.** Pengene er væk; du får tillid (`bumpTrust`) og fanhumør. Enkel,
-  men uden strategisk dybde.
+# PENGE-1 — PORTEFØLJEN: tre tidssignaturer ⭐ hovedpakken
 
-**Værn (vigtigt — økonomitrappen må ikke miste tænder):** loft pr. sæson
-(`BAL.capital.maxPerSeason`), og medejerne skal sige ja (tillids-gate) ved
-nyemission, ellers kan enhver krise købes væk. Måltallene for administration
-(~0-1 pr. karriere) og bank-ultimatummer skal holde i 20×5 EFTER pakken — hvis
-administrationer falder til nul overalt, er værnet for løst.
+*Mads' retning: "man skal kunne investere i nogle mere ikke-fodbold-agtige ting
+og potentielt få et afkast eller tabe penge. Nogle af mulighederne skal være
+flere sæsoners investering, andre skal være hurtigere, og nogle skal være noget
+hvor man også kan bygge op (hotelkæder, f.eks.)".*
 
-**Invariant `checkCapital`** (sabotér hver):
-1. Indskuddet flytter penge fra `personalWealth` til `G.balance` — beløbet er
-   præcist, og ingen af de to må ændre sig mere end det.
-2. Ved nyemission stiger `myShare` og medejernes andele falder, og summen er
-   stadig 100 (kør `checkInvariants`).
-3. Loftet bider: andet indskud over `maxPerSeason` afvises.
-4. Prisen pr. procent er DYRERE end stiftelsesrabatten (ingen arbitrage) —
-   regn den ud af BAL, aldrig af koden selv.
+Kernen: du er **tycoon**, ikke kun klubformand. Klubben er ét volatilt aktiv;
+porteføljen er dét, der gør dig til en formue frem for en fodboldmand. Den
+afgørende forskel fra i dag (R9's tre flade aktiver) er, at aktiverne får
+**forskellige tidssignaturer** — og at man **kan tabe penge**.
 
-## Pakke PENGE-2 — Køb medejere ud med DINE penge
+## 1a — KÆDER (byg op, betaler hver sæson)
 
-Ret skævheden ovenfor: opkøbet skal (kunne) betales af `personalWealth`. Enten
-som ren omlægning, eller — federe — som et **valg** med to konsekvenser: klubbens
-kasse (svækker sæsonens budget) eller din egen formue (tømmer krigskassen).
-Dette er det direkte modtræk til pinden: solgte du 49 %, kan du købe dem tilbage.
+Aktiver med **niveauer**, præcis som tribuner og faciliteter (`STANDS`/`FACS` er
+det færdige mønster — genbrug det, inkl. `divCashMult`-skaleringen).
 
-Bemærk `ownerGate()`: opkøb er allerede spærret før sæson 3 og ét pr. sæson.
-Overvej om PENGE-1(b)'s nyemission skal have samme spærring — den er en anden
-vej til det samme mål, og to veje der ikke kender hinandens regler er præcis den
-slags hul en gate finder.
+- Eksempler: **hotelkæde**, pubkæde (flyt R9's `pubs` herind), fitnesskæde,
+  bilforhandlere, vaskerier.
+- Hvert niveau koster mere og betaler mere. Niveau 1 skal være til at nå i
+  sæson 1 (£60-150k), så en 51 %-formand kan starte ÉN kæde.
+- Lav varians pr. sæson (det er drift, ikke væddemål) — men en nedtur kan ramme
+  hele kæden på én gang, så det ikke er gratis vækst.
+- **Sælges** til ~85 % (`sellFactor` findes allerede) — likviditet med et tab.
+- Det er her "imperiet" bliver konkret: dit navn på en kæde med 8 hoteller.
 
-**Invariant `checkBuyoutFunding`:** pengene kommer fra den valgte kilde og KUN
-den; ejerandele summer til 100; sæson-spærringen gælder begge veje ind.
+## 1b — PROJEKTER (flere sæsoner, én stor afgørelse)
 
-## Pakke PENGE-3 — Invest-aktiverne skal holde karrieren ud
+Penge **låst** i noget, der først afgøres om 3-5 sæsoner.
 
-Tre problemer i den nuværende tabel (`BAL.invest.assets`):
+- Eksempler: ejendomsudvikling i havnekvarteret, kontorbyggeri, whisky-/vinlager,
+  jord uden for byen.
+- Du binder £X. Ved udløb afgøres det: **succes** (fx 1,6-2,5×), **halv succes**,
+  eller **fiasko** (du får en brøkdel igen). Sandsynligheden er kendt på forhånd
+  i grove træk ("risikabelt/solidt"), men ikke udfaldet.
+- **Undervejs kommer der varsler** i nyhederne ("byrådet udskyder
+  lokalplanen…") — så det er en historie med spænding, ikke et møntkast der
+  afgøres i en tabel. Varslerne må gerne flytte oddsene lidt.
+- **Kan sælges før tid til et stort tab** (fx 50-60 %) — og DÉT er mekanikkens
+  bedste øjeblik: mægleren tilbyder en billig klub i sæson 3, men dine penge
+  sidder i beton indtil sæson 5. Sælger du med tab for at slå til?
+- Projekterne skal **vokse med formuen**: større projekter låses op, når du er
+  rig nok, så menuen følger pengetrappen i stedet for at blive irrelevant.
 
-1. **Ingen ægte risiko.** `settleInvest` regner `yield * (1 ± swing)` — agenturet
-   (18 % ± 50 %) giver altså mindst 9 % i plus. Intet aktiv kan tabe penge, så
-   "fede år og magre år" er tekst, ikke matematik. Fix: lad udsvinget kunne
-   overstige afkastet (fx `swing` som absolut spænd omkring nul-linjen), så et
-   dårligt agentur-år koster penge.
-2. **Akademiet er strengt dårligst.** Dyrest (£500k) og lavest afkast (9 %) uden
-   modydelse. Fix: giv det en **klub-fordel** — fx en ung spiller til truppen
-   hvert sæsonskifte eller hurtigere udvikling — så det er et strategisk valg og
-   ikke en dårlig obligation.
-3. **De falmer.** Faste priser mod en klubøkonomi der skalerer ~80× gennem
-   divisionerne: £300k er en stor beslutning i League Three og lommeuld i
-   Premier. Fix: skalér pris OG afkast med pengetrappen (`divCashMult`-mønstret),
-   eller indfør niveauer, så aktiverne kan udbygges.
+## 1c — HURTIGE HANDLER (afgøres inden for sæsonen)
 
-Tilføj gerne et **billigt aktiv** (£60-80k), så en 51 %-formand har mere end ét
-valg i sæson 1.
+Et lille, rullende **marked** af væddemål — som transfermarkedet, men for penge.
 
-**Invariant `checkInvestRisk`:** over mange afregninger findes der BÅDE plus- og
-minusår for et risikabelt aktiv (mål via `H.call("settleInvest")` i en løkke med
-seedet RNG); akademiets fordel udløses målbart; prisen skalerer med divisionen.
+- Eksempler: et parti whisky, aktier i et lokalt rederi, en væddeløbshest, et
+  parti kunst, en container med noget tvivlsomt.
+- 2-3 tilbud ad gangen, **friskes op hver sæson** (og delvist når man har taget
+  et), så Invest-fanen er værd at besøge.
+- Afgøres efter **4-8 kampdage** — altså midt i sæsonen, hvilket giver
+  kampdagsrytmen en ekstra puls.
+- Høj varians: fra −60 % til +120 %. Små beløb (£25-60k), så man kan tage flere.
+- Det er her sæson 1's kontanter får noget at lave **allerede i uge 3**.
 
-## Pakke PENGE-4 — Ejer-livet som aktivt forbrug
+## Risikomodellen (gælder alle tre)
 
-I dag kommer ejer-livet TIL dig (O3). Lad dig også **opsøge** det: sponsorér
-byens juleoptog, betal supporternes bus, køb huset på bakken. Hvorfor det er
-mere end pynt: omdømme er porten til imperiet (`BAL.stake.gateRep` 55) — så
-kontanter brugt på navnet i sæson 1 er *investering i sæson 2's ambition*. Det
-giver kontantsiden et mål allerede før dørene åbner.
+I dag regner `settleInvest` afkastet som `yield × (1 ± swing)` — udsvinget ligger
+altså oven på et positivt afkast, så **intet aktiv kan tabe penge**. Det er hele
+grunden til, at "fede år og magre år" er tekst og ikke matematik. Nyt krav:
+afkastet skal kunne blive **negativt**, forskelligt pr. klasse:
 
-## Pakke PENGE-5 (senere) — Privat infrastruktur & netværk
+| Klasse | Forventet pr. sæson | Udfaldsrum | Rytme |
+|---|---|---|---|
+| Kæder | +8-14 % pr. niveau | sjældne tabsår | hver sæson |
+| Projekter | ~+12-18 % annualiseret | 1,6-2,5× / delvis / 0,3-0,6× | ved udløb (3-5 sæsoner) |
+| Hurtige | ~+6-10 % i snit | −60 % til +120 % | 4-8 kampdage |
 
-- Betal en tribune/faciliteten af egen lomme: klubben får muren, du får regningen
-  og godviljen.
-- Agent-retainer: private penge køber relation (T3 `agentRel`) og dermed bedre
-  handler.
-- Privat spejdernetværk: penge køber SYN — hænger sammen med E5 (skjult
-  potentiale som ejer-beslutning).
+**Balancekravet:** porteføljen må aldrig gøre fodbolden ligegyldig. Måltallet
+findes allerede — median net worth ved S21 er **£12M** (NIGHT-REPORT-8's
+baseline). Vokser den til det mangedobbelte efter denne pakke, er afkastene for
+høje. Mål det i 200×20 og skriv tallet i rapporten.
 
-## Rækkefølge (anbefalet)
+## Åbne spørgsmål til Mads (afklar FØR kodning)
 
-**PENGE-1(b) → PENGE-2 → PENGE-3 → PENGE-4.** De to første gør balancepinden til
-et ægte valg fra dag ét; de to sidste holder pengene relevante hele karrieren.
+1. **Skal porteføljen kunne gå i nul?** Anbefaling: ja, man skal kunne tabe det
+   hele på dumme væddemål — E0's comeback-garanti sikrer, at karrieren aldrig
+   låser.
+2. **Skal nogle aktiver røre fodbolden?** Fx en lokalavis/radiostation der
+   dæmper skandaler, eller en hotelkæde der løfter kampdagsindtægten. Mads sagde
+   "ikke-fodbold-agtige", så anbefalingen er **højst ét eller to** med et blødt
+   link — resten er ren diversificering.
+3. **Personlig gæld?** At kunne låne mod formuen (gearing) er et oplagt v2-lag,
+   men det hører ikke med i første pakke.
+4. **Medejer-opkøb betales af klubkassen** — skal det laves om til dine egne
+   penge? (Ikke det samme som nyemissionen Mads forkastede; opkøb findes
+   allerede og er spærret før sæson 3.)
+
+## Byggerækkefølge
+
+**1c (hurtige handler) → 1a (kæder) → 1b (projekter).** De hurtige er mindst
+kode og løser sæson 1-problemet med det samme; kæderne giver imperie-følelsen;
+projekterne er den dyreste at balancere og bør bygges sidst, når de to andre er
+målt.
+
+## Invarianter (sabotér hver — mål SPILLETS kode via `H.call`)
+
+- `checkPortfolioRisk`: over mange afregninger findes BÅDE plus- og minusår for
+  et risikabelt aktiv (seedet RNG, mål via `H.call("settleInvest")` i løkke).
+  Sabotér: fjern nedsiden → rød.
+- `checkChainLadder`: hvert niveau koster mere og betaler mere; salg giver
+  `sellFactor`; niveau 1 er til at betale for en 51 %-formand i sæson 1.
+- `checkProjectClock`: et projekt afgøres PRÆCIST ved sin løbetid, aldrig før;
+  førtidigt salg giver det aftalte tab; udløb rammer `personalWealth` og aldrig
+  `G.balance`. Sabotér: fjern uret → rød.
+- `checkQuickMarket`: markedet friskes op pr. sæson; et afgjort væddemål
+  forsvinder; udfaldet ligger inden for BAL's spænd.
+- Fælles: **alle pengestrømme rammer `personalWealth`, aldrig klubkassen** —
+  det er ejer-lagets grundlov og skal måles i hver eneste probe.
+
+---
+
+# PENGE-2 — Ejer-livet som aktivt forbrug (mindre pakke, bygges efter porteføljen)
+
+I dag kommer ejer-livet TIL dig (O3): et event dukker op, du siger ja eller nej.
+Lad dig også **opsøge** det — sponsorér byens juleoptog, betal supporternes bus,
+køb huset på bakken. Hvorfor det er mere end pynt: omdømme er porten til
+imperiet (`BAL.stake.gateRep` 55), så kontanter brugt på navnet i sæson 1 er
+*investering i sæson 2's ambition*. Det giver kontantsiden et mål, allerede før
+klubdørene åbner.
 
 ---
 
