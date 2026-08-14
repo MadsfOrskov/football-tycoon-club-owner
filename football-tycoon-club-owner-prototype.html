@@ -537,6 +537,19 @@ const BAL={
      pinden er PERMANENT (Mads 11/8): du kan altid sælge en skive til
      medejerne til clubValuation-pris — det frivillige nedsalg er den billige
      vej, økonomitrappens tvangsredning den dyre. */
+  /* STYRKE-1 (Mads 14/8): styrkeindekset. Motoren har ALTID sammenlignet min XI
+     med modstanderens att/def i samme subtraktion — indekset viser bare det tal,
+     der i forvejen afgør hver kamp. Målt: ~4 point ≈ +9 procentpoint sejrsrate.
+     Båndet er spejderarbejdets belønning: du kender ikke rivalernes facit. */
+  rate:{
+    bandBase:7,        // ± usikkerhed på en fremmed klub når du intet ved
+    bandFloor:1,       // ... og når du har set dem an hele sæsonen
+    bandPerMD:0.22,    // båndet strammer for hver kampdag der er spillet
+    repNarrow:0.3,     // dit omdømme åbner døre: ved omdømme 100 er båndet 30% smallere
+    // forventningen: hvor hårdt bestyrelsen læner sig op ad rangeringen
+    expectPull:0.75,   // 1 = ren styrke-rangering · 0 = den gamle faste tabel
+    ambition:1         // de vil altid have én plads mere end tallene siger
+  },
   e2:{
     minShare:51,
     /* E2-justering (Mads 13/8): pinden gav for mange kontanter — 51% kunne
@@ -1130,6 +1143,7 @@ function loadGame(){
   if(G.activeWid===undefined)G.activeWid=0;
   if(!G.invest)G.invest={};if(G.brokerOffer===undefined)G.brokerOffer=null;   // R9
   if(!G.milestones)G.milestones={};   // M4: gamle karrierer fødes uden mærker — de indhentes ved næste sæsonskifte
+  if(!Number.isFinite(G.seasonExpect))G.seasonExpect=G.teams&&G.teams.length?expectedPos():null;   // STYRKE-1
   if(G.gafferMet===undefined)G.gafferMet=true;   // INTRO-1: en gammel karriere kender sin gaffer — han skal ikke banke på igen
   G.mode="dark";   // DESIGN-1: lys tilstand udgik med design-systemet — alle vaagner i navy
   // IMP1-rettelse: gamle gemmer kan have pakket teams/me/fixtures (JSON-kopier
@@ -1681,7 +1695,7 @@ function newGame(name,hue,mode){
     build:null,buildCost:80000,loans:[],warnedNeg:false,bankForced:false,
     sponsor:null,sponsorOffered:false,sponsorDue:null,
     coach:{...pick(COACHES)},gafferMet:false,   // INTRO-1: gafferen banker på efter det første budgetmøde
-    fanMood:60,objectivePos:8,objectiveBold:0,pendingMatch:null,gafferPatience:BAL.orders.startPatience,lastOrder:null,
+    fanMood:60,objectivePos:8,objectiveBold:0,seasonExpect:null,pendingMatch:null,gafferPatience:BAL.orders.startPatience,lastOrder:null,
     squad:posPlan.map(p=>genPlayer(p,R(42,58),G_DIV_WAGE(3))),
     market:[],freeAgents:[],scoutPending:0,scoutUsed:false,sponsorBoost:false,
     wageCap:BAL.wages.cap,bids:[],callbacks:[],lastXI:[],suitors:{},
@@ -1860,7 +1874,7 @@ const CLUB_FIELDS=["club","hue","badge","div","balance","ticket","capacity","sta
   "ownerBoughtSeason","capRaiseUsed","periodNet","periodMD","midwayDone","sponsorChecked","sponsorRiskMD",
   "dividendTaken","lastDividend","netEwma","trust","admins","valHistory","commitments","protest",
   "revenge","build","buildCost","loans","warnedNeg","bankForced","sponsor","sponsorOffered","sponsorDue",
-  "coach","fanMood","objectivePos","objectiveBold","pendingMatch","gafferPatience","lastOrder",
+  "coach","fanMood","objectivePos","objectiveBold","seasonExpect","pendingMatch","gafferPatience","lastOrder",
   "squad","market","freeAgents","scoutPending","scoutUsed","sponsorBoost","wageCap","bids","callbacks",
   "lastXI","suitors","captain","captSuggested","talkCooldown","soldTo",
   /* BEMÆRK: teams/me/fixtures pakkes IKKE — de genbygges af verdens viden ved
@@ -1949,7 +1963,7 @@ function genHoldingState(c,pct){
     revenge:null,build:null,buildCost:80000,loans:[],warnedNeg:false,bankForced:false,
     sponsor:{n:"Regional Ale Co.",per:Math.round(600*(BAL.money.sponsor[c.div]||1)/10)*10,seasonsLeft:2},sponsorOffered:true,sponsorDue:null,
     coach:{...pick(COACHES)},fanMood:clamp((c.press===undefined?50:c.press),25,85),
-    objectivePos:8,objectiveBold:0,pendingMatch:null,gafferPatience:BAL.orders.startPatience,lastOrder:null,
+    objectivePos:8,objectiveBold:0,seasonExpect:null,pendingMatch:null,gafferPatience:BAL.orders.startPatience,lastOrder:null,
     squad,market:[],freeAgents:[],scoutPending:0,scoutUsed:false,sponsorBoost:false,
     wageCap:Math.round(wages*1.25/100)*100,bids:[],callbacks:[],
     lastXI:[],suitors:{},captain:null,captSuggested:false,talkCooldown:0,soldTo:[],teams:[],me:{pts:c.pts,gd:c.gd,pl:c.pl},fixtures:[],
@@ -2530,6 +2544,46 @@ function myStrength(){
   return {att:att+formAvg+coachB+leader,def:def+formAvg+coachB+leader};
 }
 function bigGameBonus(){return G.squad.some(p=>p.traits.includes("biggame"))?2.5:0;}
+/* ---------- STYRKE-1: indekset ----------
+   myStrength() er MATCHDAGENS styrke — den bærer form, selvtillid, træner og
+   anfører, og den hopper derfor fra uge til uge. Til en tabel skal tallet være
+   STABILT, ellers måler man humøret og ikke truppen. squadRating() er derfor
+   den rå evne fra samme XI og samme vægte, uden de fire lag — og den ligger
+   dermed på PRÆCIS samme skala som AI-klubbernes att/def. */
+function squadRating(){
+  const xi=bestXI();
+  const avg=(arr,f)=>arr.length?arr.reduce((s,p)=>s+f(p),0)/arr.length:35;
+  const att=avg(xi.fw,p=>p.att)*0.5+avg(xi.mf,p=>p.att)*0.35+avg(xi.df,p=>p.att)*0.15;
+  const def=avg(xi.gk,p=>p.def)*0.35+avg(xi.df,p=>p.def)*0.45+avg(xi.mf,p=>p.def)*0.2;
+  return {att,def,ovr:(att+def)/2};
+}
+function clubRating(c){return {att:c.att,def:c.def,ovr:(c.att+c.def)/2};}
+/* Usikkerheden: du kender ikke en fremmed klubs facit. Båndet strammer med
+   kampdagene (du har set dem spille) og med dit omdømme (dine folk taler med
+   deres folk) — samme sprog som T2's skjulte potentiale. */
+function ratingBand(){
+  const R=BAL.rate;
+  const rep=(G.reputation===undefined?BAL.owner.repStart:G.reputation);
+  const b=(R.bandBase-G.md*R.bandPerMD)*(1-(rep/100)*R.repNarrow);
+  return Math.max(R.bandFloor,Math.round(b*10)/10);
+}
+/* Ligaen rangeret efter styrke — MIN klub med sit eget præcise tal, de andre
+   med deres. Bruges både til styrketabellen og til forventningen. */
+function strengthTable(){
+  const rows=[{i:0,n:G.club,ovr:squadRating().ovr,me:true}]
+    .concat(G.teams.map((t,ix)=>({i:ix+1,n:t.name,ovr:clubRating(t).ovr,me:false})));
+  rows.sort((a,b)=>b.ovr-a.ovr);
+  return rows;
+}
+function expectedPos(){return strengthTable().findIndex(r=>r.me)+1;}
+/* Kampens læsning: samme subtraktion som motoren bruger, oversat til ord.
+   Designsystemets gyldne regel — en LÆSNING, ikke tre decimaler. */
+function matchRead(oppIdx,home){
+  const t=G.teams[oppIdx-1];if(!t)return null;
+  const s=squadRating();
+  const edge=((s.att-t.def)+(t.att===undefined?0:(s.def-t.att)))/2+(home?3:-1);
+  return edge>=7?{k:"fav",t:"Favorit"}:edge<=-7?{k:"dog",t:"Underdog"}:{k:"even",t:"Jævnbyrdig"};
+}
 
 /* ---------- match sim: two halves, weather, approach, atmosphere ---------- */
 /* Pakke 14a. The silence used to REPLACE the whole expression with a flat
@@ -3634,6 +3688,7 @@ function finishSeason(o){
      budgetmoedet over, staar divisionens egen ramme -- ikke sidste aars aftale.
      Ligger foer sponsorRenewal(), som laeser objectivePos. */
   G.objectivePos=DIV_OBJECTIVE[G.div];G.objectiveBold=0;
+  G.seasonExpect=expectedPos();   // STYRKE-1: barren låses til truppen SOM DEN STÅR NU
   // the contract clock ticks — and Bosman waits for the careless
   const leavers=[];
   for(const p of G.squad){p.years=Math.max(0,(p.years||1)-1);}
@@ -3841,9 +3896,17 @@ const BUDGET_STEPS=["Sæsonkort","Trøjen","Målsætningen","Rammen"];   // R1b:
    som kontraktforhandlingen, hvor modpartens krav ikke er synligt foer man har
    budt. Helt uden terning: aabner man moedet igen, staar det samme tal der, saa
    man ikke kan rulle om paa en mild bestyrelse. */
+/* STYRKE-1: bestyrelsen kan SE truppen nu. Før var kravet en konstant pr.
+   division — målt bevis: +25 på ATT/DEF/PHY hos hver eneste spiller flyttede
+   kravet med præcis nul. Nu er udgangspunktet en blanding af divisionens ramme
+   og din FORVENTEDE placering efter styrke, og de vil altid have én plads mere,
+   end tallene siger. Låst ved SÆSONSTART (G.seasonExpect), så en
+   januar-forstærkning ikke flytter målet midt i sæsonen — man må ikke straffes
+   for at bygge. */
 function ownerDemandPos(){
-  const O=BAL.owners,rows=G.teams.length+1;
-  let d=DIV_OBJECTIVE[G.div];
+  const O=BAL.owners,R=BAL.rate,rows=G.teams.length+1;
+  const exp=Number.isFinite(G.seasonExpect)?G.seasonExpect:expectedPos();
+  let d=DIV_OBJECTIVE[G.div]*(1-R.expectPull)+(exp-R.ambition)*R.expectPull;
   /* Personligheden. Slagteren er ambitioes paa klubbens vegne, sagfoereren er
      forsigtig, tertemagasinet er ligeglad -- vaegtet med deres ejerandel, saa
      den stoerste aktionaer taler hoejest. */
@@ -6216,13 +6279,26 @@ function viewTable(){
   const bar=`<div class="modes" style="margin-bottom:10px">`+[0,1,2,3].map(x=>`<button class="${d===x?'on':''}" onclick="G.tableDiv=${x};render()">${G.divNames[x].replace("League ","L").replace("Premier Division","Prem")}</button>`).join("")+`</div>`;
   const rows=d===G.div?table()
     :G.worldRest.filter(c=>c.div===d).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||a.name.localeCompare(b.name)).map((c,i)=>({i:-1,n:c.name,pts:c.pts,gd:c.gd,pl:c.pl}));
+  /* STYRKE-1: niveauet er tallet, der i forvejen afgør hver kamp — nu synligt.
+     Min egen klub står præcist (jeg kender min trup); modstanderne står som et
+     BÅND, der strammer med kampdagene og med mit omdømme. */
+  const mine=d===G.div?squadRating().ovr:null;
+  const band=ratingBand();
+  const lvl=r=>{
+    if(r.i===0)return `<b>${Math.round(mine)}</b>`;
+    const c=d===G.div?G.teams[r.i-1]:G.worldRest.filter(x=>x.div===d).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||a.name.localeCompare(b.name))[r.ix];
+    if(!c)return "—";
+    const o=clubRating(c).ovr;
+    return `<span style="color:var(--muted)">${Math.round(o-band)}-${Math.round(o+band)}</span>`;
+  };
   return bar+`<div class="card"><div class="kick" style="margin-bottom:6px">${G.divNames[d]}${d===G.div?"":" · andetsteds i pyramiden"}</div>
-    <table><tr><th>#</th><th>Klub</th><th class="r">K</th><th class="r">MF</th><th class="r">P</th></tr>
+    <table><tr><th>#</th><th>Klub</th><th class="r">Niveau</th><th class="r">K</th><th class="r">P</th></tr>
     ${rows.map((r,ix)=>{
       const zone=ix<2?'style="background:var(--acc)"':ix<6?'style="background:var(--comm)"':'style="background:transparent"';
-      return `<tr class="${r.i===0?'me':''}"><td class="num">${ix+1}</td><td><span class="zonebar" ${zone}></span>${r.n}</td><td class="r num">${r.pl}</td><td class="r num">${r.gd}</td><td class="r num"><b>${r.pts}</b></td></tr>`;
+      return `<tr class="${r.i===0?'me':''}"><td class="num">${ix+1}</td><td><span class="zonebar" ${zone}></span>${r.n}</td><td class="r num" style="font-size:11px">${lvl({...r,ix})}</td><td class="r num">${r.pl}</td><td class="r num"><b>${r.pts}</b></td></tr>`;
     }).join("")}</table>
-    <div class="kick" style="margin-top:9px;font-size:9px"><span style="color:var(--acc)">▮</span> Direkte oprykning &nbsp; <span style="color:var(--comm)">▮</span> Playoffs (3–6)</div></div>
+    <div class="kick" style="margin-top:9px;font-size:9px"><span style="color:var(--acc)">▮</span> Direkte oprykning &nbsp; <span style="color:var(--comm)">▮</span> Playoffs (3–6)</div>
+    ${d===G.div?`<div class="why"><b>Niveau</b> er truppens styrke på samme skala for alle. Dit eget tal er præcist; de andres er et skøn, der strammer, jo mere du ser dem spille — og jo større dit navn er. Bestyrelsen forventer <b>top ${G.objectivePos}</b>, og tallene siger ${ord(expectedPos())}.</div>`:""}</div>
     ${G.history.length?`<div class="card"><div class="kick" style="margin-bottom:4px">Klubbens historie</div>${G.history.map(hh=>`<div class="rowline"><span>Sæson ${hh.season} <small>· ${hh.div}</small></span><span>${ord(hh.pos)}${hh.promoted?" · OPRYKKET ↑":""}</span></div>`).join("")}</div>`:""}`;
 }
 
@@ -6233,6 +6309,13 @@ function renderModal(){
     return `<div class="overlay"><div class="sheet">
       ${M.label?`<div class="biglabel">${M.label}</div>`:`<div class="kick">Kampdag ${G.md+1} · ${M.home?"Hjemme":"Ude"}</div>`}
       <h2>${M.home?G.club:M.opp} <span style="opacity:.4">v</span> ${M.home?M.opp:G.club}</h2>
+      ${(()=>{ /* STYRKE-1: kampens LÆSNING, ikke tre decimaler (designsystemets
+         gyldne regel). Samme subtraktion som motoren bruger, oversat til ord. */
+        const rd=matchRead(M.oppIdx,M.home);
+        if(!rd)return "";
+        const col=rd.k==="fav"?"var(--pos)":rd.k==="dog"?"var(--neg)":"var(--muted)";
+        return `<div class="kick" style="margin-top:2px">På papiret · <b style="color:${col}">${rd.t}</b></div>`;
+      })()}
       <p><b>${M.weather.n}</b> — ${M.weather.txt}.</p>
       ${(()=>{ // a thin squad plays short without ever saying so
         const xi=xiList(),out=G.squad.filter(p=>p.inj||p.susp);
