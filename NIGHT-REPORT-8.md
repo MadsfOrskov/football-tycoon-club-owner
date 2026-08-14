@@ -5,7 +5,7 @@
 ## TL;DR — hvad kan du mærke
 
 - **Karrieren har mærker nu** (M4): fem milepæle — den første million, net worth 10M, klub nr. 2, to klubber i toppen, comeback efter en tabt klub — fejres ÉN gang, bygger navnet og står i æra-opgørelsen sammen med formuens fulde billede, klubtallet og milepælstælleren.
-- **Introen er tre akter** (INTRO-1, låst med Mads): DIG (navn med terning, portræt, baggrunds-arketyper) → ARVEN (klubnavn + farve på samme ark) → EJERSKABET (Patriarken 100 % · Formanden 75 % · Mogulen 51 % som indgang, pinden som finjustering). Mørk/lys og gaffer-infoskærmen er ude — **gafferen banker på som spillets første øjeblik** efter budgetmødet, med kassens ægte tal i replikkerne.
+- **Introen er tre akter** (INTRO-1, låst med Mads): DIG (navn med terning, portræt, baggrunds-arketyper) → ARVEN (klubnavn + farve på samme ark) → EJERSKABET (balancepinden, alene på arket). Mørk/lys og gaffer-infoskærmen er ude — **gafferen banker på som spillets første øjeblik** efter budgetmødet, med kassens ægte tal i replikkerne.
 - **Navy-skinnet** (DESIGN-1): Mads' design system ligger i `DESIGN-SYSTEM.md` og er lov. Fast premium-palette (#08111F/#101C2D/#142338, accent #3D8BFF, pos/neg #35D07F/#FF5C67, guld #F5C451 = ejer-laget). Klubfarven er identitet (skjoldet), aldrig UI-tema. Lys tilstand findes ikke længere. Verificeret med rigtige skærmbilleder (Chromium, iPhone-mål) hele vejen fra intro til stadion.
 
 ## Gatens fund — to ægte spilfejl og tre prober der målte sig selv
@@ -23,6 +23,17 @@
 - **Milepælene virker som replay-krog**: 2,7–2,9 pr. karriere, 191–197 af 200 når mindst én.
 - Politik-gates målt aktive for første gang i en fuld gate: fornyelser 36.546/0 · rater 3.283/0 · tynde salg 0/46.121.
 - Sabotager denne runde: **8** (M4: 3 · gafferen: 2 · kontrol-klippet: 2 + pct-bæringen: 1) — alle røde som de skulle, før commit.
+
+## Rettet efter Mads' playtest (samme aften)
+
+Ejerskabs-arket var vokset ud over skærmkanten: intro-beholderen var `position:fixed`
+og lodret centreret **uden scroll**, så låseknappen lå uden for kanten og ikke kunne
+trykkes — man kom ikke videre i spillet. Reproduceret i browser på iPhone-mål (knappen
+lå på y=864 i en 844px skærm, klikket timede ud), rettet ved at lade arket rulle
+(`overflow-y:auto` + `margin:auto`, som centrerer når der er plads og aldrig klipper
+når der ikke er). Verificeret på 320×568, hvor arket fylder 950px: det kan rulles, og
+knappen virker. Samtidig røg de tre arketype-kort ud igen efter Mads' ord — **pinden
+skal stå alene**.
 
 ## Det udestående — ærligt
 
