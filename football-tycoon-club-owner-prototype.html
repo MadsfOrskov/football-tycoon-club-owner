@@ -2734,9 +2734,12 @@ function playMatchday(){
   // commit to an approach (choosePrematch), so stepping back costs nothing and,
   // crucially, cannot simulate the round twice.
   modal={type:"prematch",match,round};
-  // M2.5: står du HJEMME (ejer-laget), blander du dig ikke — gafferen får
-  // "din afgørelse", og kampen afvikles uden teamtalk-modalen.
-  if(G.layer==="owner"&&!match.isPlayoff){giveOrder("free",false);return;}
+  /* M2.5 + Mads 14/8: står du HJEMME (ejer-laget), blander du dig ikke —
+     gafferen får "din afgørelse", og kampen afvikles uden teamtalk-modalen.
+     Reglen har INGEN undtagelser: playoffs spurgte før, og det var netop dér,
+     spørgsmålet var mest forstyrrende. Vil du være der, går du IND i klubben —
+     det er hele tilstedeværelses-modellen. */
+  if(G.layer==="owner"){giveOrder("free",false);return;}
   render();
 }
 function clubPress(c,gf,ga){
@@ -3523,6 +3526,10 @@ function playPlayoff(){
   match.postKind=semi?"semi":"final";
   match.noDraw=true;
   modal={type:"prematch",match};
+  /* Mads 14/8 + sabotage-fund: playoffs gaar IKKE gennem playMatchday, saa
+     praesens-reglen fandtes slet ikke her — playoff-aftener spurgte ALTID,
+     ogsaa hjemmefra. Reglen skal staa hvor kampen faktisk startes. */
+  if(G.layer==="owner"){giveOrder("free",false);return;}
   render();
 }
 function playoffPost(match,res){
@@ -6904,8 +6911,9 @@ function renderModal(){
 let tickTimer=null;
 function openTicker(match,_){
   modal={type:"ticker",match,minute:0,gf:0,ga:0,skipped:false,usedSkip:false,half:1,ht:false,ft:false};
-  // M2.5: hjemmefra ser du ikke kampen minut for minut — resultatet kommer til dig.
-  if(G.layer==="owner"&&!match.big&&!match.isPlayoff){modal.skipped=true;modal.usedSkip=true;}
+  // M2.5 + Mads 14/8: hjemmefra ser du ikke kampen minut for minut — resultatet
+  // kommer til dig. Uden undtagelser (store kampe og playoffs sprang før over).
+  if(G.layer==="owner"){modal.skipped=true;modal.usedSkip=true;}
   render();
 }
 function tickerEventPool(){
@@ -6957,8 +6965,9 @@ function startTickLoop(){
 }
 function showHT(){
   const M=modal.match;
-  // M2.5: hjemmefra er der ingen omklædningsrums-beslutning — gafferen kører anden halvleg selv.
-  if(G.layer==="owner"&&!M.big&&!M.isPlayoff){modal.ht=true;tickHT(null);modal.skipped=true;return;}
+  // M2.5 + Mads 14/8: hjemmefra er der ingen omklædningsrums-beslutning —
+  // gafferen kører anden halvleg selv. Uden undtagelser.
+  if(G.layer==="owner"){modal.ht=true;tickHT(null);modal.skipped=true;return;}
   modal.ht=true;modal.skipped=false;
   const el=document.getElementById("tmin");if(el)el.textContent="HT";
   const burning=modal.gf<=modal.ga;
