@@ -120,20 +120,81 @@ findes allerede — median net worth ved S21 er **£12M** (NIGHT-REPORT-8's
 baseline). Vokser den til det mangedobbelte efter denne pakke, er afkastene for
 høje. Mål det i 200×20 og skriv tallet i rapporten.
 
-## Åbne spørgsmål til Mads (afklar FØR kodning)
+## LÅST med Mads 14/8 — svarene på de fire spørgsmål
 
-1. **Skal porteføljen kunne gå i nul?** Anbefaling: ja, man skal kunne tabe det
-   hele på dumme væddemål — E0's comeback-garanti sikrer, at karrieren aldrig
-   låser.
-2. **Skal nogle aktiver røre fodbolden?** Fx en lokalavis/radiostation der
-   dæmper skandaler, eller en hotelkæde der løfter kampdagsindtægten. Mads sagde
-   "ikke-fodbold-agtige", så anbefalingen er **højst ét eller to** med et blødt
-   link — resten er ren diversificering.
-3. **Personlig gæld?** At kunne låne mod formuen (gearing) er et oplagt v2-lag,
-   men det hører ikke med i første pakke.
-4. **Medejer-opkøb betales af klubkassen** — skal det laves om til dine egne
-   penge? (Ikke det samme som nyemissionen Mads forkastede; opkøb findes
-   allerede og er spærret før sæson 3.)
+### 1. Ja, man skal kunne tabe det hele — men det skal være "ens egen skyld"
+
+Mads' ord: *"det skal være fordi man træffer nogle satsede valg hvor det er
+belyst, at man kan tabe det hele."* Det er mekanikkens vigtigste regel, og den
+er en **UI-kontrakt**, ikke kun en talregel:
+
+- **Ingen skjult ruin.** Et aktiv må aldrig gå i nul uden at kortet PÅ FORHÅND
+  har sagt, at det kunne. Hvert aktiv bærer et synligt risikoniveau
+  (fx *solid · risikabel · vovet*) med sit udfaldsrum skrevet frem: "bedste år
+  +120 % · værste år −60 %".
+- **Ordene skal stå der, hvor de er sande.** "Du kan tabe hele indskuddet" på
+  vovede projekter; "du kan tabe MERE end du lægger" på gearede (se PENGE-3).
+- **En forsigtig portefølje må aldrig udslette dig.** Ruin skal kun kunne nås
+  gennem valg, der var mærket som farlige. Det er målbart — se invarianten
+  `checkNoHiddenRuin` nedenfor.
+- Varslerne undervejs i projekter (1b) hører til samme kontrakt: du skal kunne
+  SE det gå galt og nå at handle, ikke få beskeden når pengene er væk.
+
+### 2. Ja, nogle aktiver må røre fodbolden — men de skal ændre en BESLUTNING, ikke et tal
+
+Faren er, at et fodbold-koblet aktiv bliver en **obligatorisk opgradering**:
+giver hotelkæden +8 % kampdagsindtægt, køber enhver fornuftig spiller hoteller,
+og så er det ikke diversificering — det er en fodboldopgradering med ekstra
+trin. Samme fejl som akademiet, der i dag bare er en dårlig obligation.
+
+**Reglen:** koblingen skal være *situationsbestemt, tveægget og lille* — og
+helst skabe et dilemma frem for en bonus. Gennemtænkte eksempler:
+
+- **Jord omkring stadion** ⭐ bedst. Ejer du jorden, bliver en fremtidig
+  tribuneudvidelse billigere — eller du kan sælge grunden dyrt, når klubben
+  vokser. Ingen bonus, kun et ægte valg: kontanter nu eller plads senere.
+- **Lokalavis/radio.** Dæmper skandalers *styrke* (ikke deres eksistens) og gør
+  omdømme billigere at bygge. Bagsiden: byen ved, hvem der ejer avisen — en
+  dårlig sæson får hårdere medfart andre steder, og medejerne ser spin frem for
+  resultater (tillid falder lidt).
+- **Hotelkæde.** Betaler kun ekstra på STORE kampdage (situationsbestemt, og
+  vokser kun hvis du bliver ved at investere).
+- **Fitnes-/klinikkæde:** frarådes — hurtigere skadesheling er en ren
+  fodboldopgradering og bliver obligatorisk.
+
+### 2b. KORRELATION — den bedste idé i hele pakken
+
+Aktiver skal være forskelligt **bundet til klubbens skæbne**:
+
+- **Lokale aktiver** (hoteller ved stadion, pubber, jorden, avisen) stiger og
+  falder MED klubben: fantastiske når du klatrer, brutale ved en nedrykning.
+- **Fjerne aktiver** (rederi, whiskylager, kunst, udenlandsk ejendom) er
+  upåvirkede — kedeligere, men de holder, når fodbolden brænder.
+
+Teknisk er det billigt: en `corr`-faktor pr. aktiv, der ganges med klubbens
+udvikling (division/omtale) i afregningen. Spillermæssigt er det hele lektien om
+diversificering, uden et eneste ord undervisning: den formand, der har bygget
+alt op omkring sin egen by, mister det hele samtidig med klubben. Det skal
+skrives ÆRLIGT på kortet ("følger byens gang"), jf. regel 1.
+
+### 3. Gearing — se PENGE-3 nedenfor (eksempler efterspurgt af Mads)
+
+### 4. Medejer-opkøb betales af DIN egen kasse
+
+Mads' ord: *"hvis JEG køber en større andel af klubben skal det selvfølgelig
+være fra min egen kasse og ikke klubbens."* `ownerNegoSubmit` trækker i dag
+beløbet fra `G.balance` — det skal være `personalWealth`.
+
+Husk følgevirkningerne, ellers går gaten rød:
+- harness'ens bot (`doOwnerBuyout`) gater i dag på `G.balance` og
+  `workingCapital()` — den skal gate på formuen i stedet,
+- invarianten `checkOwnerBuyout` måler klubkassen — den skal måle formuen,
+- afvisningsteksten ("banken sagde nej") skal omskrives: det er DIN konto, der
+  ikke rækker.
+
+Bemærk at det passer smukt med balancepinden: den, der solgte 49 % ved
+stiftelsen, har præcis de kontanter, det kræver at købe dem tilbage senere — og
+den, der beholdt 100 %, har hverken medejere at købe ud eller behov for det.
 
 ## Byggerækkefølge
 
@@ -156,6 +217,86 @@ målt.
   forsvinder; udfaldet ligger inden for BAL's spænd.
 - Fælles: **alle pengestrømme rammer `personalWealth`, aldrig klubkassen** —
   det er ejer-lagets grundlov og skal måles i hver eneste probe.
+
+---
+
+# PENGE-3 — GEARING: at låne mod formuen (eksempler, låst retning mangler)
+
+*Mads bad om eksempler. Fælles regel: gearing hører under regel 1 — ordene "du
+kan tabe MERE end du lægger" skal stå på kortet, før man trykker.*
+
+**Balancekravet der gør gearing til et valg og ikke en gratis multiplikator:**
+gearede varianter skal have **lavere forventet værdi** end ugearede (renten
+koster), men en meget federe hale. Ellers tager enhver fornuftig spiller altid
+gearingen, og så er det ikke et valg.
+
+### A. Kassekredit hos privatbanken
+Du kan trække op til fx 40 % af din **formues værdi** (ikke kun kontanter) som
+kredit. Rente hver sæson. Falder formuen under et gulv, **kalder banken lånet**
+— og du tvinges til at sælge aktiver til brandudsalgspris. Det er den reneste
+form: den gør en nedtur til en spiral, du selv har åbnet døren for.
+
+### B. Pant i et konkret aktiv
+Belån hotelkæden: du får ~60 % af værdien udbetalt nu, kædens afkast går til at
+betale renten, og kan du ikke betale, **overtager långiveren kæden**. Mere
+konkret end en generisk kredit — du kan mærke, hvad der er stillet i pant.
+
+### C. Gearet projekt ⭐ det bedste greb
+Havneprojektet koster £2M. Du lægger £600k og låner resten. Lykkes det, er
+afkastet på DIN indsats enormt; fejler det, **skylder du stadig lånet**. Det er
+regel 1 i sin reneste form, og kortet siger det med rene ord.
+
+**Anbefaling: byg gearing som tre finansieringsveje på PROJEKT-kortet** frem for
+som et separat lånesystem:
+
+| Vej | Risiko | Udfald |
+|---|---|---|
+| **Egen kasse** | du kan tabe indskuddet | 1,6-2,5× / delvis / 0,3-0,6× |
+| **Med partner** | halv indsats, halv gevinst | mildere i begge ender |
+| **Gearet** | du kan tabe MERE end du lægger | meget federe top, gæld ved fiasko |
+
+Ét beslutningspunkt, tre risikoappetitter, og ordene står på kortet. Det er
+langt mindre kode end et fuldt lånesystem og giver 90 % af følelsen.
+
+### D. Den grå investor (v2 — kræver sit eget indhold)
+Billige penge fra en mand, der vil have noget til gengæld senere: indflydelse,
+en tjeneste, en andel, tavshed. Stærk RPG-krog og meget fodbold — men den skal
+have skrevet indhold og konsekvenser, så den hører ikke med i første pakke.
+
+---
+
+# PENGE-4 — Kampen skal simuleres, når du IKKE er inde i klubben (Mads 14/8)
+
+*Mads' fund under spil: "Når man ikke er inde i en klub, skal man ikke blive
+spurgt om de ting inden kamp. Altså at gafferen venter på ens ord. Der skal
+kampen bare simuleres — det er kun hvis man er inde i klubben, at man kan have
+den samtale."*
+
+**Årsagen er fundet — det er tre UNDTAGELSER i M2.5-reglen**, ikke en manglende
+regel. Alle tre steder tjekker `G.layer==="owner"`, men med et hul:
+
+| Sted | Kode i dag | Hullet |
+|---|---|---|
+| Før kamp | `if(G.layer==="owner" && !match.isPlayoff)` → auto-ordre | **playoffkampe spørger stadig** |
+| Ticker | `if(G.layer==="owner" && !match.big && !match.isPlayoff)` → spring over | **store kampe OG playoffs vises minut for minut** |
+| Halvleg | samme betingelse | **samme** |
+
+**Rettelsen:** fjern undtagelserne, så reglen bliver én sætning uden huller —
+*står du i ejer-laget, spørger ingen dig om noget, og kampen afvikles; går du
+IND i klubben, får du hele samtalen.* Det er også mere robust: undtagelserne er
+præcis dét, der skaber "hvorfor spørger den mig nu?"-forvirring.
+
+**Bevidst konsekvens:** man kan så ikke længere se en playoff-finale eller et
+derby minut for minut hjemmefra. Det er den rigtige pris — vil du være der, går
+du ind i klubben. Det er hele tilstedeværelses-modellen (M2.5), og den bliver
+skarpere af, at et besøg BETYDER noget.
+
+**Invariant `checkPresenceRule`** (sabotér: læg en af undtagelserne tilbage →
+rød): fra ejer-laget åbner en kampdag ALDRIG en prematch-modal og aldrig
+tickeren — heller ikke ved en stor kamp, heller ikke i et playoff; og inde i
+klubben gør den ALTID. Botten skal spille begge veje (den gør det allerede via
+`--bot=both`s to profiler — sørg for at scenariet med playoff hjemmefra bliver
+ramt).
 
 ---
 
