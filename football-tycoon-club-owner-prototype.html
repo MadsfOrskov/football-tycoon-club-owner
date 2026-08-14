@@ -499,6 +499,20 @@ const BAL={
     discount:0.75,               // mæglerens pris mod buyControls fulde
     expireMD:3                   // tilbuddet ligger ikke evigt
   },
+  /* PENGE-2: ejer-livet som AKTIVT forbrug. O3's events kommer TIL dig; her
+     opsøger du dem. Pointen er ikke pynt: omdømme er porten til imperiet
+     (BAL.stake.gateRep), så kontanter brugt på navnet i sæson 1 er investering
+     i sæson 2's ambition. Én gestus pr. sæson — ellers kunne man købe sig til
+     et omdømme på en eftermiddag. */
+  gestures:{
+    perSeason:1,
+    list:[
+      {key:"bus",   n:"Betal supporternes bus",  cost:18000,  rep:3, fan:6, blurb:"udebaneturen er gratis i år"},
+      {key:"xmas",  n:"Sponsorér byens juleoptog",cost:32000, rep:5, fan:9, blurb:"dit navn på hver lygtepæl"},
+      {key:"pitch", n:"Nyt græs til ungdomsbanen",cost:55000, rep:7, fan:5, blurb:"de spiller på mudder i dag"},
+      {key:"house", n:"Køb huset på bakken",      cost:180000,rep:9, fan:-2,blurb:"byen kigger op. Nogle med beundring"}
+    ]
+  },
   /* PENGE-1 (Mads 14/8): PORTEFØLJEN. Du er tycoon, ikke kun klubformand —
      klubben er ét volatilt aktiv, og porteføljen er dét, der gør dig til en
      formue frem for en fodboldmand. Tre TIDSSIGNATURER, og — Mads' regel nr. 1
@@ -1762,7 +1776,7 @@ function newGame(name,hue,mode){
     stakes:[],stakeIncome:0,  // M2: andele i pyramidens klubber {wid,pct,paid}
     holdings:{},activeWid:0,  // IMP1: kontrollerede klubber {pct,deep,name} · din klubs wid er 0
     investIncome:0,brokerOffer:null,  // R9: mæglerens papir
-    chains:{},projects:[],punts:[],   // PENGE-1: porteføljens tre tidssignaturer
+    chains:{},projects:[],punts:[],gestureSeason:0,   // PENGE-1/2: porteføljen og gestussen
     milestones:{},cameBack:false,  // M4: dynastiets mærker — {key:season}, fejres én gang
     layer:"owner",  // M2.5: hvilken verden du står i — "owner" (guld, dig) eller "club" (inde i klubben)
     worldTopLifted:true,  // R7: verden fødes MED toppens ekstra styrke — migrationen må ikke løfte igen
@@ -2733,6 +2747,23 @@ function myStrength(){
   return {att:base.att+formAvg+fatigue,def:base.def+formAvg+fatigueD};
 }
 function bigGameBonus(){return G.squad.some(p=>p.traits.includes("biggame"))?2.5:0;}
+/* ---------- PENGE-2: gestus — at bruge penge PÅ SIT NAVN ----------
+   Omdømmet er porten til klub nr. 2, så det her er ikke velgørenhed: det er
+   den kontante formands vej ind i imperiet. Én pr. sæson. */
+function gestureDone(){return G.gestureSeason===G.season;}
+function gestureBuy(k){
+  const g=BAL.gestures.list.find(x=>x.key===k);if(!g)return;
+  if(gestureDone()){modal={type:"info",title:"Én gestus pr. sæson",body:"Byen kan gennemskue en mand, der køber sig populær hver uge. Vent til næste sæson."};render();return;}
+  const cost=Math.round(g.cost*divCashMult(G.div<0?3:G.div)/1000)*1000;
+  if((G.personalWealth||0)<cost){modal={type:"info",title:"Din formue rækker ikke",body:g.n+" koster "+kfmt(cost)+" af dine egne penge."};render();return;}
+  G.personalWealth-=cost;
+  G.gestureSeason=G.season;
+  bumpRep(g.rep);
+  G.fanMood=clamp(G.fanMood+g.fan,5,100);
+  addNews("OWNER",g.n+" — "+kfmt(cost)+" af egen lomme. "+(g.fan>0?"Byen taler pænt om dig i denne uge.":"Nogle synes, det er en anelse meget."));
+  render();
+}
+
 /* ---------- NAV-2: omdøb klub — din verden, dine navne ----------
    Spillet udgives med opdigtede navne (NAV-1), og spilleren skriver selv, hvad
    klubberne skal hedde i SIN verden. Det er både en tycoon-frihed og hele
@@ -4385,8 +4416,11 @@ function ownerNegoSubmit(){
   const m=modal;const o=G.owners[m.i];
   m.round++;
   if(m.offer>=m.min){
-    if(G.balance<m.offer){modal={type:"info",title:"Aftalt — og uden dækning",body:"I gav hånd på "+kfmt(m.offer)+", og banken sagde nej. "+o.n.split(" ")[0]+" kommer til at fortælle den her historie længe."};render();return;}
-    G.balance-=m.offer;G.myShare+=o.share;
+    /* Mads 14/8: "hvis JEG køber en større andel af klubben, skal det
+       selvfølgelig være fra MIN egen kasse og ikke klubbens." Før betalte
+       klubben for sine egne aktier og forærede dig dem. */
+    if((G.personalWealth||0)<m.offer){modal={type:"info",title:"Aftalt — og uden dækning",body:"I gav hånd på "+kfmt(m.offer)+", og din egen konto rakte ikke. "+o.n.split(" ")[0]+" kommer til at fortælle den her historie længe."};render();return;}
+    G.personalWealth-=m.offer;G.myShare+=o.share;
     G.ownerBoughtSeason=G.season;          // one empty chair per season
     const name=o.n,role=o.role,share=o.share;
     G.owners.splice(m.i,1);
@@ -5786,6 +5820,11 @@ function viewInvest(){
         ${q.taken?`<span class="sc">afgøres om ${Math.max(0,(q.due||0)-G.md)} kampdage</span>`
           :`<button class="abtn" style="padding:5px 9px;font-size:10px" onclick="puntTake('${q.key}')">Slå til · ${kfmt(q.cost)}</button>`}</div>`;}).join("")||'<div class="newsline">Markedet er tomt lige nu. Der kommer nyt til sæsonskiftet.</div>'}
     <div class="kick" style="font-size:9px;text-transform:none;margin-top:6px">Alt her købes af DIN formue og betaler til DIN konto — klubkassen er ikke inviteret. Du kan tabe penge; hvor meget, står på kortet.</div></div>
+  <div class="card"><div class="kick" style="margin-bottom:2px">Dit navn · én gestus pr. sæson</div>
+    ${BAL.gestures.list.map(g=>{const cost=Math.round(g.cost*divCashMult(G.div<0?3:G.div)/1000)*1000;
+      return `<div class="rowline"><span><b>${g.n}</b> <small>· ${g.blurb} · omdømme +${g.rep}${g.fan?" · fans "+(g.fan>0?"+":"")+g.fan:""}</small></span>
+        ${gestureDone()?`<span class="sc">brugt i år</span>`:`<button class="abtn" style="padding:5px 9px;font-size:10px" onclick="gestureBuy('${g.key}')">Gør det · ${kfmt(cost)}</button>`}</div>`;}).join("")}
+    <div class="kick" style="font-size:9px;text-transform:none;margin-top:6px">Omdømme er ligaens dør: den godkender først kontrol med klub nr. to ved omdømme ${BAL.stake.gateRep}. Penge brugt på navnet nu er kapital til imperiet senere.</div></div>
   <div class="card"><div class="kick" style="margin-bottom:2px">Mægleren</div>
     <div class="newsline">${G.brokerOffer?BAL.broker.n+" har et papir på dit bord: <b>"+G.brokerOffer.name+"</b> — se Kontoret.":BAL.broker.n+" ("+BAL.broker.role+") leder i markedets mørke hjørner. Kriseklubber kommer med rabat — papiret lander på dit bord, når han finder en."+(G.season<BAL.stake.unlockSeason&&G.phase!=="investor"?" Men først efter din første sæson — ligaen skal kende dig.":"")}</div></div>`;
   return h;
