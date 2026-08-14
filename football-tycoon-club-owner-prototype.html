@@ -541,6 +541,8 @@ const BAL={
      med modstanderens att/def i samme subtraktion — indekset viser bare det tal,
      der i forvejen afgør hver kamp. Målt: ~4 point ≈ +9 procentpoint sejrsrate.
      Båndet er spejderarbejdets belønning: du kender ikke rivalernes facit. */
+  /* NAV-1: hvor ofte en klub baerer et étords-navn, efter division. */
+  names:{bareByDiv:{0:0.55,1:0.40,2:0.28,3:0.18}},
   rate:{
     bandBase:7,        // ± usikkerhed på en fremmed klub når du intet ved
     bandFloor:1,       // ... og når du har set dem an hele sæsonen
@@ -1220,8 +1222,29 @@ function applyTheme(hue,mode){
 }
 
 /* ---------- content pools ---------- */
-const TOWN1=["Ashford","Millbrook","Redgate","Harlow","Oakwell","Stanmore","Ketterby","Duncroft","Welford","Bramley","Netherfield","Grimsdale","Copperton","Eastleigh","Woolston","Farndale","Marleigh","Tilbury","Crowhurst","Hobbs"];
+/* NAV-1 (Mads 14/8): puljen er RENSET. Den gamle indeholdt Ashford, Harlow,
+   Eastleigh, Tilbury, Millbrook, Netherfield, Stanmore og Bramley — sammen med
+   endelserne kunne spillet altså producere Harlow Town, Ashford United,
+   Eastleigh og Tilbury, som alle er eksisterende engelske klubber. Navnene her
+   er opdigtede med engelsk morfologi; harness'ens REAL_CLUBS-blokliste vogter,
+   at ingen rigtig klub sniger sig ind igen. */
+const TOWN1=["Ashcombe","Bexholt","Brackwell","Calderwick","Copperton","Crowhurst","Draycote","Duncroft",
+  "Farndale","Grimsdale","Hobbsley","Ketterby","Larkfield","Marlbury","Marleigh","Penhale","Ravensmere",
+  "Redgate","Sallowfield","Stourbeck","Thurlby","Welford","Wrenfield","Yarnwick"];
 const TOWN2=["Town","United","Rovers","Athletic","County","Wanderers","Albion","Victoria"];
+/* I engelsk fodbold er over halvdelen af de øverste klubber ÉT ord (Arsenal,
+   Everton, Fulham, Chelsea), mens de lavere rækker er fulde af Town/United/
+   Rovers. Spillet satte før ALTID en endelse på — dét var det, der føltes
+   forkert. Vægten følger divisionen, så pyramiden lyder som en pyramide. */
+function clubName(div,used){
+  const bare=(BAL.names.bareByDiv[div]===undefined?0.2:BAL.names.bareByDiv[div]);
+  let n,guard=0;
+  do{
+    const t=pick(TOWN1);
+    n=Math.random()<bare?t:t+" "+pick(TOWN2);
+  }while(used&&used.has(n)&&++guard<400);
+  return n;
+}
 const FIRST=["Danny","Lee","Callum","Jordan","Kyle","Ryan","Aaron","Josh","Connor","Billy","Reece","Nathan","Liam","Curtis","Dean","Marcus","Tommy","Sam","Jake","Harry","Ollie","Frankie","Stevie","Wes","Ashley","Micky","Gareth","Paddy"];
 const LAST=["Hobbs","Slater","Cartwright","Dunmore","Pickering","Rowntree","Batty","Ferris","Ogden","Sillitoe","Trencher","Mallory","Quigley","Barrowclough","Hutton","Speed","Nairn","Tunstall","Weekes","Priddy","Cobb","Marsh","Lythgoe","Beckwith","Aldous","Renshaw"];
 const TRAITS={leader:"Leder",glass:"Glaskrop",biggame:"Storkampsspiller",localhero:"Lokal helt",grafter:"Slider",whinger:"Brokkehoved",dreamer:"Drømmer",party:"Festabe"};
@@ -1654,7 +1677,7 @@ const sponsorCopy=o=>({...o});
 const coachOvr=c=>Math.round((c.tac+c.man+c.dev)/3);
 
 /* ---------- state ---------- */
-let G=null, screen="home", modal=null, obStep=0, obData={name:"Ashford Rovers",hue:85,mode:"dark",ownerName:"",ownerAvatar:"🧑‍💼",ownerBg:"selfmade"};
+let G=null, screen="home", modal=null, obStep=0, obData={name:"Ashcombe Rovers",hue:85,mode:"dark",ownerName:"",ownerAvatar:"🧑‍💼",ownerBg:"selfmade"};
 const OWNER_AVATARS=["🧑‍💼","👩‍💼","🎩","🧔","👑","🕶️"];
 
 /* Players are identified by ID, never by name. There are only 28×26 = 728
@@ -1720,7 +1743,7 @@ function newGame(name,hue,mode){
   const used=new Set([name]);
   let wid=1;
   const genClub=div=>{
-    let n;do{n=pick(TOWN1)+" "+pick(TOWN2);}while(used.has(n));used.add(n);
+    const n=clubName(div,used);used.add(n);
     // The chairman's XI carries a systematic edge (coach bonus, leader bonus,
     // home crowd, confidence), so raw parity meant promotion at the first
     // attempt every single time. League Three has to actually be a division.
@@ -3547,7 +3570,7 @@ function ensureWorld(){
   for(let d=0;d<BAL.world.divs;d++){
     if(d===G.div)continue;
     for(let i=0;i<BAL.world.size;i++){
-      let n;do{n=pick(TOWN1)+" "+pick(TOWN2);}while(used.has(n));used.add(n);
+      const n=clubName(d,used);used.add(n);
       const lift=divLift(d);
       G.worldRest.push({wid:wid++,name:n,div:d,att:R(49,61)+lift,def:R(49,61)+lift,phy:R(44,62),
         pts:0,gd:0,pl:0,press:BAL.world.pressStart});
@@ -7278,10 +7301,10 @@ function obHue(h){obCapture();obData.hue=h;renderOnboarding();}
 function obAvatar(a){obCapture();obData.ownerAvatar=a;renderOnboarding();}   // O1
 function obBg(k){obCapture();obData.ownerBg=k;renderOnboarding();}           // O1
 function obDiceOwner(){obData.ownerName=pick(FIRST)+" "+pick(LAST);renderOnboarding();}        // INTRO-1: terningen foreslår
-function obDiceClub(){obCapture();obData.name=pick(TOWN1)+" "+pick(TOWN2);renderOnboarding();} // INTRO-1: terningen foreslår
+function obDiceClub(){obCapture();obData.name=clubName(3,null);renderOnboarding();} // INTRO-1: terningen foreslår
 function obFinish(){
   obCapture();
-  if(!obData.name)obData.name="Ashford Rovers";
+  if(!obData.name)obData.name="Ashcombe Rovers";
   newGame(obData.name,obData.hue,obData.mode);
   applyOwner(obData.ownerName,obData.ownerAvatar,obData.ownerBg);  // O1: stamp yourself on the club
   applyTheme(G.hue,G.mode);
