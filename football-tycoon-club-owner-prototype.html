@@ -499,15 +499,54 @@ const BAL={
     discount:0.75,               // mæglerens pris mod buyControls fulde
     expireMD:3                   // tilbuddet ligger ikke evigt
   },
+  /* PENGE-1 (Mads 14/8): PORTEFØLJEN. Du er tycoon, ikke kun klubformand —
+     klubben er ét volatilt aktiv, og porteføljen er dét, der gør dig til en
+     formue frem for en fodboldmand. Tre TIDSSIGNATURER, og — Mads' regel nr. 1
+     — man skal kunne tabe det hele, men KUN gennem valg der var mærket farlige.
+     Derfor bærer hvert aktiv sit risikoniveau og sit udfaldsrum på kortet.
+     Den gamle model (yield × (1 ± swing)) kunne aldrig tabe penge: udsvinget lå
+     oven på et positivt afkast, så agenturets værste år gav stadig 9 % i plus.
+     "Fede år og magre år" var tekst, ikke matematik. Nu er `lo`/`hi` det ægte
+     udfaldsrum, og `lo` må gerne være negativ. */
   invest:{
     sellFactor:0.85,
-    assets:[
-      {key:"agency", n:"Spilleragentur",  cost:300000,  yield:0.18, swing:0.5,
-       blurb:"lever af vinduerne — fede år og magre år"},
-      {key:"academy",n:"Ungdomsakademi",  cost:500000,  yield:0.09, swing:0.1,
-       blurb:"langsomt, stabilt, og byen elsker dig for det"},
-      {key:"pubs",   n:"Pubkæden",        cost:180000,  yield:0.13, swing:0.3,
-       blurb:"øl sælger altid — næsten"}]
+    /* KÆDER: byg op niveau for niveau, betaler hver sæson. Lav varians — det er
+       drift, ikke væddemål — men en nedtur rammer hele kæden på én gang.
+       corr = hvor meget aktivet følger KLUBBENS gang: lokale aktiver stiger og
+       falder med byen, fjerne holder når fodbolden brænder. Det er hele
+       lektionen om diversificering uden ét ord undervisning. */
+    chains:[
+      {key:"pubs",  n:"Pubkæden",     step:80000,  lo:-0.05, hi:0.26, corr:0.8, risk:"solid",
+       blurb:"øl sælger altid — men det er byens øl", unit:"værtshus"},
+      {key:"hotel", n:"Hotelkæden",   step:150000, lo:-0.10, hi:0.34, corr:0.6, risk:"solid",
+       blurb:"udebanefans skal sove et sted", unit:"hotel"},
+      {key:"gyms",  n:"Fitnesskæden", step:110000, lo:-0.12, hi:0.32, corr:0.3, risk:"risikabel",
+       blurb:"januar er guld, juli er en ørken", unit:"center"}
+    ],
+    maxLvl:8,
+    /* PROJEKTER: penge LÅST i flere sæsoner, afgjort i én stor beslutning.
+       Kan sælges før tid til et stort tab — og dét er mekanikkens bedste
+       øjeblik: mægleren tilbyder en billig klub, mens dine penge sidder i beton. */
+    projects:[
+      {key:"harbour",n:"Havnekvarteret",   cost:260000, seasons:4, win:2.3, part:1.15, bust:0.35, odds:0.55, corr:0.7, risk:"vovet",
+       blurb:"byrådet skal sige ja. Byrådet siger sjældent ja til tiden"},
+      {key:"offices",n:"Kontorbyggeriet",  cost:190000, seasons:3, win:1.8, part:1.1,  bust:0.5,  odds:0.68, corr:0.4, risk:"risikabel",
+       blurb:"kedeligt, konkret, og lejerne findes"},
+      {key:"whisky", n:"Whiskylageret",    cost:120000, seasons:5, win:2.6, part:1.2,  bust:0.55, odds:0.62, corr:0,   risk:"risikabel",
+       blurb:"tid er hele forretningen. Rør det ikke"}
+    ],
+    earlyExit:0.55,      // sælger du et projekt før tid, får du dette af indskuddet
+    warnAt:0.5,          // halvvejs kommer der et varsel — du skal kunne NÅ at handle
+    /* HURTIGE HANDLER: et lille rullende marked, afgjort inden for sæsonen.
+       Det er her sæson 1's kontanter får noget at lave allerede i uge 3. */
+    punts:[
+      {key:"case",  n:"Et parti whisky",    cost:35000, lo:-0.45, hi:1.1,  risk:"vovet"},
+      {key:"horse", n:"En væddeløbshest",   cost:50000, lo:-0.7,  hi:1.9,  risk:"vovet"},
+      {key:"ship",  n:"Aktier i et rederi", cost:45000, lo:-0.4,  hi:0.95, risk:"risikabel"},
+      {key:"art",   n:"Et maleri",          cost:60000, lo:-0.25, hi:0.7,  risk:"risikabel"},
+      {key:"cars",  n:"To klassiske biler", cost:40000, lo:-0.35, hi:0.85, risk:"risikabel"}
+    ],
+    puntSlots:2, puntMinMD:4, puntMaxMD:8
   },
   /* E0 (GRUNDPRINCIPPET, Mads 10/8): "Det er MEGA vigtigt at du adskiller DIG
      og KLUBBEN." At miste klubben er et KAPITEL, aldrig game over: klubben
@@ -1154,7 +1193,13 @@ function loadGame(){
   if(!G.suitors)G.suitors={};   // C1: gamle karrierer fødes uden interessent-kartotek
   if(!G.holdings)G.holdings={};   // IMP1: gamle karrierer fødes uden imperium
   if(G.activeWid===undefined)G.activeWid=0;
-  if(!G.invest)G.invest={};if(G.brokerOffer===undefined)G.brokerOffer=null;   // R9
+  if(G.brokerOffer===undefined)G.brokerOffer=null;   // R9
+  /* PENGE-1: porteføljen afløste R9's tre flade aktiver. En gammel karrieres
+     aktiver konverteres til kæde-niveauer, så ingen mister det, de ejede. */
+  if(G.invest){for(const k in G.invest)if(G.invest[k]&&chainDef(k)){G.chains=G.chains||{};G.chains[k]=Math.max(1,chainLvl(k));}delete G.invest;}
+  if(!G.chains)G.chains={};
+  if(!Array.isArray(G.projects))G.projects=[];
+  if(!Array.isArray(G.punts)||!G.punts.length)refreshPunts();
   if(!G.milestones)G.milestones={};   // M4: gamle karrierer fødes uden mærker — de indhentes ved næste sæsonskifte
   if(!Number.isFinite(G.seasonExpect))G.seasonExpect=G.teams&&G.teams.length?expectedPos():null;   // STYRKE-1
   if(G.gafferMet===undefined)G.gafferMet=true;   // INTRO-1: en gammel karriere kender sin gaffer — han skal ikke banke på igen
@@ -1716,7 +1761,8 @@ function newGame(name,hue,mode){
     owner:{name:"Formanden",avatar:"🧑‍💼",background:"selfmade"},reputation:BAL.owner.repStart,netWorthHistory:[],ownerLifeMD:0,  // O1/O3: ejer-identitet + ejer-liv
     stakes:[],stakeIncome:0,  // M2: andele i pyramidens klubber {wid,pct,paid}
     holdings:{},activeWid:0,  // IMP1: kontrollerede klubber {pct,deep,name} · din klubs wid er 0
-    invest:{},investIncome:0,brokerOffer:null,  // R9: dine aktiver + mæglerens papir
+    investIncome:0,brokerOffer:null,  // R9: mæglerens papir
+    chains:{},projects:[],punts:[],   // PENGE-1: porteføljens tre tidssignaturer
     milestones:{},cameBack:false,  // M4: dynastiets mærker — {key:season}, fejres én gang
     layer:"owner",  // M2.5: hvilken verden du står i — "owner" (guld, dig) eller "club" (inde i klubben)
     worldTopLifted:true,  // R7: verden fødes MED toppens ekstra styrke — migrationen må ikke løfte igen
@@ -2162,44 +2208,151 @@ function brokerDecline(){
   addNews("OWNER",BAL.broker.n+": \"Forstået. "+o.name+" finder en anden — det gør de altid.\"");
   render();
 }
-/* ---------- R9: Invest — formuens andre ben ---------- */
-function investAsset(k){return BAL.invest.assets.find(a=>a.key===k);}
+/* ---------- PENGE-1: PORTEFØLJEN — formuens andre ben ----------
+   Tre tidssignaturer: kæder (hver sæson), projekter (låst i flere) og hurtige
+   handler (afgøres midt i sæsonen). Alt købes af DIN formue og betaler til DIN
+   konto — klubkassen er aldrig inviteret. Og alt kan tabe penge, men kun så
+   meget som kortet lovede. */
+function chainDef(k){return BAL.invest.chains.find(a=>a.key===k);}
+function projDef(k){return BAL.invest.projects.find(a=>a.key===k);}
+function puntDef(k){return BAL.invest.punts.find(a=>a.key===k);}
+function chainLvl(k){return (G.chains&&G.chains[k])||0;}
+/* Prisen på NÆSTE niveau: trappen stiger, som tribunerne gør det. */
+function chainCost(k,lvl){const a=chainDef(k);if(!a)return 0;
+  return Math.round(a.step*(1+lvl*0.55)*divCashMult(G.div<0?3:G.div)/1000)*1000;}
+function chainWorth(k){let s=0;for(let i=0;i<chainLvl(k);i++)s+=chainCost(k,i);return Math.round(s*BAL.invest.sellFactor);}
 function investWorth(){
   let s=0;
-  for(const k in (G.invest||{}))if(G.invest[k])s+=investAsset(k)?investAsset(k).cost:0;
+  for(const a of BAL.invest.chains)s+=chainWorth(a.key);
+  for(const p of (G.projects||[]))s+=p.cost;      // bundet kapital tæller med i formuen
+  for(const q of (G.punts||[]))if(q.taken)s+=q.cost;
   return s;
 }
-function investBuy(k){
-  const a=investAsset(k);if(!a)return;
-  G.invest=G.invest||{};
-  if(G.invest[k])return;
-  if((G.personalWealth||0)<a.cost){modal={type:"info",title:"Din formue rækker ikke",body:a.n+" koster "+kfmt(a.cost)+" af dine egne penge — klubkassen kan ikke købe den for dig."};render();return;}
-  G.personalWealth-=a.cost;
-  G.invest[k]=1;
-  addNews("OWNER","Du købte "+a.n+" — "+a.blurb+". Afkastet lander på DIN konto ved hvert sæsonskifte.");
+/* Klubbens gang smitter af på de LOKALE aktiver: en nedrykning tømmer byens
+   hoteller, en oprykning fylder dem. Fjerne aktiver (whisky, rederi) mærker
+   ingenting. Det er hele lektionen om diversificering — skrevet på kortet. */
+function townFactor(){
+  const div=G.div<0?3:G.div;
+  const mood=(G.fanMood===undefined?60:G.fanMood);
+  return ((3-div)*0.06)+((mood-60)/100*0.25);
+}
+function chainBuy(k){
+  const a=chainDef(k);if(!a)return;
+  G.chains=G.chains||{};
+  const lvl=chainLvl(k);
+  if(lvl>=BAL.invest.maxLvl){modal={type:"info",title:"Kæden er udbygget",body:a.n+" står på niveau "+lvl+". Der er ikke flere byer at åbne i lige nu."};render();return;}
+  const cost=chainCost(k,lvl);
+  if((G.personalWealth||0)<cost){modal={type:"info",title:"Din formue rækker ikke",body:"Endnu et "+a.unit+" koster "+kfmt(cost)+" af dine egne penge — klubkassen kan ikke købe det for dig."};render();return;}
+  G.personalWealth-=cost;
+  G.chains[k]=lvl+1;
+  addNews("OWNER","Du åbnede endnu et "+a.unit+": "+a.n+" står nu på "+(lvl+1)+".");
   render();
 }
-function investSell(k){
-  const a=investAsset(k);if(!a||!(G.invest&&G.invest[k]))return;
-  const out=Math.round(a.cost*BAL.invest.sellFactor/1000)*1000;
-  G.invest[k]=0;
+function chainSell(k){
+  const a=chainDef(k);if(!a||!chainLvl(k))return;
+  const out=chainWorth(k);
+  G.chains[k]=0;
   G.personalWealth=(G.personalWealth||0)+out;
-  addNews("OWNER",a.n+" solgt for "+kfmt(out)+". "+(a.key==="pubs"?"Byen er i sorg.":"Papirerne er skrevet under."));
+  addNews("OWNER",a.n+" er solgt for "+kfmt(out)+". "+(k==="pubs"?"Byen er i sorg.":"Papirerne er skrevet under."));
   render();
 }
-/* Sæsonafkastet: yield ± swing — profilen er aktivets karakter */
-function settleInvest(){
-  let total=0;
-  for(const k in (G.invest||{})){
-    if(!G.invest[k])continue;
-    const a=investAsset(k);if(!a)continue;
-    const roll=1+(Math.random()*2-1)*a.swing;
-    total+=Math.round(a.cost*a.yield*roll/100)*100;
+/* PROJEKTER. Tre finansieringsveje (Mads' gearing): egen kasse, partner eller
+   gearet. Gearet har LAVERE forventet værdi (renten koster) men en meget federe
+   hale — ellers ville enhver fornuftig spiller altid vælge den, og så er det
+   ikke et valg. Ordene står på kortet: du kan tabe MERE end du lægger. */
+const PROJ_FUND={
+  own:  {n:"Egen kasse", pay:1,    gain:1,    odds:0,     txt:"du kan tabe indskuddet"},
+  part: {n:"Med partner",pay:0.5,  gain:0.5,  odds:0.05,  txt:"halv indsats, halv gevinst — og en roligere nat"},
+  gear: {n:"Gearet",     pay:0.35, gain:1.35, odds:-0.05, txt:"du kan tabe MERE end du lægger"}
+};
+function projStart(k,fund){
+  const a=projDef(k);if(!a)return;
+  const f=PROJ_FUND[fund]||PROJ_FUND.own;
+  G.projects=G.projects||[];
+  if(G.projects.some(p=>p.key===k)){modal={type:"info",title:"Du er allerede med",body:a.n+" kører allerede for dine penge."};render();return;}
+  const cost=Math.round(a.cost*divCashMult(G.div<0?3:G.div)/1000)*1000;
+  const pay=Math.round(cost*f.pay/1000)*1000;
+  if((G.personalWealth||0)<pay){modal={type:"info",title:"Din formue rækker ikke",body:a.n+" kræver "+kfmt(pay)+" af dine egne penge på bordet."};render();return;}
+  G.personalWealth-=pay;
+  G.projects.push({key:k,fund,cost,paid:pay,season:G.season,left:a.seasons,warned:false});
+  addNews("OWNER","Du gik ind i "+a.n+" ("+f.n.toLowerCase()+") — "+kfmt(pay)+" bundet i "+a.seasons+" sæsoner.");
+  render();
+}
+function projExit(k){
+  const i=(G.projects||[]).findIndex(p=>p.key===k);if(i<0)return;
+  const p=G.projects[i],a=projDef(k);
+  const out=Math.round(p.paid*BAL.invest.earlyExit/1000)*1000;
+  G.projects.splice(i,1);
+  G.personalWealth=(G.personalWealth||0)+out;
+  addNews("OWNER","Du trak dig ud af "+(a?a.n:"projektet")+" før tid: "+kfmt(out)+" tilbage af "+kfmt(p.paid)+". Sådan er hastværk prissat.");
+  render();
+}
+/* HURTIGE HANDLER: markedet friskes op hver sæson og afgøres midt i den. */
+function refreshPunts(){
+  const I=BAL.invest;
+  const pool=[...I.punts].sort(()=>Math.random()-0.5).slice(0,I.puntSlots);
+  G.punts=pool.map(q=>({key:q.key,cost:Math.round(q.cost*divCashMult(G.div<0?3:G.div)/1000)*1000,
+    taken:false,due:null}));
+}
+function puntTake(k){
+  const q=(G.punts||[]).find(x=>x.key===k);if(!q||q.taken)return;
+  if((G.personalWealth||0)<q.cost){modal={type:"info",title:"Din formue rækker ikke",body:"Den handel koster "+kfmt(q.cost)+" kontant."};render();return;}
+  G.personalWealth-=q.cost;
+  q.taken=true;q.due=G.md+R(BAL.invest.puntMinMD,BAL.invest.puntMaxMD);
+  const d=puntDef(k);
+  addNews("OWNER","Du slog til: "+(d?d.n:"handelen")+" for "+kfmt(q.cost)+". Vi ses om et par kampdage.");
+  render();
+}
+/* Afgøres MIDT i sæsonen — det er dét, der giver kampdagsrytmen en ekstra puls. */
+function settlePunts(){
+  for(const q of (G.punts||[])){
+    if(!q.taken||q.due===null||G.md<q.due)continue;
+    const d=puntDef(q.key);if(!d){q.taken=false;continue;}
+    const roll=d.lo+Math.random()*(d.hi-d.lo);
+    const out=Math.round(q.cost*(1+roll)/100)*100;
+    G.personalWealth=Math.max(0,(G.personalWealth||0)+out);
+    addNews("OWNER",d.n+": "+(out>=q.cost?"ind kom "+kfmt(out)+" for dine "+kfmt(q.cost)+". Det var en god uge.":"du fik "+kfmt(out)+" tilbage af "+kfmt(q.cost)+". Sådan er væddemål."));
+    q.taken=false;q.due=null;
   }
+}
+/* Sæsonopgørelsen: kæderne betaler, projekterne tikker ned og afgøres. */
+function settleInvest(){
+  const I=BAL.invest;let total=0;
+  const town=townFactor();
+  for(const a of I.chains){
+    const lvl=chainLvl(a.key);if(!lvl)continue;
+    let worth=0;for(let i=0;i<lvl;i++)worth+=chainCost(a.key,i);
+    const roll=a.lo+Math.random()*(a.hi-a.lo)+town*a.corr;
+    total+=Math.round(worth*roll/100)*100;
+  }
+  const done=[];
+  for(const p of (G.projects||[])){
+    p.left--;
+    const a=projDef(p.key);if(!a){done.push(p);continue;}
+    const f=PROJ_FUND[p.fund]||PROJ_FUND.own;
+    if(p.left===Math.floor(a.seasons*BAL.invest.warnAt)&&!p.warned){
+      p.warned=true;
+      addNews("OWNER",a.n+": "+(Math.random()<0.5?"papirerne er forsinkede, og naboerne har skrevet til avisen.":"det skrider frem. Langsomt, men det skrider."));
+    }
+    if(p.left>0)continue;
+    const odds=clamp(a.odds+f.odds+town*a.corr,0.05,0.95);
+    const r=Math.random();
+    const mult=r<odds?a.win:(r<odds+0.25?a.part:a.bust);
+    // gearet: gevinsten ganges op, men tabet rammer HELE projektet — ikke kun din del
+    const back=p.fund==="gear"
+      ? Math.round((p.cost*mult-(p.cost-p.paid))/100)*100
+      : Math.round(p.paid*mult*f.gain/(f.gain||1)/100)*100;
+    const net=p.fund==="part"?Math.round(p.paid*mult/100)*100:back;
+    total+=net;
+    addNews("OWNER",a.n+" er gjort op: "+(net>=p.paid?"du lagde "+kfmt(p.paid)+" og fik "+kfmt(Math.max(0,net))+" igen.":"du lagde "+kfmt(p.paid)+" og fik "+kfmt(Math.max(0,net))+". Det stod på kortet."));
+    done.push(p);
+  }
+  if(done.length)G.projects=(G.projects||[]).filter(p=>!done.includes(p));
+  refreshPunts();
   if(total!==0){
     G.personalWealth=Math.max(0,(G.personalWealth||0)+total);
     G.investIncome=total;
-    addNews("OWNER","Dine aktiver gjorde sæsonen op: "+(total>=0?"+":"")+kfmt(total)+" på din konto.");
+    addNews("OWNER","Porteføljen gjorde sæsonen op: "+(total>=0?"+":"")+kfmt(total)+" på din konto.");
   }else G.investIncome=0;
 }
 
@@ -3502,6 +3655,7 @@ function postMatchMessages(){
   resolveBids();
   marketFlow();
   brokerTick();   // R9: mæglerens marked lever i klub-ugen også
+  settlePunts();  // PENGE-1: de hurtige handler afgøres MIDT i sæsonen
   // listed players attract offers over the coming matchdays
   for(const p of G.squad.filter(x=>x.listed)){
     if(!windowOpen()){p.listed=false;continue;}
@@ -4451,6 +4605,7 @@ function investorWeek(){
   simWorldRound();
   maybeOwnerLife();
   brokerTick();   // R9: mellem klubber er mægleren din vigtigste forbindelse
+  settlePunts();  // PENGE-1: handlerne afgøres også mellem klubber
   if(G.md>=G.rounds)investorSeasonEnd();
   saveGame();render();
 }
@@ -5599,12 +5754,38 @@ function viewEmpire(){
    svinger, akademiet tøffer, pubberne skænker. */
 function viewInvest(){
   const I=BAL.invest;
-  let h=`<div class="card"><div class="kick" style="margin-bottom:2px">Dine aktiver ${G.investIncome?`<small>· ${(G.investIncome>=0?"+":"")+kfmt(G.investIncome)} sidste sæson</small>`:""}</div>
-    ${I.assets.map(a=>{const owned=G.invest&&G.invest[a.key];
-      return `<div class="rowline"><span><b>${a.n}</b> <small>· ${a.blurb} · ~${pct(a.yield)}/sæson ± sving</small></span>
-        ${owned?`<span style="display:flex;gap:6px;align-items:center"><span class="amt num">${kfmt(a.cost)}</span><button class="sellb" onclick="investSell('${a.key}')">Sælg · ${kfmt(Math.round(a.cost*I.sellFactor/1000)*1000)}</button></span>`
-        :`<button class="abtn" style="padding:5px 9px;font-size:10px" onclick="investBuy('${a.key}')">Køb · ${kfmt(a.cost)}</button>`}</div>`;}).join("")}
-    <div class="kick" style="font-size:9px;text-transform:none;margin-top:6px">Alt her købes af DIN formue og betaler til DIN konto — klubkassen er ikke inviteret. Afkastet gøres op ved hvert sæsonskifte.</div></div>
+  const risk=r=>r==="solid"?'<span style="color:var(--pos)">solid</span>'
+    :r==="vovet"?'<span style="color:var(--neg)">vovet</span>'
+    :'<span style="color:var(--comm)">risikabel</span>';
+  const span=(lo,hi)=>`<small style="color:var(--muted)">${lo<0?"−":"+"}${Math.abs(Math.round(lo*100))}% til +${Math.round(hi*100)}%</small>`;
+  // KÆDER
+  let h=`<div class="card"><div class="kick" style="margin-bottom:2px">Kæder ${G.investIncome?`<small>· porteføljen gav ${(G.investIncome>=0?"+":"")+kfmt(G.investIncome)} sidste sæson</small>`:""}</div>
+    ${I.chains.map(a=>{const lvl=chainLvl(a.key),cost=chainCost(a.key,lvl);
+      return `<div class="rowline"><span><b>${a.n}</b> ${lvl?`<span class="num" style="color:var(--pos)">${lvl}</span>`:""} <small>· ${a.blurb} · ${risk(a.risk)} · ${span(a.lo,a.hi)}/sæson${a.corr>=0.6?" · <b>følger byens gang</b>":""}</small></span>
+        <span style="display:flex;gap:6px;align-items:center">
+        ${lvl?`<button class="sellb" onclick="chainSell('${a.key}')">Sælg · ${kfmt(chainWorth(a.key))}</button>`:""}
+        ${lvl<I.maxLvl?`<button class="abtn" style="padding:5px 9px;font-size:10px" onclick="chainBuy('${a.key}')">${lvl?"Udvid":"Køb"} · ${kfmt(cost)}</button>`:`<span class="sc">udbygget</span>`}</span></div>`;
+    }).join("")}</div>`;
+  // PROJEKTER
+  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">Projekter · penge bundet i flere sæsoner</div>
+    ${(G.projects||[]).map(p=>{const a=projDef(p.key);if(!a)return "";
+      return `<div class="rowline"><span><b>${a.n}</b> <small>· ${(PROJ_FUND[p.fund]||PROJ_FUND.own).n.toLowerCase()} · ${kfmt(p.paid)} bundet · <b>${p.left} sæson${p.left===1?"":"er"} igen</b></small></span>
+        <button class="sellb" onclick="projExit('${p.key}')">Ud nu · ${kfmt(Math.round(p.paid*I.earlyExit/1000)*1000)}</button></div>`;}).join("")}
+    ${I.projects.filter(a=>!(G.projects||[]).some(p=>p.key===a.key)).map(a=>{
+      const cost=Math.round(a.cost*divCashMult(G.div<0?3:G.div)/1000)*1000;
+      return `<div class="rowline" style="flex-direction:column;align-items:stretch;gap:6px">
+        <span><b>${a.n}</b> <small>· ${a.blurb} · ${risk(a.risk)} · ${a.seasons} sæsoner${a.corr>=0.6?" · følger byens gang":""}</small></span>
+        <span style="display:flex;gap:6px">${Object.keys(PROJ_FUND).map(f=>{const d=PROJ_FUND[f];
+          return `<button class="abtn ${f==="gear"?"":"ghost"}" style="flex:1;padding:6px 4px;font-size:9.5px" onclick="projStart('${a.key}','${f}')">${d.n}<br><span class="num">${kfmt(Math.round(cost*d.pay/1000)*1000)}</span></button>`;}).join("")}</span>
+        <small style="color:var(--muted);font-size:10px">Egen kasse: du kan tabe indskuddet · Med partner: halv indsats, halv gevinst · <b style="color:var(--neg)">Gearet: du kan tabe MERE end du lægger</b></small></div>`;}).join("")}
+    ${!I.projects.length?"":""}</div>`;
+  // HURTIGE HANDLER
+  h+=`<div class="card"><div class="kick" style="margin-bottom:2px">På markedet lige nu · afgøres inden for sæsonen</div>
+    ${(G.punts||[]).map(q=>{const d=puntDef(q.key);if(!d)return "";
+      return `<div class="rowline"><span><b>${d.n}</b> <small>· ${risk(d.risk)} · ${span(d.lo,d.hi)}</small></span>
+        ${q.taken?`<span class="sc">afgøres om ${Math.max(0,(q.due||0)-G.md)} kampdage</span>`
+          :`<button class="abtn" style="padding:5px 9px;font-size:10px" onclick="puntTake('${q.key}')">Slå til · ${kfmt(q.cost)}</button>`}</div>`;}).join("")||'<div class="newsline">Markedet er tomt lige nu. Der kommer nyt til sæsonskiftet.</div>'}
+    <div class="kick" style="font-size:9px;text-transform:none;margin-top:6px">Alt her købes af DIN formue og betaler til DIN konto — klubkassen er ikke inviteret. Du kan tabe penge; hvor meget, står på kortet.</div></div>
   <div class="card"><div class="kick" style="margin-bottom:2px">Mægleren</div>
     <div class="newsline">${G.brokerOffer?BAL.broker.n+" har et papir på dit bord: <b>"+G.brokerOffer.name+"</b> — se Kontoret.":BAL.broker.n+" ("+BAL.broker.role+") leder i markedets mørke hjørner. Kriseklubber kommer med rabat — papiret lander på dit bord, når han finder en."+(G.season<BAL.stake.unlockSeason&&G.phase!=="investor"?" Men først efter din første sæson — ligaen skal kende dig.":"")}</div></div>`;
   return h;
@@ -5616,7 +5797,7 @@ function viewBooks(){
     <div class="rowline"><span>Din andel af ${G.club} <small>· ${G.myShare}%</small></span><span class="amt num">${kfmt(Math.round(clubValuation()*G.myShare/100))}</span></div>
     <div class="rowline"><span>Andele i andre klubber <small>· ${(G.stakes||[]).length} poster</small></span><span class="amt num">${kfmt(stakesWorth())}</span></div>
     ${Object.keys(G.holdings||{}).length?`<div class="rowline"><span>Dine klubber <small>· ${Object.keys(G.holdings).length} under direktører</small></span><span class="amt num">${kfmt(holdingsWorth())}</span></div>`:""}
-    ${investWorth()?`<div class="rowline"><span>Invest-aktiver <small>· ${Object.keys(G.invest||{}).filter(k=>G.invest[k]).length} stk</small></span><span class="amt num">${kfmt(investWorth())}</span></div>`:""}
+    ${investWorth()?`<div class="rowline"><span>Porteføljen <small>· kæder, projekter og handler</small></span><span class="amt num">${kfmt(investWorth())}</span></div>`:""}
     <div class="rowline" style="border-top:1px solid rgba(255,255,255,.12)"><span><b>Formue i alt</b></span><span class="amt num" style="font-size:16px"><b>${kfmt(netWorth())}</b></span></div></div>
   <div class="card"><div class="kick" style="margin-bottom:2px">Ind & ud</div>
     <div class="rowline"><span>Seneste udbytte fra ${G.club}</span><span class="amt num">${G.lastDividend&&G.lastDividend.mine?kfmt(G.lastDividend.mine):"—"}</span></div>
